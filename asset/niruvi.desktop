@@ -1,0 +1,18 @@
+[Desktop Entry]
+Name=Niruvi
+GenericName=AppImage Manager
+Comment=Universal Linux AppImage Manager
+Exec=niruvi %F
+Icon=niruvi
+Terminal=false
+Type=Application
+Categories=Utility;
+MimeType=application/x-elf;application/x-sharedlib;application/x-appimage;
+StartupNotify=true
+StartupWMClass=niruvi
+X-Created-By=Niruvi
+Actions=Uninstall;
+
+[Desktop Action Uninstall]
+Name=Remove Niruvi
+Exec=niruvi uninstall /usr/bin/niruvi

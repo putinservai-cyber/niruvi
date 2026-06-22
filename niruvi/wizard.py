@@ -1,0 +1,633 @@
+import json
+import os
+import re
+import shutil
+import tempfile
+from pathlib import Path
+
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtWidgets import (
+    QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QMessageBox,
+    QProgressBar, QCheckBox, QTextEdit,
+)
+
+from niruvi.settings import get_settings
+from niruvi.worker import ExtractionWorker
+from niruvi.desktop_utils import (
+    get_version, create_desktop_entry, create_desktop_shortcut,
+    find_icon_in_appdir, parse_desktop_file_content, refresh_desktop_database,
+)
+from niruvi.appimage_assets import extract_metadata
+from niruvi.appimage_metadata import AppImageMetadata
+from niruvi.icon_utils import get_pixmap_from_data, get_pixmap_from_file, to_png_bytes
+from niruvi.installation_registry import InstallationRegistry, InstallationRecord
+
+
+class InstallWizard(QWizard):
+    def __init__(self, appimage_path=None, parent=None, appimage_info=None, icon_data=None):
+        super().__init__(parent)
+        self.setWindowTitle("Install AppImage")
+        self.setFixedSize(580, 480)
+        self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
+
+        self.appimage_path: str | None = appimage_path
+        self.dest_dir: str | None = None
+        self.app_name: str | None = None
+        self.worker: ExtractionWorker | None = None
+        self._extraction_started = False
+        self._progress_timer = QTimer(self)
+        self._progress_timer.setInterval(300)
+        self._progress_timer.timeout.connect(self._on_progress_tick)
+        self._progress_tick = 0
+        self._progress_real = -1
+
+        self._appimage_info = appimage_info or {}
+        self._icon_data = icon_data
+        self._icon_pixmap = None
+        self._desktop_info = None
+        self._backup_dir: str | None = None
+
+        self._build_pages()
+        self._configure_buttons()
+
+        if appimage_path:
+            self._select_file(appimage_path)
+
+        self.currentIdChanged.connect(self._on_page_changed)
+        self.destroyed.connect(self._cleanup_signals)
+
+    def _build_pages(self):
+        p1 = QWizardPage()
+        p1.setTitle("AppImage Information")
+        p1.setSubTitle("Review the AppImage details and choose install location.")
+        l1 = QVBoxLayout(p1)
+
+        self.app_icon_label = QLabel()
+        self.app_icon_label.setFixedSize(64, 64)
+        self.app_name_label = QLabel("Name: --")
+        self.app_path_label = QLabel("Source: --")
+        self.app_size_label = QLabel("Size: --")
+        self.app_comment_label = QLabel("")
+        self.app_comment_label.setWordWrap(True)
+
+        header = QHBoxLayout()
+        header.addWidget(self.app_icon_label)
+        info_col = QVBoxLayout()
+        info_col.addWidget(self.app_name_label)
+        info_col.addWidget(self.app_path_label)
+        info_col.addWidget(self.app_size_label)
+        info_col.addWidget(self.app_comment_label)
+        header.addLayout(info_col, 1)
+        l1.addLayout(header)
+
+        dest_section = QHBoxLayout()
+        dest_label = QLabel("Install to:")
+        self.dest_dir_label = QLabel("--")
+        self.dest_dir_label.setWordWrap(True)
+        self.btn_change_dest = QPushButton(QIcon.fromTheme("folder-open"), "Change...")
+        self.btn_change_dest.clicked.connect(self._on_change_dest)
+        dest_section.addWidget(dest_label)
+        dest_section.addWidget(self.dest_dir_label, 1)
+        dest_section.addWidget(self.btn_change_dest)
+        l1.addLayout(dest_section)
+
+        l1.addStretch()
+        self.addPage(p1)
+
+        p3 = QWizardPage()
+        p3.setTitle("Integration Options")
+        p3.setSubTitle("Choose how to integrate this AppImage.")
+        l3 = QVBoxLayout(p3)
+
+        self.cb_desktop_file = QCheckBox("Create desktop entry (show in application menu)")
+        self.cb_desktop_file.setChecked(get_settings().get("create_desktop", True))
+        self.cb_desktop_file.setToolTip(
+            "Creates a .desktop file in ~/.local/share/applications/ so the app\n"
+            "appears in your desktop environment's application launcher (GNOME, KDE, XFCE, etc.)"
+        )
+        l3.addWidget(self.cb_desktop_file)
+
+        self.cb_desktop_shortcut = QCheckBox("Create desktop shortcut")
+        self.cb_desktop_shortcut.setChecked(get_settings().get("create_shortcut", False))
+        self.cb_desktop_shortcut.setToolTip(
+            "Places a shortcut icon on your Desktop for quick launching.\n"
+            "The icon will be installed to your system icon theme for best compatibility."
+        )
+        l3.addWidget(self.cb_desktop_shortcut)
+
+        self.cb_portable_home = QCheckBox("Create portable home folder")
+        self.cb_portable_home.setChecked(get_settings().get("portable_home", False))
+        self.cb_portable_home.setToolTip(
+            "Creates a .home folder next to the app directory where the app\n"
+            "stores its user data, keeping it self-contained and portable."
+        )
+        l3.addWidget(self.cb_portable_home)
+
+        self.cb_portable_config = QCheckBox("Create portable config folder")
+        self.cb_portable_config.setChecked(get_settings().get("portable_config", False))
+        self.cb_portable_config.setToolTip(
+            "Creates a .config folder next to the app directory where the app\n"
+            "stores its configuration, keeping it self-contained and portable."
+        )
+        l3.addWidget(self.cb_portable_config)
+
+        l3.addStretch()
+        self.addPage(p3)
+
+        p4 = QWizardPage()
+        p4.setTitle("Installing")
+        p4.setSubTitle("Please wait while the AppImage is extracted...")
+        l4 = QVBoxLayout(p4)
+
+        self.progress_label = QLabel("Progress:")
+        l4.addWidget(self.progress_label)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        l4.addWidget(self.progress_bar)
+
+        self.btn_toggle_log = QPushButton(QIcon.fromTheme("format-justify-left"), "Show Details")
+        self.btn_toggle_log.setCheckable(True)
+        self.btn_toggle_log.toggled.connect(self._on_toggle_log)
+        l4.addWidget(self.btn_toggle_log)
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        mono_font = QFont()
+        mono_font.setFamily("monospace")
+        mono_font.setStyleHint(QFont.StyleHint.TypeWriter)
+        self.log_text.setFont(mono_font)
+        self.log_text.setVisible(False)
+        l4.addWidget(self.log_text)
+        self.addPage(p4)
+
+        p_success = QWizardPage()
+        p_success.setFinalPage(True)
+        l_success = QVBoxLayout(p_success)
+        self.success_icon = QLabel()
+        self.success_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.success_label = QLabel()
+        self.success_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.success_label.setWordWrap(True)
+        l_success.addStretch(1)
+        l_success.addWidget(self.success_icon)
+        l_success.addSpacing(10)
+        l_success.addWidget(self.success_label)
+        l_success.addStretch(1)
+        self.addPage(p_success)
+
+    def _configure_buttons(self):
+        self.setButtonText(QWizard.WizardButton.CancelButton, "Cancel")
+        self.button(QWizard.WizardButton.CancelButton).setIcon(QIcon.fromTheme("dialog-cancel"))
+        self.setButtonText(QWizard.WizardButton.BackButton, "Back")
+        self.button(QWizard.WizardButton.BackButton).setIcon(QIcon.fromTheme("go-previous"))
+        self.setButtonText(QWizard.WizardButton.NextButton, "Next")
+        self.button(QWizard.WizardButton.NextButton).setIcon(QIcon.fromTheme("go-next"))
+        self.setButtonText(QWizard.WizardButton.FinishButton, "Finish")
+        self.button(QWizard.WizardButton.FinishButton).setIcon(QIcon.fromTheme("dialog-ok"))
+        self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
+
+    def _select_file(self, path: str):
+        self.appimage_path = path
+        base = os.path.splitext(os.path.basename(path))[0]
+        self.app_name = base
+
+        self.app_path_label.setText(f"Source: {path}")
+        size_mb = os.path.getsize(path) / 1024 / 1024
+        self.app_size_label.setText(f"Size: {size_mb:.1f} MB")
+
+        if self._appimage_info.get("Name"):
+            self.app_name = self._appimage_info["Name"]
+            self.app_name_label.setText(f"Name: {self._appimage_info['Name']}")
+            comment = self._appimage_info.get("Comment", "")
+            if comment:
+                self.app_comment_label.setText(f"Description: {comment}")
+        else:
+            self.app_name_label.setText(f"Name: {base}")
+
+        if self._icon_data:
+            from niruvi.icon_utils import get_pixmap_from_data
+            pixmap = get_pixmap_from_data(self._icon_data, 64)
+            if pixmap and not pixmap.isNull():
+                self._icon_pixmap = pixmap
+                self.app_icon_label.setPixmap(pixmap)
+                self.success_icon.setPixmap(pixmap)
+
+        install_dir = get_settings()["install_dir"]
+        self.dest_dir = os.path.join(install_dir, self.app_name)
+        self.dest_dir_label.setText(self.dest_dir)
+
+        if not self._appimage_info.get("Name"):
+            self._load_appimage_metadata(path)
+
+    def _cleanup_signals(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait()
+        try:
+            self.currentIdChanged.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        if self.worker:
+            try:
+                self.worker.extraction_finished.disconnect()
+                self.worker.extraction_error.disconnect()
+                self.worker.progress_updated.disconnect()
+                self.worker.log_message.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+
+    def set_appimage(self, path: str):
+        self._select_file(path)
+
+    def _load_appimage_metadata(self, path):
+        try:
+            meta = AppImageMetadata(path)
+            self.app_size_label.setText(f"Size: {os.path.getsize(path) / 1024 / 1024:.1f} MB | Arch: {meta.architecture} | Type: Type{meta.type}")
+        except Exception:
+            pass
+
+        with tempfile.TemporaryDirectory(prefix="aim-info-") as tmp:
+            assets = extract_metadata(path, tmp)
+            desktop_path = assets.get("desktop")
+            if desktop_path:
+                content = Path(desktop_path).read_text(encoding='utf-8', errors='ignore')
+                self._desktop_info = parse_desktop_file_content(content)
+                name = self._desktop_info.get("Name", self.app_name)
+                self.app_name = name
+                self.app_name_label.setText(f"Name: {name}")
+                comment = self._desktop_info.get("Comment", "")
+                if comment:
+                    self.app_comment_label.setText(f"Description: {comment}")
+
+            icon_path = assets.get("icon")
+            if icon_path:
+                try:
+                    pixmap = get_pixmap_from_file(icon_path, 64)
+                    if pixmap and not pixmap.isNull():
+                        self._icon_pixmap = pixmap
+                        self.app_icon_label.setPixmap(pixmap)
+                        self.success_icon.setPixmap(pixmap)
+                except Exception:
+                    pass
+
+    def _on_page_changed(self, idx):
+        if idx == 2:
+            self._do_install()
+        if self.currentPage() and self.currentPage().isFinalPage():
+            self.button(QWizard.WizardButton.BackButton).hide()
+
+    def nextId(self):
+        if self.currentId() == 0:
+            return 1
+        elif self.currentId() == 1:
+            return 2
+        elif self.currentId() == 2:
+            return 3
+        return -1
+
+    def validateCurrentPage(self):
+        if self.currentId() == 0:
+            if not self.appimage_path:
+                QMessageBox.warning(self, "Error", "No AppImage file selected.")
+                return False
+            if not self.dest_dir:
+                QMessageBox.warning(self, "Error", "Destination folder not resolved.")
+                return False
+            parent_dir = os.path.dirname(self.dest_dir)
+            try:
+                os.makedirs(parent_dir, exist_ok=True)
+            except OSError:
+                QMessageBox.critical(
+                    self, "Error",
+                    f"Cannot create install directory:\n{parent_dir}"
+                )
+                return False
+            if not os.access(parent_dir, os.W_OK):
+                QMessageBox.critical(
+                    self, "Error",
+                    f"Install directory is not writable:\n{parent_dir}"
+                )
+                return False
+            return True
+        elif self.currentId() == 1:
+            if not self.cb_desktop_file.isChecked() and not self.cb_desktop_shortcut.isChecked():
+                reply = QMessageBox.question(
+                    self,
+                    "No Integration",
+                    "No integration options selected. Proceed anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return False
+            dest = self.dest_dir
+            if os.path.exists(dest):
+                reply = QMessageBox.question(
+                    self,
+                    "Overwrite?",
+                    f"Folder '{dest}' already exists.\n"
+                    "Existing files will be backed up in case of failure.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return False
+                self._create_backup(dest)
+            return True
+        return True
+
+    def _on_change_dest(self):
+        from PyQt6.QtWidgets import QFileDialog
+        current = os.path.dirname(self.dest_dir) if self.dest_dir else get_settings()["install_dir"]
+        new_dir = QFileDialog.getExistingDirectory(
+            self, "Select Install Location", current
+        )
+        if new_dir:
+            base = self.app_name or os.path.splitext(os.path.basename(self.appimage_path or ""))[0]
+            self.dest_dir = os.path.join(new_dir, base)
+            self.dest_dir_label.setText(self.dest_dir)
+
+    def _create_backup(self, directory: str):
+        if not os.path.isdir(directory):
+            return
+        safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', self.app_name or "unknown")[:64]
+        backup_name = f"aim-backup-{safe_name}"
+        backup_dir = os.path.join(tempfile.gettempdir(), backup_name)
+        if os.path.exists(backup_dir):
+            shutil.rmtree(backup_dir)
+        try:
+            shutil.copytree(directory, backup_dir)
+            self._backup_dir = backup_dir
+            self.log_text.append(f"Backup created: {backup_dir}")
+        except OSError as e:
+            self.log_text.append(f"Warning: backup failed ({e})")
+
+    def _restore_backup(self):
+        if not self._backup_dir or not os.path.isdir(self._backup_dir):
+            return
+        try:
+            if os.path.exists(self.dest_dir):
+                shutil.rmtree(self.dest_dir)
+            shutil.copytree(self._backup_dir, self.dest_dir, dirs_exist_ok=True)
+            self.log_text.append("Previous installation restored from backup.")
+        except OSError as e:
+            self.log_text.append(f"Error restoring backup: {e}")
+
+    def _cleanup_backup(self):
+        if self._backup_dir and os.path.isdir(self._backup_dir):
+            try:
+                shutil.rmtree(self._backup_dir)
+            except OSError:
+                pass
+        self._backup_dir = None
+
+    def _validate_installation(self, dest_dir: str) -> bool:
+        apprun = os.path.join(dest_dir, "AppRun")
+        if not os.path.isfile(apprun):
+            self.log_text.append("Warning: AppRun not found after extraction.")
+            return False
+        if not os.access(apprun, os.X_OK):
+            self.log_text.append("Setting AppRun executable...")
+            try:
+                os.chmod(apprun, 0o755)
+            except OSError as e:
+                self.log_text.append(f"Could not set executable: {e}")
+                return False
+        return True
+
+    def _do_install(self):
+        if self._extraction_started:
+            return
+        if not self.appimage_path:
+            QMessageBox.critical(self, "Error", "No AppImage file selected.")
+            self.reject()
+            return
+        if not self.dest_dir:
+            QMessageBox.critical(self, "Error", "Destination folder not set.")
+            self.reject()
+            return
+        if not os.path.isfile(self.appimage_path):
+            QMessageBox.critical(self, "Error", f"AppImage file not found:\n{self.appimage_path}")
+            self.reject()
+            return
+        self._extraction_started = True
+
+        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
+        self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
+        self.button(QWizard.WizardButton.NextButton).setEnabled(False)
+
+        self.log_text.clear()
+        self.log_text.append(f"Installing: {self.app_name}")
+        self.log_text.append(f"Source: {self.appimage_path}")
+        self.log_text.append(f"Destination: {self.dest_dir}")
+        self._start_progress_animation()
+
+        self.worker = ExtractionWorker(self.appimage_path, self.dest_dir, self.app_name, self)
+        self.worker.extraction_finished.connect(self._on_extraction_finished)
+        self.worker.extraction_error.connect(self._on_extraction_error)
+        self.worker.progress_updated.connect(self._on_worker_progress)
+        self.worker.log_message.connect(self._on_worker_log)
+        self.worker.start()
+
+    def _on_worker_progress(self, value: int):
+        self._set_real_progress(value)
+
+    def _on_worker_log(self, msg: str):
+        self.log_text.append(msg)
+        self.log_text.verticalScrollBar().setValue(
+            self.log_text.verticalScrollBar().maximum()
+        )
+
+    def _on_extraction_finished(self, dest_dir: str, app_name: str):
+        self._stop_progress_animation()
+        self._set_real_progress(100)
+
+        valid = self._validate_installation(dest_dir)
+        if not valid:
+            self.log_text.append("Warning: extracted files may be incomplete.")
+            reply = QMessageBox.warning(
+                self,
+                "Validation Warning",
+                "The installation may be incomplete (AppRun missing or not executable).\n\n"
+                "Do you want to continue anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self._restore_backup()
+                self._cleanup_backup()
+                self.reject()
+                return
+
+        self.log_text.append("Installation complete!")
+        self.button(QWizard.WizardButton.NextButton).setEnabled(True)
+        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
+
+        try:
+            version = get_version(dest_dir)
+            metadata = {
+                "version": version,
+                "install_date": str(Path(dest_dir).stat().st_ctime),
+            }
+            meta_path = os.path.join(dest_dir, ".appimage-manager.json")
+            with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(meta_path), delete=False, suffix=".tmp") as tf:
+                json.dump(metadata, tf)
+                tmp_path = tf.name
+            os.replace(tmp_path, meta_path)
+        except OSError as e:
+            self.log_text.append(f"Warning: could not write metadata ({e})")
+
+        desktop_file_path = None
+        shortcut_path = None
+
+        if self.cb_desktop_file.isChecked():
+            try:
+                desktop_file_path = create_desktop_entry(dest_dir, app_name, self)
+                self.log_text.append(f"Desktop entry: {desktop_file_path or 'failed'}")
+            except Exception as e:
+                self.log_text.append(f"Desktop entry failed: {e}")
+
+        if self.cb_desktop_shortcut.isChecked():
+            icon_path = None
+            if self._desktop_info:
+                icon_name = self._desktop_info.get("Icon", "")
+                if icon_name:
+                    icon_path = find_icon_in_appdir(dest_dir, icon_name)
+            if not icon_path:
+                for ext in (".png", ".svg", ".xpm"):
+                    for root, _, files in os.walk(dest_dir):
+                        for f in files:
+                            if f.endswith(ext):
+                                icon_path = os.path.join(root, f)
+                                break
+                        if icon_path:
+                            break
+            try:
+                shortcut_path = create_desktop_shortcut(
+                    app_name, os.path.join(dest_dir, "AppRun"), icon_path
+                )
+                self.log_text.append(f"Desktop shortcut: {shortcut_path or 'failed'}")
+            except Exception as e:
+                self.log_text.append(f"Desktop shortcut failed: {e}")
+
+        if self.cb_portable_home.isChecked():
+            try:
+                home_dir = dest_dir + ".home"
+                Path(home_dir).mkdir(exist_ok=True)
+                self.log_text.append(f"Portable home: {home_dir}")
+            except OSError as e:
+                self.log_text.append(f"Portable home failed: {e}")
+
+        if self.cb_portable_config.isChecked():
+            try:
+                config_dir = dest_dir + ".config"
+                Path(config_dir).mkdir(exist_ok=True)
+                self.log_text.append(f"Portable config: {config_dir}")
+            except OSError as e:
+                self.log_text.append(f"Portable config failed: {e}")
+
+        try:
+            refresh_desktop_database()
+        except Exception as e:
+            self.log_text.append(f"Warning: desktop database refresh failed ({e})")
+
+        try:
+            registry = InstallationRegistry()
+            record = InstallationRecord(
+                name=app_name,
+                path=dest_dir,
+                version=version,
+                desktop_file=desktop_file_path or "",
+                desktop_shortcut=shortcut_path or "",
+            )
+            registry.add(record)
+            self.log_text.append("Registered in installation database.")
+        except Exception as e:
+            self.log_text.append(f"Warning: registry update failed ({e})")
+
+        self._cleanup_backup()
+
+        self.progress_label.setText("Installation complete!")
+        self.progress_bar.setValue(100)
+
+        if self._icon_pixmap:
+            self.success_icon.setPixmap(self._icon_pixmap)
+        self.success_label.setText(f"<b>{app_name}</b> was installed successfully.")
+
+    def _on_extraction_error(self, error_msg: str):
+        self._stop_progress_animation()
+        self.log_text.append(f"ERROR: {error_msg}")
+        if os.path.isdir(self.dest_dir):
+            try:
+                shutil.rmtree(self.dest_dir)
+            except OSError:
+                pass
+        self._restore_backup()
+        self._cleanup_backup()
+        QMessageBox.critical(
+            self, "Installation Error",
+            f"Failed to install: {error_msg}\n\n"
+            "The previous version has been restored."
+        )
+        self.reject()
+
+    def _on_toggle_log(self, checked: bool):
+        self.btn_toggle_log.setText("Hide Details" if checked else "Show Details")
+        self.log_text.setVisible(checked)
+
+    def _start_progress_animation(self):
+        self._progress_tick = 0
+        self._progress_real = -1
+        self._progress_timer.start()
+
+    def _stop_progress_animation(self):
+        self._progress_timer.stop()
+
+    def _on_progress_tick(self):
+        self._progress_tick += 1
+        display = max(self._simulated_value(), self._progress_real)
+        self.progress_bar.setValue(display)
+
+    def _simulated_value(self):
+        t = self._progress_tick
+        if t < 5:
+            return 5 + t * 3
+        elif t < 20:
+            return 20 + int((t - 5) * 1.5)
+        elif t < 60:
+            return 42 + int((t - 20) * 0.6)
+        else:
+            return min(66 + int((t - 60) * 0.15), 88)
+
+    def _set_real_progress(self, value):
+        if value > self._progress_real:
+            self._progress_real = value
+        self.progress_bar.setValue(max(value, self._simulated_value()))
+
+    def accept(self):
+        p = self.parent()
+        if p is not None and hasattr(p, "scan_installed"):
+            p.scan_installed()
+        super().accept()
+
+    def reject(self):
+        if self.worker and self.worker.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Cancel Installation?",
+                "Installation is in progress. Cancel anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            self.worker.stop()
+            self.worker.wait()
+            if self.dest_dir and os.path.isdir(self.dest_dir):
+                try:
+                    shutil.rmtree(self.dest_dir)
+                except OSError:
+                    pass
+        self._restore_backup()
+        self._cleanup_backup()
+        super().reject()

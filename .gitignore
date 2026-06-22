@@ -1,0 +1,33 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# AppImage build artifacts
+*.AppDir/
+Niruvi-x86_64.AppImage
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Environment and secrets
+.env
+venv/
+.venv/
+*.key
+*.pem
+*.crt
+
+# Logs
+*.log
