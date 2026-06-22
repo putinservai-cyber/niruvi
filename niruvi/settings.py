@@ -5,10 +5,13 @@ import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QCheckBox, QDialogButtonBox,
-    QFileDialog, QGroupBox, QRadioButton, QLabel,
+    QFileDialog, QGroupBox, QRadioButton, QLabel, QScrollArea,
+    QFrame, QSizePolicy,
 )
+
+from niruvi.toggle_switch import ToggleSwitch
 
 DEFAULT_INSTALL_DIR = os.path.expanduser("~/Applications")
 DESKTOP_DIR = os.path.expanduser("~/.local/share/applications")
@@ -17,25 +20,14 @@ INSTALLED_DIR = os.path.expanduser("~/Applications/Niruvi")
 
 
 def get_data_dir():
-    """Resolve the persistent data directory.
-
-    Priority:
-      1. $NIRUVI_DATA_DIR  (env override)
-      2. ~/Applications/Niruvi/.niruvi/  (when installed via self-install)
-      3. dir of running AppImage /.niruvi/  (portable AppImage mode)
-      4. ~/.config/niruvi/  (fallback for pip-installed users)
-    """
     env = os.environ.get("NIRUVI_DATA_DIR")
     if env:
         return env
-
     if os.path.isfile(os.path.join(INSTALLED_DIR, "AppRun")):
         return os.path.join(INSTALLED_DIR, ".niruvi")
-
     appimage = os.environ.get("APPIMAGE")
     if appimage:
         return os.path.join(os.path.dirname(appimage), ".niruvi")
-
     return os.path.expanduser("~/.config/niruvi")
 
 
@@ -76,17 +68,56 @@ def save_settings():
         json.dump(_settings, f, indent=2)
 
 
-class SettingsDialog(QDialog):
+class _ToggleRow(QWidget):
+    def __init__(self, label: str, tooltip: str = "", parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 4, 0, 4)
+        self.label = QLabel(label)
+        self.label.setWordWrap(True)
+        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.toggle = ToggleSwitch(self)
+        if tooltip:
+            self.label.setToolTip(tooltip)
+            self.toggle.setToolTip(tooltip)
+        layout.addWidget(self.label, 1)
+        layout.addWidget(self.toggle)
+        self.setToolTip(tooltip)
+
+    def isChecked(self):
+        return self.toggle.isChecked()
+
+    def setChecked(self, checked: bool):
+        self.toggle.setChecked(checked)
+
+
+class SettingsPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Niruvi Settings")
-        self.setMinimumWidth(460)
         self._init_ui()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
-        form = QFormLayout()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        scroll.setWidget(content)
+        layout = QVBoxLayout(content)
+        layout.setSpacing(16)
+        layout.setContentsMargins(16, 12, 16, 12)
+
+        title = QLabel("<b>Settings</b>")
+        font = title.font()
+        font.setPointSize(16)
+        title.setFont(font)
+        layout.addWidget(title)
+
+        form = QFormLayout()
         self.install_dir_edit = QLineEdit(_settings.get("install_dir", DEFAULT_INSTALL_DIR))
         self.install_dir_edit.setReadOnly(True)
         browse_btn = QPushButton(QIcon.fromTheme("folder-open"), "Browse...")
@@ -95,40 +126,40 @@ class SettingsDialog(QDialog):
         dir_layout.addWidget(self.install_dir_edit)
         dir_layout.addWidget(browse_btn)
         form.addRow("Installation directory:", dir_layout)
-
         layout.addLayout(form)
 
         defaults_group = QGroupBox("Installation defaults")
         defaults_layout = QVBoxLayout(defaults_group)
+        defaults_layout.setSpacing(2)
 
-        self.create_desktop_check = QCheckBox("Create desktop entries (show in app menu)")
-        self.create_desktop_check.setChecked(_settings.get("create_desktop", True))
-        self.create_desktop_check.setToolTip(
+        self.create_desktop_row = _ToggleRow(
+            "Create desktop entries (show in app menu)",
             "When enabled, a .desktop file will be created in "
             "~/.local/share/applications so the app appears in your DE's launcher"
         )
-        defaults_layout.addWidget(self.create_desktop_check)
+        self.create_desktop_row.setChecked(_settings.get("create_desktop", True))
+        defaults_layout.addWidget(self.create_desktop_row)
 
-        self.create_shortcut_check = QCheckBox("Create desktop shortcut")
-        self.create_shortcut_check.setChecked(_settings.get("create_shortcut", False))
-        self.create_shortcut_check.setToolTip(
+        self.shortcut_row = _ToggleRow(
+            "Create desktop shortcut",
             "When enabled, a shortcut icon will be placed on your Desktop"
         )
-        defaults_layout.addWidget(self.create_shortcut_check)
+        self.shortcut_row.setChecked(_settings.get("create_shortcut", False))
+        defaults_layout.addWidget(self.shortcut_row)
 
-        self.portable_home_check = QCheckBox("Create portable home folder")
-        self.portable_home_check.setChecked(_settings.get("portable_home", False))
-        self.portable_home_check.setToolTip(
+        self.portable_home_row = _ToggleRow(
+            "Create portable home folder",
             "Creates a .home folder next to the app for persistent user data"
         )
-        defaults_layout.addWidget(self.portable_home_check)
+        self.portable_home_row.setChecked(_settings.get("portable_home", False))
+        defaults_layout.addWidget(self.portable_home_row)
 
-        self.portable_config_check = QCheckBox("Create portable config folder")
-        self.portable_config_check.setChecked(_settings.get("portable_config", False))
-        self.portable_config_check.setToolTip(
+        self.portable_config_row = _ToggleRow(
+            "Create portable config folder",
             "Creates a .config folder next to the app for persistent configuration"
         )
-        defaults_layout.addWidget(self.portable_config_check)
+        self.portable_config_row.setChecked(_settings.get("portable_config", False))
+        defaults_layout.addWidget(self.portable_config_row)
 
         layout.addWidget(defaults_group)
 
@@ -138,8 +169,7 @@ class SettingsDialog(QDialog):
         self.icon_theme_radio = QRadioButton("Install icon to theme directory (recommended)")
         self.icon_theme_radio.setChecked(_settings.get("icon_in_theme", True))
         self.icon_theme_radio.setToolTip(
-            "Copies the icon to ~/.local/share/icons/hicolor/ so all DEs can find it.\n"
-            "Icons survive app moves and work on GNOME, KDE, XFCE, etc."
+            "Copies the icon to ~/.local/share/icons/hicolor/ so all DEs can find it"
         )
         icon_layout.addWidget(self.icon_theme_radio)
 
@@ -157,7 +187,9 @@ class SettingsDialog(QDialog):
         build_layout = QFormLayout(build_group)
 
         build_dir_layout = QHBoxLayout()
-        self.build_output_edit = QLineEdit(_settings.get("build_output_dir", os.path.expanduser("~/Applications")))
+        self.build_output_edit = QLineEdit(
+            _settings.get("build_output_dir", os.path.expanduser("~/Applications"))
+        )
         self.build_output_edit.setReadOnly(True)
         build_dir_layout.addWidget(self.build_output_edit)
         build_browse_btn = QPushButton(QIcon.fromTheme("folder-open"), "Browse...")
@@ -168,17 +200,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(build_group)
 
         help_label = QLabel(
-            '<a href="#" style="color: #666;">Changes take effect on the next install or build.</a>'
+            '<a href="#" style="color: #888;">Changes take effect on the next install or build.</a>'
         )
         help_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(help_label)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        layout.addStretch()
 
     def _browse_install_dir(self):
         dir_path = QFileDialog.getExistingDirectory(
@@ -194,13 +221,32 @@ class SettingsDialog(QDialog):
         if dir_path:
             self.build_output_edit.setText(dir_path)
 
-    def accept(self):
+    def apply(self):
         _settings["install_dir"] = self.install_dir_edit.text()
-        _settings["create_desktop"] = self.create_desktop_check.isChecked()
-        _settings["create_shortcut"] = self.create_shortcut_check.isChecked()
-        _settings["portable_home"] = self.portable_home_check.isChecked()
-        _settings["portable_config"] = self.portable_config_check.isChecked()
+        _settings["create_desktop"] = self.create_desktop_row.isChecked()
+        _settings["create_shortcut"] = self.shortcut_row.isChecked()
+        _settings["portable_home"] = self.portable_home_row.isChecked()
+        _settings["portable_config"] = self.portable_config_row.isChecked()
         _settings["icon_in_theme"] = self.icon_theme_radio.isChecked()
         _settings["build_output_dir"] = self.build_output_edit.text()
         save_settings()
+
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Niruvi Settings")
+        self.setMinimumSize(460, 400)
+        self._page = SettingsPage(self)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self._page)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def accept(self):
+        self._page.apply()
         super().accept()

@@ -24,6 +24,7 @@ from niruvi.settings import (
     DEFAULT_INSTALL_DIR,
     SettingsDialog,
 )
+from niruvi.app_info_dialog import AppInfoDialog
 from niruvi.worker import ExtractionWorker
 from niruvi.desktop_utils import (
     get_version,
@@ -197,7 +198,12 @@ class AppManager(QMainWindow):
         search_sort_layout.addWidget(self.search_edit)
 
         self.sort_combo = QComboBox()
-        self.sort_combo.addItems(["Sort by Name", "Sort by Version"])
+        self.sort_combo.addItems([
+            "Sort by Name",
+            "Sort by Version",
+            "Sort by Size",
+            "Sort by Install Date",
+        ])
         self.sort_combo.currentIndexChanged.connect(self._sort_apps)
         self.sort_combo.setToolTip("Change how installed apps are ordered")
         search_sort_layout.addWidget(self.sort_combo)
@@ -288,6 +294,19 @@ class AppManager(QMainWindow):
             if pixmap and not pixmap.isNull():
                 list_item.setIcon(QIcon(pixmap))
         self.installed_list.addItem(list_item)
+        app_size = 0
+        install_time = 0.0
+        if os.path.isdir(app_dir):
+            try:
+                install_time = os.path.getctime(app_dir)
+                for root, dirs, files in os.walk(app_dir):
+                    for f in files:
+                        try:
+                            app_size += os.path.getsize(os.path.join(root, f))
+                        except OSError:
+                            pass
+            except OSError:
+                pass
         self.installed_apps[key] = {
             "path": app_dir,
             "version": version,
@@ -295,6 +314,8 @@ class AppManager(QMainWindow):
             "desktop_shortcut": find_desktop_shortcut(key),
             "display_name": display_name,
             "icon_path": icon_path,
+            "size": app_size,
+            "install_date": install_time,
         }
 
     def scan_installed(self):
@@ -363,8 +384,12 @@ class AppManager(QMainWindow):
                 items.append((key, item))
         if idx == 0:
             items.sort(key=lambda x: x[0].lower())
+        elif idx == 1:
+            items.sort(key=lambda x: self.installed_apps.get(x[0], {}).get("version", ""))
+        elif idx == 2:
+            items.sort(key=lambda x: self.installed_apps.get(x[0], {}).get("size", 0))
         else:
-            items.sort(key=lambda x: self.installed_apps.get(x[0], {}).get("version", "?"))
+            items.sort(key=lambda x: self.installed_apps.get(x[0], {}).get("install_date", 0.0))
         for _, item in items:
             self.installed_list.addItem(item)
 
@@ -543,6 +568,8 @@ class AppManager(QMainWindow):
 
         app_info = self.installed_apps[app_name]
         menu = QMenu()
+        info_action = menu.addAction(get_icon("help-about", "dialog-information"), "App Info")
+        menu.addSeparator()
         run_action = menu.addAction(QIcon.fromTheme("media-playback-start"), "Run")
         update_action = menu.addAction(QIcon.fromTheme("emblem-downloads"), "Update...")
         uninstall_action = menu.addAction(QIcon.fromTheme("edit-delete"), "Uninstall")
@@ -553,7 +580,9 @@ class AppManager(QMainWindow):
         shortcut_action = menu.addAction(QIcon.fromTheme("user-desktop"), shortcut_text)
 
         action = menu.exec(self.installed_list.mapToGlobal(pos))
-        if action == run_action:
+        if action == info_action:
+            self._show_app_info(app_name)
+        elif action == run_action:
             self._run_app(app_name)
         elif action == update_action:
             self._update_app(app_name)
@@ -740,6 +769,13 @@ class AppManager(QMainWindow):
         except OSError:
             QMessageBox.critical(self, "Error", "Could not open folder.")
 
+    def _show_app_info(self, app_name: str):
+        app_info = self.installed_apps.get(app_name)
+        if not app_info:
+            return
+        dlg = AppInfoDialog(app_name, app_info, self)
+        dlg.exec()
+
     def _open_build_dialog(self):
         dialog = BuildDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -793,10 +829,10 @@ class AppManager(QMainWindow):
             "• Drag-and-drop install<br>"
             "• Search and filter installed apps<br>"
             "• Cross-desktop icon theme integration<br><br>"
-            "<b>License:</b> GNU General Public License v2<br>"
+            "<b>License:</b> GNU General Public License v3<br>"
             "Copyright © 2026 putinservai-cyber<br><br>"
             "This program is free software; you can redistribute it<br>"
             "and/or modify it under the terms of the GNU General<br>"
             "Public License as published by the Free Software<br>"
-            "Foundation; version 2 of the License."
+            "Foundation; version 3 of the License."
         )
