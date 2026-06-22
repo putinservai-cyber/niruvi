@@ -34,6 +34,9 @@ from niruvi.desktop_utils import (
     find_desktop_shortcut,
     refresh_desktop_database,
     parse_desktop_file,
+    pin_to_panel,
+    unpin_from_panel,
+    is_pinned_to_panel,
 )
 from niruvi.wizard import InstallWizard
 from niruvi.build_dialog import BuildDialog
@@ -578,6 +581,12 @@ class AppManager(QMainWindow):
         has_shortcut = bool(app_info.get("desktop_shortcut"))
         shortcut_text = "Remove Desktop Shortcut" if has_shortcut else "Create Desktop Shortcut"
         shortcut_action = menu.addAction(get_icon("user-desktop"), shortcut_text)
+        menu.addSeparator()
+        desktop_name = f"{app_name}.desktop"
+        is_pinned = is_pinned_to_panel(desktop_name)
+        pin_text = "Unpin from Panel" if is_pinned else "Pin to Panel"
+        pin_icon = get_icon("media-playback-start" if is_pinned else "list-add")
+        pin_action = menu.addAction(pin_icon, pin_text)
 
         action = menu.exec(self.installed_list.mapToGlobal(pos))
         if action == info_action:
@@ -595,6 +604,11 @@ class AppManager(QMainWindow):
                 self._remove_desktop_shortcut(app_name)
             else:
                 self._create_desktop_shortcut(app_name)
+        elif action == pin_action:
+            if is_pinned:
+                self._unpin_from_panel(app_name)
+            else:
+                self._pin_to_panel(app_name)
 
     def _run_app(self, app_name: str):
         apprun = os.path.join(self.installed_apps[app_name]["path"], "AppRun")
@@ -775,6 +789,25 @@ class AppManager(QMainWindow):
             return
         dlg = AppInfoDialog(app_name, app_info, self)
         dlg.exec()
+
+    def _pin_to_panel(self, app_name: str):
+        desktop_name = f"{app_name}.desktop"
+        if pin_to_panel(desktop_name):
+            self.statusBar.showMessage(f"{app_name} pinned to panel")
+        else:
+            QMessageBox.information(
+                self, "Pin to Panel",
+                "Automatic panel pinning is currently supported on "
+                "GNOME.\n\n"
+                "For other desktop environments, open your app menu, "
+                "find the application, right-click and select "
+                "'Add to Favorites' or 'Pin to Panel'.",
+            )
+
+    def _unpin_from_panel(self, app_name: str):
+        desktop_name = f"{app_name}.desktop"
+        if unpin_from_panel(desktop_name):
+            self.statusBar.showMessage(f"{app_name} unpinned from panel")
 
     def _open_build_dialog(self):
         dialog = BuildDialog(self)

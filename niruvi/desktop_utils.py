@@ -334,3 +334,79 @@ def parse_desktop_file(file_path: str) -> dict:
             return parse_desktop_file_content(f.read())
     except OSError:
         return {}
+
+
+def _detect_desktop_env() -> str:
+    de = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    if "gnome" in de or "unity" in de:
+        return "gnome"
+    if "kde" in de:
+        return "kde"
+    if "xfce" in de:
+        return "xfce"
+    if "budgie" in de:
+        return "budgie"
+    if "cinnamon" in de:
+        return "cinnamon"
+    if "mate" in de:
+        return "mate"
+    if "lxqt" in de or "lxde" in de:
+        return "lxqt"
+    return "other"
+
+
+def _get_gnome_favorites() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["gsettings", "get", "org.gnome.shell", "favorite-apps"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            raw = result.stdout.strip()
+            if raw.startswith("["):
+                import ast
+                return ast.literal_eval(raw)
+    except Exception:
+        pass
+    return []
+
+
+def _set_gnome_favorites(favorites: list[str]):
+    try:
+        import json
+        subprocess.run(
+            ["gsettings", "set", "org.gnome.shell", "favorite-apps",
+             json.dumps(favorites)],
+            capture_output=True, timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def is_pinned_to_panel(desktop_name: str) -> bool:
+    de = _detect_desktop_env()
+    if de == "gnome":
+        return desktop_name in _get_gnome_favorites()
+    return False
+
+
+def pin_to_panel(desktop_name: str) -> bool:
+    de = _detect_desktop_env()
+    if de == "gnome":
+        favs = _get_gnome_favorites()
+        if desktop_name not in favs:
+            favs.append(desktop_name)
+            _set_gnome_favorites(favs)
+        return True
+    return False
+
+
+def unpin_from_panel(desktop_name: str) -> bool:
+    de = _detect_desktop_env()
+    if de == "gnome":
+        favs = _get_gnome_favorites()
+        if desktop_name in favs:
+            favs.remove(desktop_name)
+            _set_gnome_favorites(favs)
+        return True
+    return False

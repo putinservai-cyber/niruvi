@@ -7,7 +7,7 @@ from urllib.parse import urlparse, unquote
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from niruvi.settings import load_settings, get_data_dir, DEFAULT_INSTALL_DIR, DESKTOP_DIR
+from niruvi.settings import load_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR
 from niruvi.manager import AppManager, get_appimage_metadata
 from niruvi.wizard import InstallWizard
 from niruvi.installation_registry import InstallationRegistry, InstallationRecord
@@ -212,6 +212,15 @@ def main():
                 if os.path.exists(p):
                     icon_path = p
                     break
+    if not icon_path:
+        for d in (INSTALLED_DIR, os.path.dirname(os.path.dirname(__file__))):
+            for name in ("niruvi.png", "niruvi.svg"):
+                p = os.path.join(d, name)
+                if os.path.exists(p):
+                    icon_path = p
+                    break
+            if icon_path:
+                break
     if not icon_path:
         asset_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "asset")
         for name in ("niruvi.png", "niruvi.svg"):

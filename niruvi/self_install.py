@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from niruvi.desktop_utils import (
-    create_desktop_entry, refresh_desktop_database,
+    create_desktop_entry, install_icon_to_theme, refresh_desktop_database,
 )
 from niruvi._version import __app_name__, __version__
 
@@ -85,6 +85,11 @@ def _self_extract(appimage_path, dest_dir):
 
 def _create_self_desktop_entry():
     """Create desktop integration for the installed copy."""
+    for name in ("niruvi.png", "niruvi.svg"):
+        icon_path = os.path.join(INSTALL_DIR, name)
+        if os.path.exists(icon_path):
+            install_icon_to_theme(icon_path, __app_name__)
+            break
     desktop_file = create_desktop_entry(INSTALL_DIR, __app_name__)
     refresh_desktop_database()
     return desktop_file
