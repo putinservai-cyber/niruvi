@@ -31,3 +31,6 @@ venv/
 
 # Logs
 *.log
+
+# Runtime data
+.niruvi/
