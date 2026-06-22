@@ -2,9 +2,9 @@ import datetime
 import os
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QPixmap
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QFrame, QSizePolicy, QDialogButtonBox,
 )
 
@@ -31,7 +31,7 @@ class AppInfoDialog(QDialog):
     def __init__(self, app_name: str, app_info: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"{app_name} — App Info")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(440)
         self.setModal(True)
         self._app_name = app_name
         self._info = app_info
@@ -42,16 +42,43 @@ class AppInfoDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(8)
 
-        title = QLabel(f"<b>{self._info.get('display_name', self._app_name)}</b>")
+        header = QHBoxLayout()
+        header.setSpacing(12)
+
+        icon_path = self._info.get("icon_path")
+        icon_label = QLabel()
+        if icon_path and os.path.exists(icon_path):
+            pixmap = QPixmap(icon_path)
+            if not pixmap.isNull():
+                icon_label.setPixmap(pixmap.scaled(
+                    48, 48, Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                ))
+        else:
+            icon_label.setPixmap(
+                get_icon("package-x-generic", "application-x-archive").pixmap(48, 48)
+            )
+        icon_label.setFixedSize(48, 48)
+        header.addWidget(icon_label)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+
+        display_name = self._info.get("display_name", self._app_name)
+        title = QLabel(f"<b>{display_name}</b>")
         font = title.font()
         font.setPointSize(16)
         title.setFont(font)
-        layout.addWidget(title)
+        title_col.addWidget(title)
 
-        if self._info.get("version"):
-            ver = QLabel(f"Version: {self._info['version']}")
-            ver.setStyleSheet("color: #888;")
-            layout.addWidget(ver)
+        version_str = self._info.get("version", "unknown")
+        ver = QLabel(f"Version: {version_str}")
+        ver.setStyleSheet("opacity: 0.7;")
+        ver.setEnabled(False)
+        title_col.addWidget(ver)
+
+        header.addLayout(title_col, 1)
+        layout.addLayout(header)
 
         layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine, frameShadow=QFrame.Shadow.Sunken))
 
@@ -81,7 +108,7 @@ class AppInfoDialog(QDialog):
 
         shortcut = self._info.get("desktop_shortcut")
         if shortcut:
-            fields.append(("Desktop Shortcut", shortcut))
+            fields.append(("Shortcut", shortcut))
 
         for label, value in fields:
             row = QHBoxLayout()

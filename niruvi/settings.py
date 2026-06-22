@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import shutil
+import tempfile
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
@@ -200,6 +202,22 @@ class SettingsPage(QWidget):
 
         layout.addWidget(build_group)
 
+        maint_group = QGroupBox("Maintenance")
+        maint_layout = QVBoxLayout(maint_group)
+        maint_layout.setSpacing(8)
+
+        clear_cache_btn = QPushButton(get_icon("edit-clear"), "Clear Cache")
+        clear_cache_btn.setToolTip("Remove temporary icon cache files (safely regenerated on next launch)")
+        clear_cache_btn.clicked.connect(self._clear_cache)
+        maint_layout.addWidget(clear_cache_btn)
+
+        clear_data_btn = QPushButton(get_icon("edit-delete"), "Clear All Data")
+        clear_data_btn.setToolTip("Reset settings and installation registry to first-run state")
+        clear_data_btn.clicked.connect(self._clear_data)
+        maint_layout.addWidget(clear_data_btn)
+
+        layout.addWidget(maint_group)
+
         help_label = QLabel(
             '<a href="#" style="color: #888;">Changes take effect on the next install or build.</a>'
         )
@@ -221,6 +239,61 @@ class SettingsPage(QWidget):
         )
         if dir_path:
             self.build_output_edit.setText(dir_path)
+
+    def _clear_cache(self):
+        cache_dir = os.path.join(tempfile.gettempdir(), "niruvi_phosphor")
+        if os.path.isdir(cache_dir):
+            try:
+                shutil.rmtree(cache_dir)
+            except OSError as e:
+                QMessageBox.warning(self, "Error", f"Could not clear cache:\n{e}")
+                return
+        from PyQt6.QtGui import QPixmapCache
+        QPixmapCache.clear()
+        QMessageBox.information(self, "Cache Cleared", "Icon cache has been cleared.\nIt will be regenerated automatically as needed.")
+
+    def _clear_data(self):
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.warning(
+            self, "Clear All Data",
+            "<b>This will reset Niruvi to its first-run state.</b><br><br>"
+            "The following will be removed:<br>"
+            "• All settings (revert to defaults)<br>"
+            "• Installation registry (app list will be empty)<br><br>"
+            "Your installed AppImages on disk will <b>not</b> be deleted.<br><br>"
+            "Are you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        data_dir = get_data_dir()
+        for fname in ("settings.json", "registry.json"):
+            fpath = os.path.join(data_dir, fname)
+            if os.path.exists(fpath):
+                try:
+                    os.remove(fpath)
+                except OSError as e:
+                    QMessageBox.warning(self, "Error", f"Could not remove {fname}:\n{e}")
+                    return
+
+        _settings.clear()
+        _settings.update({
+            "install_dir": DEFAULT_INSTALL_DIR,
+            "create_desktop": True,
+            "create_shortcut": False,
+            "portable_home": False,
+            "portable_config": False,
+            "icon_in_theme": True,
+            "build_output_dir": os.path.expanduser("~/Applications"),
+        })
+
+        msg = QMessageBox.information(
+            self, "Data Cleared",
+            "All data has been cleared and settings reset to defaults.<br><br>"
+            "Please restart Niruvi for changes to take full effect.",
+        )
 
     def apply(self):
         _settings["install_dir"] = self.install_dir_edit.text()

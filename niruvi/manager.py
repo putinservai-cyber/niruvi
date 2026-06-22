@@ -127,6 +127,10 @@ class AppManager(QMainWindow):
         build_action.triggered.connect(self._open_build_dialog)
         tools_menu.addAction(build_action)
 
+        scan_action = QAction(get_icon("bug", "tools-report-bug", "dialog-warning"), "Scan AppImage...", self)
+        scan_action.triggered.connect(self._scan_appimage_dialog)
+        tools_menu.addAction(scan_action)
+
         tools_menu.addSeparator()
 
         check_updates_action = QAction(get_icon("emblem-downloads", "download", "document-save"), "Check for Updates...", self)
@@ -475,36 +479,6 @@ class AppManager(QMainWindow):
 
         app_name = info.get("Name", Path(path).stem)
 
-        # Security scan
-        scan_result = scan_appimage(path)
-        if scan_result["risk_level"] == "high":
-            reply = QMessageBox.critical(
-                self, "Security Warning",
-                f"<b>High-risk file detected!</b><br><br>"
-                f"<b>{Path(path).name}</b> was flagged by the security scanner:<br>"
-                f"{'<br>'.join(scan_result.get('warnings', []))}<br><br>"
-                f"SHA256: {scan_result['sha256'][:16]}...<br>"
-                f"Size: {scan_result['size_mb']:.1f} MB<br><br>"
-                "Installation is blocked for your safety.",
-                QMessageBox.StandardButton.Ok,
-            )
-            return
-        elif scan_result["risk_level"] == "medium":
-            warning_text = "<br>".join(scan_result.get("warnings", [])) or "Suspicious patterns detected."
-            reply = QMessageBox.warning(
-                self, "Security Warning",
-                f"<b>Medium-risk file</b><br><br>"
-                f"<b>{Path(path).name}</b> raised security concerns:<br>"
-                f"{warning_text}<br><br>"
-                f"SHA256: {scan_result['sha256'][:16]}...<br>"
-                f"Size: {scan_result['size_mb']:.1f} MB<br><br>"
-                "Do you want to proceed anyway?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
         if self._is_already_installed(app_name, path):
             dlg = QDialog(self)
             dlg.setWindowTitle("Already Installed")
@@ -815,6 +789,61 @@ class AppManager(QMainWindow):
             self.statusBar.showMessage("AppImage built successfully!")
         else:
             self.statusBar.showMessage("Build cancelled or failed")
+
+    def _scan_appimage_dialog(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select AppImage to Scan", "",
+            "AppImage files (*.AppImage);;All files (*)",
+        )
+        if not file_path:
+            return
+        from pathlib import Path
+        progress = QProgressDialog(f"Scanning {Path(file_path).name}...", None, 0, 0, self)
+        progress.setWindowTitle("Security Scan")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        QApplication.processEvents()
+        try:
+            result = scan_appimage(file_path)
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(self, "Scan Failed", f"Could not scan file:\n{e}")
+            return
+        progress.close()
+        self._show_scan_result(file_path, result)
+
+    def _show_scan_result(self, file_path: str, result: dict):
+        from pathlib import Path
+        name = Path(file_path).name
+        risk = result.get("risk_level", "unknown")
+        warnings = result.get("warnings", [])
+        sha256 = result.get("sha256", "?")[:16]
+        size = result.get("size_mb", 0)
+
+        color = {
+            "safe": "green", "low": "orange", "medium": "orange", "high": "red",
+        }.get(risk, "gray")
+        icon_map = {
+            "safe": get_icon("emblem-ok", "dialog-ok-apply"),
+            "low": get_icon("dialog-warning"),
+            "medium": get_icon("dialog-warning"),
+            "high": get_icon("dialog-error", "dialog-cancel"),
+        }
+        scan_icon = icon_map.get(risk, get_icon("dialog-information"))
+
+        msg = (
+            f"<b>Scan Result: <span style='color:{color};'>{risk.upper()}</span></b><br><br>"
+            f"<b>File:</b> {name}<br>"
+            f"<b>Size:</b> {size:.1f} MB<br>"
+            f"<b>SHA256:</b> {sha256}...<br>"
+        )
+        if warnings:
+            msg += "<br><b>Warnings:</b><br>" + "<br>".join(f"• {w}" for w in warnings[:10])
+        if risk == "safe":
+            msg += "<br><i>No security issues detected.</i>"
+
+        QMessageBox.information(self, "Security Scan Result", msg)
 
     def _check_all_updates(self):
         check_for_updates(self)
