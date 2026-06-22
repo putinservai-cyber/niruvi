@@ -6,7 +6,8 @@ import tempfile
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtGui import QFont, QPixmap
+from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
     QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QMessageBox,
@@ -86,7 +87,7 @@ class InstallWizard(QWizard):
         dest_label = QLabel("Install to:")
         self.dest_dir_label = QLabel("--")
         self.dest_dir_label.setWordWrap(True)
-        self.btn_change_dest = QPushButton(QIcon.fromTheme("folder-open"), "Change...")
+        self.btn_change_dest = QPushButton(get_icon("folder-open"), "Change...")
         self.btn_change_dest.clicked.connect(self._on_change_dest)
         dest_section.addWidget(dest_label)
         dest_section.addWidget(self.dest_dir_label, 1)
@@ -148,7 +149,7 @@ class InstallWizard(QWizard):
         self.progress_bar.setValue(0)
         l4.addWidget(self.progress_bar)
 
-        self.btn_toggle_log = QPushButton(QIcon.fromTheme("format-justify-left"), "Show Details")
+        self.btn_toggle_log = QPushButton(get_icon("format-justify-left"), "Show Details")
         self.btn_toggle_log.setCheckable(True)
         self.btn_toggle_log.toggled.connect(self._on_toggle_log)
         l4.addWidget(self.btn_toggle_log)
@@ -180,13 +181,13 @@ class InstallWizard(QWizard):
 
     def _configure_buttons(self):
         self.setButtonText(QWizard.WizardButton.CancelButton, "Cancel")
-        self.button(QWizard.WizardButton.CancelButton).setIcon(QIcon.fromTheme("dialog-cancel"))
+        self.button(QWizard.WizardButton.CancelButton).setIcon(get_icon("dialog-cancel"))
         self.setButtonText(QWizard.WizardButton.BackButton, "Back")
-        self.button(QWizard.WizardButton.BackButton).setIcon(QIcon.fromTheme("go-previous"))
+        self.button(QWizard.WizardButton.BackButton).setIcon(get_icon("go-previous"))
         self.setButtonText(QWizard.WizardButton.NextButton, "Next")
-        self.button(QWizard.WizardButton.NextButton).setIcon(QIcon.fromTheme("go-next"))
+        self.button(QWizard.WizardButton.NextButton).setIcon(get_icon("go-next"))
         self.setButtonText(QWizard.WizardButton.FinishButton, "Finish")
-        self.button(QWizard.WizardButton.FinishButton).setIcon(QIcon.fromTheme("dialog-ok"))
+        self.button(QWizard.WizardButton.FinishButton).setIcon(get_icon("dialog-ok"))
         self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
 
     def _select_file(self, path: str):

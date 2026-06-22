@@ -3,9 +3,11 @@ import shutil
 import tempfile
 
 from PyQt6.QtCore import QDir
-from PyQt6.QtGui import QColor, QIcon, QPalette
+from PyQt6.QtGui import QColor, QIcon, QPalette, QPixmapCache
 from PyQt6.QtWidgets import QApplication
 
+_svg_cache: dict[str, str] = {}
+_known_icon_names: set[str] = set()
 _colorized_dir: str | None = None
 
 
@@ -37,8 +39,6 @@ def _init_icon_theme():
 
 _init_icon_theme()
 
-_svg_cache: dict[str, str] = {}
-
 
 def _load_svg(name: str) -> str | None:
     if name in _svg_cache:
@@ -58,22 +58,12 @@ def _load_svg(name: str) -> str | None:
 def _get_colorized_dir() -> str:
     global _colorized_dir
     if _colorized_dir is None:
-        _colorized_dir = tempfile.mkdtemp(prefix="niruvi_phosphor_")
+        _colorized_dir = os.path.join(tempfile.gettempdir(), "niruvi_phosphor")
+        os.makedirs(_colorized_dir, exist_ok=True)
     return _colorized_dir
 
 
-def _invalidate_colorized():
-    global _colorized_dir
-    if _colorized_dir and os.path.isdir(_colorized_dir):
-        shutil.rmtree(_colorized_dir, ignore_errors=True)
-    _colorized_dir = None
-
-
-def _on_palette_changed(_palette=None):
-    _invalidate_colorized()
-
-
-def _current_color() -> str:
+def _current_color_hex() -> str:
     app = QApplication.instance()
     if app:
         color = app.palette().color(QPalette.ColorRole.WindowText)
@@ -84,10 +74,33 @@ def _current_color() -> str:
 
 def _colorized_icon_path(name: str, svg: str) -> str:
     dest = os.path.join(_get_colorized_dir(), f"{name}.svg")
-    colored = svg.replace("currentColor", _current_color())
+    colored = svg.replace("currentColor", _current_color_hex())
     with open(dest, "w") as f:
         f.write(colored)
+    _known_icon_names.add(name)
     return dest
+
+
+def _rebuild_icons():
+    d = _get_colorized_dir()
+    if not os.path.isdir(d):
+        os.makedirs(d, exist_ok=True)
+    color = _current_color_hex()
+    for name in list(_known_icon_names):
+        svg = _load_svg(name)
+        if svg:
+            fpath = os.path.join(d, f"{name}.svg")
+            colored = svg.replace("currentColor", color)
+            try:
+                with open(fpath, "w") as f:
+                    f.write(colored)
+            except OSError:
+                pass
+    QPixmapCache.clear()
+
+
+def _on_palette_changed(_palette=None):
+    _rebuild_icons()
 
 
 def get_icon(*names: str) -> QIcon:

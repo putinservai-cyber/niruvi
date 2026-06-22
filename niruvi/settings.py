@@ -4,6 +4,7 @@ import os
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
+from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QCheckBox, QDialogButtonBox,
@@ -120,7 +121,7 @@ class SettingsPage(QWidget):
         form = QFormLayout()
         self.install_dir_edit = QLineEdit(_settings.get("install_dir", DEFAULT_INSTALL_DIR))
         self.install_dir_edit.setReadOnly(True)
-        browse_btn = QPushButton(QIcon.fromTheme("folder-open"), "Browse...")
+        browse_btn = QPushButton(get_icon("folder-open"), "Browse...")
         browse_btn.clicked.connect(self._browse_install_dir)
         dir_layout = QHBoxLayout()
         dir_layout.addWidget(self.install_dir_edit)
@@ -192,7 +193,7 @@ class SettingsPage(QWidget):
         )
         self.build_output_edit.setReadOnly(True)
         build_dir_layout.addWidget(self.build_output_edit)
-        build_browse_btn = QPushButton(QIcon.fromTheme("folder-open"), "Browse...")
+        build_browse_btn = QPushButton(get_icon("folder-open"), "Browse...")
         build_browse_btn.clicked.connect(self._browse_build_output)
         build_dir_layout.addWidget(build_browse_btn)
         build_layout.addRow("Build output directory:", build_dir_layout)

@@ -94,7 +94,7 @@ class ErrorReportDialog(QDialog):
         # ── Header with error icon ──
         header = QHBoxLayout()
         icon_label = QLabel()
-        icon = QIcon.fromTheme("dialog-error")
+        icon = get_icon("dialog-error")
         if not icon.isNull():
             icon_label.setPixmap(icon.pixmap(48, 48))
         icon_label.setFixedSize(48, 48)
@@ -160,13 +160,13 @@ class ErrorReportDialog(QDialog):
         # ── Buttons ──
         btn_layout = QHBoxLayout()
 
-        copy_btn = QPushButton(QIcon.fromTheme("edit-copy"), "Copy Report")
+        copy_btn = QPushButton(get_icon("edit-copy"), "Copy Report")
         copy_btn.clicked.connect(self._copy_report)
         btn_layout.addWidget(copy_btn)
 
         btn_layout.addStretch()
 
-        close_btn = QPushButton(QIcon.fromTheme("dialog-close"), "Close")
+        close_btn = QPushButton(get_icon("dialog-close"), "Close")
         close_btn.clicked.connect(self.accept)
         close_btn.setStyleSheet("QPushButton { padding: 6px 20px; }")
         btn_layout.addWidget(close_btn)
@@ -416,7 +416,7 @@ class BuildSummaryDialog(QDialog):
         # Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        close_btn = QPushButton(QIcon.fromTheme("dialog-close"), "Done")
+        close_btn = QPushButton(get_icon("dialog-close"), "Done")
         close_btn.setStyleSheet("QPushButton { padding: 6px 20px; }")
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
+from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTextBrowser,
@@ -85,7 +86,7 @@ class HelpDialog(QDialog):
         ]
         self._page_map = pages
         for title, _ in pages:
-            nav.addItem(QListWidgetItem(QIcon.fromTheme("help-contents"), title))
+            nav.addItem(QListWidgetItem(get_icon("help-contents"), title))
         nav.currentRowChanged.connect(self._on_page_changed)
         splitter.addWidget(nav)
 

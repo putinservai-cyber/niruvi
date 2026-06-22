@@ -100,20 +100,20 @@ class AppManager(QMainWindow):
 
     def _init_ui(self):
         menubar = self.menuBar()
-        file_menu = menubar.addMenu(QIcon.fromTheme("document-open"), "File")
+        file_menu = menubar.addMenu(get_icon("document-open"), "File")
 
-        install_action = QAction(QIcon.fromTheme("list-add"), "Install...", self)
+        install_action = QAction(get_icon("list-add"), "Install...", self)
         install_action.setShortcut("Ctrl+I")
         install_action.triggered.connect(self.run_install_wizard)
         file_menu.addAction(install_action)
 
-        settings_action = QAction(QIcon.fromTheme("preferences-system"), "Settings...", self)
+        settings_action = QAction(get_icon("preferences-system"), "Settings...", self)
         settings_action.triggered.connect(self.open_settings)
         file_menu.addAction(settings_action)
 
         file_menu.addSeparator()
 
-        quit_action = QAction(QIcon.fromTheme("application-exit"), "Quit", self)
+        quit_action = QAction(get_icon("application-exit"), "Quit", self)
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
@@ -130,14 +130,14 @@ class AppManager(QMainWindow):
         check_updates_action.triggered.connect(lambda: check_for_updates(self))
         tools_menu.addAction(check_updates_action)
 
-        refresh_action = QAction(QIcon.fromTheme("view-refresh"), "Refresh Installed", self)
+        refresh_action = QAction(get_icon("view-refresh"), "Refresh Installed", self)
         refresh_action.setShortcut("Ctrl+R")
         refresh_action.triggered.connect(self.scan_installed)
         tools_menu.addAction(refresh_action)
 
-        help_menu = menubar.addMenu(QIcon.fromTheme("help-contents"), "Help")
+        help_menu = menubar.addMenu(get_icon("help-contents"), "Help")
 
-        help_action = QAction(QIcon.fromTheme("help-contents"), "Help...", self)
+        help_action = QAction(get_icon("help-contents"), "Help...", self)
         help_action.setShortcut("F1")
         help_action.triggered.connect(self._show_help)
         help_menu.addAction(help_action)
@@ -154,7 +154,7 @@ class AppManager(QMainWindow):
 
         help_menu.addSeparator()
 
-        about_action = QAction(QIcon.fromTheme("help-about"), "About", self)
+        about_action = QAction(get_icon("help-about"), "About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
@@ -171,17 +171,17 @@ class AppManager(QMainWindow):
         header_layout.addWidget(self.installed_count_label)
         header_layout.addStretch()
 
-        self.btn_build = QPushButton(QIcon.fromTheme("emblem-system"), "Build")
+        self.btn_build = QPushButton(get_icon("emblem-system"), "Build")
         self.btn_build.setToolTip("Build an AppImage from a DEB, RPM, or tar archive")
         self.btn_build.clicked.connect(self._open_build_dialog)
         header_layout.addWidget(self.btn_build)
 
-        self.btn_refresh = QPushButton(QIcon.fromTheme("view-refresh"), "Refresh")
+        self.btn_refresh = QPushButton(get_icon("view-refresh"), "Refresh")
         self.btn_refresh.setToolTip("Re-scan the install directory for installed apps")
         self.btn_refresh.clicked.connect(self.scan_installed)
         header_layout.addWidget(self.btn_refresh)
 
-        self.btn_install = QPushButton(QIcon.fromTheme("list-add"), "Install AppImage...")
+        self.btn_install = QPushButton(get_icon("list-add"), "Install AppImage...")
         self.btn_install.setToolTip("Browse for an AppImage file to install")
         self.btn_install.clicked.connect(self.run_install_wizard)
         header_layout.addWidget(self.btn_install)
@@ -193,7 +193,7 @@ class AppManager(QMainWindow):
         self.search_edit.setPlaceholderText("Search installed apps...")
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.setToolTip("Type to filter the app list by name")
-        self.search_edit.addAction(QIcon.fromTheme("edit-find"), QLineEdit.ActionPosition.LeadingPosition)
+        self.search_edit.addAction(get_icon("edit-find"), QLineEdit.ActionPosition.LeadingPosition)
         self.search_edit.textChanged.connect(self._filter_apps)
         search_sort_layout.addWidget(self.search_edit)
 
@@ -259,7 +259,7 @@ class AppManager(QMainWindow):
         empty_desc.setWordWrap(True)
         empty_layout.addWidget(empty_desc)
 
-        self.empty_install_btn = QPushButton(QIcon.fromTheme("list-add"), "Install Your First AppImage")
+        self.empty_install_btn = QPushButton(get_icon("list-add"), "Install Your First AppImage")
         self.empty_install_btn.setFixedWidth(280)
         self.empty_install_btn.setStyleSheet(
             "QPushButton { padding: 10px 24px; font-size: 14px; }"
@@ -521,15 +521,15 @@ class AppManager(QMainWindow):
             btn_row = QHBoxLayout()
             btn_row.setSpacing(10)
 
-            btn_reinstall = QPushButton(QIcon.fromTheme("view-refresh"), "Re-integrate")
+            btn_reinstall = QPushButton(get_icon("view-refresh"), "Re-integrate")
             btn_reinstall.clicked.connect(lambda: dlg.done(1))
             btn_row.addWidget(btn_reinstall)
 
-            btn_remove = QPushButton(QIcon.fromTheme("edit-delete"), "Remove")
+            btn_remove = QPushButton(get_icon("edit-delete"), "Remove")
             btn_remove.clicked.connect(lambda: dlg.done(2))
             btn_row.addWidget(btn_remove)
 
-            btn_cancel = QPushButton(QIcon.fromTheme("dialog-cancel"), "Cancel")
+            btn_cancel = QPushButton(get_icon("dialog-cancel"), "Cancel")
             btn_cancel.clicked.connect(lambda: dlg.done(0))
             btn_row.addWidget(btn_cancel)
 
@@ -570,14 +570,14 @@ class AppManager(QMainWindow):
         menu = QMenu()
         info_action = menu.addAction(get_icon("help-about", "dialog-information"), "App Info")
         menu.addSeparator()
-        run_action = menu.addAction(QIcon.fromTheme("media-playback-start"), "Run")
-        update_action = menu.addAction(QIcon.fromTheme("emblem-downloads"), "Update...")
-        uninstall_action = menu.addAction(QIcon.fromTheme("edit-delete"), "Uninstall")
-        open_folder_action = menu.addAction(QIcon.fromTheme("folder-open"), "Open Folder")
+        run_action = menu.addAction(get_icon("media-playback-start"), "Run")
+        update_action = menu.addAction(get_icon("emblem-downloads"), "Update...")
+        uninstall_action = menu.addAction(get_icon("edit-delete"), "Uninstall")
+        open_folder_action = menu.addAction(get_icon("folder-open"), "Open Folder")
         menu.addSeparator()
         has_shortcut = bool(app_info.get("desktop_shortcut"))
         shortcut_text = "Remove Desktop Shortcut" if has_shortcut else "Create Desktop Shortcut"
-        shortcut_action = menu.addAction(QIcon.fromTheme("user-desktop"), shortcut_text)
+        shortcut_action = menu.addAction(get_icon("user-desktop"), shortcut_text)
 
         action = menu.exec(self.installed_list.mapToGlobal(pos))
         if action == info_action:

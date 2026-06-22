@@ -17,6 +17,7 @@ from niruvi.desktop_utils import (
 )
 from niruvi.worker import extract_appimage_sync
 from niruvi._version import __version__
+from niruvi.utils import get_icon
 
 
 def process_appimage(path_str: str, parent=None):
@@ -49,11 +50,11 @@ def process_appimage(path_str: str, parent=None):
         layout.addStretch()
 
         btn_row = QHBoxLayout()
-        btn_reinstall = QPushButton(QIcon.fromTheme("view-refresh"), "Re-integrate")
+        btn_reinstall = QPushButton(get_icon("view-refresh"), "Re-integrate")
         btn_reinstall.clicked.connect(lambda: dlg.done(1))
-        btn_remove = QPushButton(QIcon.fromTheme("edit-delete"), "Remove")
+        btn_remove = QPushButton(get_icon("edit-delete"), "Remove")
         btn_remove.clicked.connect(lambda: dlg.done(2))
-        btn_cancel = QPushButton(QIcon.fromTheme("dialog-cancel"), "Cancel")
+        btn_cancel = QPushButton(get_icon("dialog-cancel"), "Cancel")
         btn_cancel.clicked.connect(lambda: dlg.done(0))
         btn_row.addWidget(btn_reinstall)
         btn_row.addWidget(btn_remove)
