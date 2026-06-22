@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QPropertyAnimation, QRect, Qt, pyqtSignal, QEasingCurve
+from PyQt6.QtCore import QPropertyAnimation, QRect, Qt, pyqtSignal, pyqtProperty, QEasingCurve
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
@@ -42,7 +42,7 @@ class ToggleSwitch(QWidget):
         self._handle_pos = val
         self.update()
 
-    handle_pos = property(_get_handle_pos, _set_handle_pos)
+    handle_pos = pyqtProperty(float, _get_handle_pos, _set_handle_pos)
 
     def mousePressEvent(self, event):
         self.setChecked(not self._checked)

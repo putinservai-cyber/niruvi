@@ -60,7 +60,7 @@ cat > "$APPDIR/AppRun" << 'EOF'
 HERE="$(dirname "$(readlink -f "$0")")"
 export PYTHONHOME="$HERE/usr"
 export LD_LIBRARY_PATH="$HERE/usr/lib64:$LD_LIBRARY_PATH"
-export NIRUVI_ICON_DIR="$HERE/asset/icons"
+export NIRUVI_ICON_DIR="$HERE/icons"
 exec "$HERE/usr/bin/python3" -m niruvi.self_install "$@"
 EOF
 chmod +x "$APPDIR/AppRun"

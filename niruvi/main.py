@@ -194,13 +194,33 @@ def main():
     app.setApplicationName("Niruvi")
     app.setApplicationVersion(__version__)
 
-    asset_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "asset")
-    for icon_name in ("niruvi.png", "niruvi.svg"):
-        icon_path = os.path.join(asset_dir, icon_name)
-        if os.path.exists(icon_path):
-            from PyQt6.QtGui import QIcon
-            app.setWindowIcon(QIcon(icon_path))
-            break
+    icon_path = None
+    appdir_env = os.environ.get("APPDIR")
+    if appdir_env:
+        for name in ("niruvi.png", "niruvi.svg"):
+            p = os.path.join(appdir_env, name)
+            if os.path.exists(p):
+                icon_path = p
+                break
+    if not icon_path:
+        icon_dir = os.environ.get("NIRUVI_ICON_DIR")
+        if icon_dir:
+            appdir = os.path.dirname(os.path.dirname(icon_dir))
+            for name in ("niruvi.png", "niruvi.svg"):
+                p = os.path.join(appdir, name)
+                if os.path.exists(p):
+                    icon_path = p
+                    break
+    if not icon_path:
+        asset_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "asset")
+        for name in ("niruvi.png", "niruvi.svg"):
+            p = os.path.join(asset_dir, name)
+            if os.path.exists(p):
+                icon_path = p
+                break
+    if icon_path:
+        from PyQt6.QtGui import QIcon
+        app.setWindowIcon(QIcon(icon_path))
 
     if file_to_process:
         process_appimage(file_to_process)

@@ -12,6 +12,12 @@ _colorized_dir: str | None = None
 def _init_icon_theme():
     icon_dir = os.environ.get("NIRUVI_ICON_DIR")
     if not icon_dir:
+        appdir = os.environ.get("APPDIR")
+        if appdir:
+            candidate = os.path.join(appdir, "icons")
+            if os.path.isdir(candidate):
+                icon_dir = candidate
+    if not icon_dir:
         here = os.path.dirname(os.path.abspath(__file__))
         for parent in (here, os.path.dirname(here),
                        os.path.join(os.path.dirname(here), "asset"),
