@@ -34,7 +34,6 @@ def _init_icon_theme():
         if icon_dir not in paths:
             paths.insert(0, icon_dir)
             QIcon.setThemeSearchPaths(paths)
-        QIcon.setThemeName("Phosphor")
 
 
 _init_icon_theme()
