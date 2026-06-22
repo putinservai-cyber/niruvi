@@ -39,7 +39,7 @@ cp -r "$SITE_PACKAGES_SRC/pyqt6_sip"* "$APPDIR/usr/lib64/python$PYTHON_VERSION/s
 
 echo "==> Copying niruvi package"
 cp -r "$PROJECT_DIR/niruvi" "$APPDIR/usr/lib64/python$PYTHON_VERSION/site-packages/"
-rm -rf "$APPDIR/usr/lib64/python$PYTHON_VERSION/site-packages/niruvi/__pycache__"
+find "$APPDIR/usr/lib64/python$PYTHON_VERSION/site-packages/niruvi" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 echo "==> Copying Qt6 shared libraries"
 for lib in libQt6Core libQt6Gui libQt6Widgets libQt6DBus; do
