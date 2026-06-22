@@ -1,5 +1,5 @@
-# Copyright (c) 2025 putinservai-cyber. All Rights Reserved.
-# Proprietary software — see LICENSE file for terms.
+# Copyright (C) 2026 putinservai-cyber
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import webbrowser
 

@@ -794,7 +794,7 @@ class AppManager(QMainWindow):
             "• Search and filter installed apps<br>"
             "• Cross-desktop icon theme integration<br><br>"
             "<b>License:</b> GNU General Public License v2<br>"
-            "Copyright © 2024 Niruvi Contributors<br><br>"
+            "Copyright © 2026 putinservai-cyber<br><br>"
             "This program is free software; you can redistribute it<br>"
             "and/or modify it under the terms of the GNU General<br>"
             "Public License as published by the Free Software<br>"
