@@ -1,10 +1,13 @@
 import hashlib
 import json
 import os
+import shutil
 import tempfile
+import time
+import urllib.request
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QProcess
 from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QWidget
 
 from niruvi import __version__
@@ -43,26 +46,39 @@ def compare_versions(v1, op, v2):
     return False
 
 
+def _fetch_json(url: str, timeout: int) -> dict:
+    resp = urllib.request.urlopen(url, timeout=timeout)
+    return json.loads(resp.read().decode("utf-8"))
+
+
+def _download_file(url: str, dest: str, progress: QProgressDialog) -> bytes:
+    resp = urllib.request.urlopen(url, timeout=120)
+    total = int(resp.headers.get("Content-Length", 0))
+    chunk_size = 8192
+    sha256_hash = hashlib.sha256()
+
+    with open(dest, "wb") as f:
+        downloaded = 0
+        while True:
+            if progress.wasCanceled():
+                return None
+            chunk = resp.read(chunk_size)
+            if not chunk:
+                break
+            f.write(chunk)
+            sha256_hash.update(chunk)
+            downloaded += len(chunk)
+            if total > 0:
+                progress.setValue(int((downloaded / total) * 100))
+
+    return sha256_hash.digest()
+
+
 def check_for_updates(parent: QWidget):
     current_version = __version__
 
     try:
-        import requests
-    except ImportError:
-        QMessageBox.information(
-            parent,
-            "Update Check",
-            f"Niruvi {current_version}\n\n"
-            "To enable automatic update checking, install the 'requests' package:\n"
-            "  pip install requests\n\n"
-            "Or check manually at the GitHub releases page.",
-        )
-        return
-
-    try:
-        response = requests.get(UPDATE_MANIFEST_URL, timeout=15)
-        response.raise_for_status()
-        manifest = response.json()
+        manifest = _fetch_json(UPDATE_MANIFEST_URL, 15)
 
         latest_version = manifest.get("version", "").lstrip("v")
         download_url = manifest.get("download_url", "")
@@ -70,7 +86,10 @@ def check_for_updates(parent: QWidget):
         changelog = manifest.get("changelog", "")
 
         if not latest_version or not download_url:
-            QMessageBox.warning(parent, "Update Check", "Update manifest is missing required fields (version, download_url).")
+            QMessageBox.warning(
+                parent, "Update Check",
+                "Update manifest is missing required fields (version, download_url)."
+            )
             return
 
         if compare_versions(latest_version, 'gt', current_version):
@@ -108,52 +127,32 @@ def check_for_updates(parent: QWidget):
 
 
 def _download_and_install(parent: QWidget, download_url: str, expected_sha256: str, version: str):
-    try:
-        import requests
-    except ImportError:
-        QMessageBox.critical(parent, "Error", "Requests library not available.")
-        return
+    progress = QProgressDialog("Downloading update...", "Cancel", 0, 100, parent)
+    progress.setWindowTitle("Downloading Update")
+    progress.setWindowModality(Qt.WindowModality.WindowModal)
+    progress.setAutoClose(True)
+    progress.setValue(0)
 
     try:
-        progress = QProgressDialog("Downloading update...", "Cancel", 0, 100, parent)
-        progress.setWindowTitle("Downloading Update")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setAutoClose(True)
-        progress.setValue(0)
+        fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
+        os.close(fd)
 
-        response = requests.get(download_url, stream=True, timeout=120)
-        response.raise_for_status()
-
-        total_length = int(response.headers.get('content-length', 0))
-        chunk_size = 8192
-        sha256_hash = hashlib.sha256()
-
-        with tempfile.NamedTemporaryFile(suffix=".AppImage", delete=False) as tmp_file:
-            downloaded = 0
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if progress.wasCanceled():
-                    Path(tmp_file.name).unlink(missing_ok=True)
-                    return
-                tmp_file.write(chunk)
-                sha256_hash.update(chunk)
-                downloaded += len(chunk)
-                if total_length > 0:
-                    percent = int((downloaded / total_length) * 100)
-                    progress.setValue(percent)
-            temp_path = tmp_file.name
-
+        digest = _download_file(download_url, temp_path, progress)
         progress.close()
 
-        # SHA256 verification
+        if digest is None:
+            Path(temp_path).unlink(missing_ok=True)
+            return
+
         if expected_sha256:
-            actual_sha256 = sha256_hash.hexdigest()
-            if actual_sha256.lower() != expected_sha256.lower():
+            actual = hashlib.sha256(Path(temp_path).read_bytes()).hexdigest()
+            if actual.lower() != expected_sha256.lower():
                 Path(temp_path).unlink(missing_ok=True)
                 QMessageBox.critical(
                     parent, "Verification Failed",
                     f"SHA256 mismatch!\n\n"
                     f"Expected: {expected_sha256}\n"
-                    f"Actual:   {actual_sha256}\n\n"
+                    f"Actual:   {actual}\n\n"
                     "The downloaded file may be corrupted or tampered with.",
                 )
                 return
@@ -161,30 +160,26 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
         os.makedirs(NIRUVI_INSTALL_DIR, exist_ok=True)
         dest = os.path.join(NIRUVI_INSTALL_DIR, NIRUVI_APPIMAGE_NAME)
 
-        # Backup current version
         backup_path = dest + ".backup"
         if os.path.exists(dest):
             if os.path.exists(backup_path):
                 os.remove(backup_path)
             os.rename(dest, backup_path)
 
-        import shutil
         shutil.copy2(temp_path, dest)
         os.chmod(dest, 0o755)
         Path(temp_path).unlink(missing_ok=True)
 
-        # Update metadata
         meta_path = os.path.join(NIRUVI_INSTALL_DIR, ".appimage-manager.json")
         meta = {}
         if os.path.exists(meta_path):
             with open(meta_path) as f:
                 meta = json.load(f)
         meta["version"] = version
-        meta["last_update"] = str(int(__import__("time").time()))
+        meta["last_update"] = str(int(time.time()))
         with open(meta_path, "w") as f:
             json.dump(meta, f)
 
-        # Remove backup on success
         if os.path.exists(backup_path):
             os.remove(backup_path)
 
@@ -199,12 +194,10 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            from PyQt6.QtCore import QProcess
             QProcess.startDetached(str(dest), [])
             parent.close()
 
     except Exception as e:
-        # Restore backup if available
         if os.path.exists(backup_path):
             if os.path.exists(dest):
                 os.remove(dest)
