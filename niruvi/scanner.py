@@ -42,13 +42,17 @@ SUSPICIOUS_SCRIPT_PATTERNS = [
     b"| sh -c",
     b"/dev/tcp/",
     b"base64 --decode",
-    b"exec bash",
-    b"exec sh",
     b"curl -s http://",
     b"wget -q http://",
     b"chmod 4777",
     b"pkexec",
     b"sudo rm -rf /",
+    b"dd if=/dev/",
+    b":(){ :|:& };:",   # fork bomb
+    b"wget -O-",
+    b"curl -o-",
+    b"chmod -R 777 /",
+    b"exec 5<>/dev/tcp/",
 ]
 
 
@@ -259,6 +263,21 @@ def _scan_contents(appimage_path: str) -> dict:
         logging.debug("Content scan failed: %s", e)
 
     return result
+def self_scan() -> dict:
+    """Run a security scan on Niruvi itself (if running from AppImage).
+
+    Returns the scan result dict, or a dict with error info if not running as AppImage.
+    """
+    appimage = os.environ.get("APPIMAGE", "")
+    if not appimage or not os.path.isfile(appimage):
+        return {
+            "risk_level": "safe",
+            "warnings": ["Niruvi is not running from an AppImage — self-scan not applicable."],
+            "details": {},
+        }
+    return scan_appimage(appimage)
+
+
 
 
 def _check_clamav(filepath: str) -> dict | None:
