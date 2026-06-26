@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QDialogButtonBox,
     QFileDialog, QGroupBox, QRadioButton, QLabel, QScrollArea,
-    QFrame, QSizePolicy, QMessageBox,
+    QFrame, QSizePolicy, QMessageBox, QComboBox,
 )
 
 from niruvi.toggle_switch import ToggleSwitch
