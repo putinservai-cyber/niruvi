@@ -217,15 +217,15 @@ niruvi/                        # Core application package
 ├── _version.py                # Version string
 ├── appimage_assets.py         # Asset extraction from AppImage files
 ├── appimage_metadata.py       # ELF header parsing and metadata
-├── bootstrap.py               # Self-extraction bootstrap logic
+├── builder_bootstrap.py               # Self-extraction bootstrap logic
 ├── build_dialog.py            # AppImage build dialog (Qt6 UI)
 ├── build_page.py              # Build worker thread and utilities
-├── builder_bootstrap.py       # Install script generation
+├── builder_builder_bootstrap.py       # Install script generation
 ├── constants.py               # Application-wide constants
 ├── desktop_utils.py           # .desktop entry and shortcut management
 ├── help_dialog.py             # Built-in help system and license viewer
 ├── icon_utils.py              # Icon format conversion utilities
-├── installation_registry.py   # SQLite-backed installation registry
+├── installation_registry.py   # JSON-based installation registry
 ├── main.py                    # CLI entry point and argument parsing
 ├── manager.py                 # Main window (AppManager)
 ├── report_dialog.py           # Error report and build summary dialogs

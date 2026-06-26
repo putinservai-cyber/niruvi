@@ -1,17 +1,14 @@
 import json
 import logging
 import os
-import shutil
-import tempfile
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
 from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLineEdit, QPushButton, QCheckBox, QDialogButtonBox,
+    QLineEdit, QPushButton, QDialogButtonBox,
     QFileDialog, QGroupBox, QRadioButton, QLabel, QScrollArea,
-    QFrame, QSizePolicy,
+    QFrame, QSizePolicy, QMessageBox,
 )
 
 from niruvi.toggle_switch import ToggleSwitch
@@ -41,7 +38,7 @@ _settings = {
     "portable_home": False,
     "portable_config": False,
     "icon_in_theme": True,
-    "build_output_dir": os.path.expanduser("~/Applications"),
+    "auto_scan_before_install": True,
 }
 
 
@@ -62,6 +59,19 @@ def load_settings():
                 _settings.update(loaded)
         except (json.JSONDecodeError, OSError) as e:
             logging.warning("Corrupted settings file: %s", e)
+
+
+def _is_local_path(path: str) -> bool:
+    reject_prefixes = ("mtp:", "gvfs", "/media/", "/run/media/", "/mnt/")
+    resolved = os.path.realpath(os.path.expanduser(path))
+    if not os.path.isabs(resolved):
+        return False
+    for p in reject_prefixes:
+        if p.startswith("/") and resolved.startswith(p):
+            return False
+        if p in resolved:
+            return False
+    return True
 
 
 def save_settings():
@@ -164,6 +174,13 @@ class SettingsPage(QWidget):
         self.portable_config_row.setChecked(_settings.get("portable_config", False))
         defaults_layout.addWidget(self.portable_config_row)
 
+        self.auto_scan_row = _ToggleRow(
+            "Auto-scan before install",
+            "Runs a security scan on every AppImage before installing it"
+        )
+        self.auto_scan_row.setChecked(_settings.get("auto_scan_before_install", True))
+        defaults_layout.addWidget(self.auto_scan_row)
+
         layout.addWidget(defaults_group)
 
         icon_group = QGroupBox("Icons")
@@ -186,38 +203,6 @@ class SettingsPage(QWidget):
 
         layout.addWidget(icon_group)
 
-        build_group = QGroupBox("AppImage Builder")
-        build_layout = QFormLayout(build_group)
-
-        build_dir_layout = QHBoxLayout()
-        self.build_output_edit = QLineEdit(
-            _settings.get("build_output_dir", os.path.expanduser("~/Applications"))
-        )
-        self.build_output_edit.setReadOnly(True)
-        build_dir_layout.addWidget(self.build_output_edit)
-        build_browse_btn = QPushButton(get_icon("folder-open"), "Browse...")
-        build_browse_btn.clicked.connect(self._browse_build_output)
-        build_dir_layout.addWidget(build_browse_btn)
-        build_layout.addRow("Build output directory:", build_dir_layout)
-
-        layout.addWidget(build_group)
-
-        maint_group = QGroupBox("Maintenance")
-        maint_layout = QVBoxLayout(maint_group)
-        maint_layout.setSpacing(8)
-
-        clear_cache_btn = QPushButton(get_icon("edit-clear"), "Clear Cache")
-        clear_cache_btn.setToolTip("Remove temporary icon cache files (safely regenerated on next launch)")
-        clear_cache_btn.clicked.connect(self._clear_cache)
-        maint_layout.addWidget(clear_cache_btn)
-
-        clear_data_btn = QPushButton(get_icon("edit-delete"), "Clear All Data")
-        clear_data_btn.setToolTip("Reset settings and installation registry to first-run state")
-        clear_data_btn.clicked.connect(self._clear_data)
-        maint_layout.addWidget(clear_data_btn)
-
-        layout.addWidget(maint_group)
-
         help_label = QLabel(
             '<a href="#" style="color: #888;">Changes take effect on the next install or build.</a>'
         )
@@ -231,78 +216,32 @@ class SettingsPage(QWidget):
             self, "Select installation directory", self.install_dir_edit.text()
         )
         if dir_path:
+            if not _is_local_path(dir_path):
+                QMessageBox.warning(
+                    self, "Invalid Path",
+                    "Cannot use a removable drive or phone path as the install directory.<br><br>"
+                    "Please choose a folder on your local filesystem (e.g. <code>~/Applications</code>).",
+                )
+                return
             self.install_dir_edit.setText(dir_path)
 
-    def _browse_build_output(self):
-        dir_path = QFileDialog.getExistingDirectory(
-            self, "Select build output directory", self.build_output_edit.text()
-        )
-        if dir_path:
-            self.build_output_edit.setText(dir_path)
-
-    def _clear_cache(self):
-        cache_dir = os.path.join(tempfile.gettempdir(), "niruvi_phosphor")
-        if os.path.isdir(cache_dir):
-            try:
-                shutil.rmtree(cache_dir)
-            except OSError as e:
-                QMessageBox.warning(self, "Error", f"Could not clear cache:\n{e}")
-                return
-        from PyQt6.QtGui import QPixmapCache
-        QPixmapCache.clear()
-        QMessageBox.information(self, "Cache Cleared", "Icon cache has been cleared.\nIt will be regenerated automatically as needed.")
-
-    def _clear_data(self):
-        from PyQt6.QtWidgets import QMessageBox
-        reply = QMessageBox.warning(
-            self, "Clear All Data",
-            "<b>This will reset Niruvi to its first-run state.</b><br><br>"
-            "The following will be removed:<br>"
-            "• All settings (revert to defaults)<br>"
-            "• Installation registry (app list will be empty)<br><br>"
-            "Your installed AppImages on disk will <b>not</b> be deleted.<br><br>"
-            "Are you sure?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        data_dir = get_data_dir()
-        for fname in ("settings.json", "registry.json"):
-            fpath = os.path.join(data_dir, fname)
-            if os.path.exists(fpath):
-                try:
-                    os.remove(fpath)
-                except OSError as e:
-                    QMessageBox.warning(self, "Error", f"Could not remove {fname}:\n{e}")
-                    return
-
-        _settings.clear()
-        _settings.update({
-            "install_dir": DEFAULT_INSTALL_DIR,
-            "create_desktop": True,
-            "create_shortcut": False,
-            "portable_home": False,
-            "portable_config": False,
-            "icon_in_theme": True,
-            "build_output_dir": os.path.expanduser("~/Applications"),
-        })
-
-        msg = QMessageBox.information(
-            self, "Data Cleared",
-            "All data has been cleared and settings reset to defaults.<br><br>"
-            "Please restart Niruvi for changes to take full effect.",
-        )
-
     def apply(self):
-        _settings["install_dir"] = self.install_dir_edit.text()
+        install_dir = self.install_dir_edit.text()
+        if not _is_local_path(install_dir):
+            QMessageBox.warning(
+                self, "Invalid Path",
+                "Cannot set install directory to a removable drive or phone path.<br><br>"
+                "Reverting to previous value.",
+            )
+            self.install_dir_edit.setText(_settings.get("install_dir", DEFAULT_INSTALL_DIR))
+            return
+        _settings["install_dir"] = install_dir
         _settings["create_desktop"] = self.create_desktop_row.isChecked()
         _settings["create_shortcut"] = self.shortcut_row.isChecked()
         _settings["portable_home"] = self.portable_home_row.isChecked()
         _settings["portable_config"] = self.portable_config_row.isChecked()
+        _settings["auto_scan_before_install"] = self.auto_scan_row.isChecked()
         _settings["icon_in_theme"] = self.icon_theme_radio.isChecked()
-        _settings["build_output_dir"] = self.build_output_edit.text()
         save_settings()
 
 

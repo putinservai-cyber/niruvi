@@ -1,9 +1,50 @@
+import atexit
 import os
 import shutil
 import subprocess
 import tempfile
 
 from PyQt6.QtCore import QThread, pyqtSignal
+
+from niruvi.scanner import extract_safely
+
+
+_REMOVABLE_PREFIXES = ("mtp:", "gvfs", "/media/", "/run/media/", "/mnt/")
+
+
+def _cleanup_temp_copies():
+    tmp_dir = os.path.join(tempfile.gettempdir(), "niruvi_local_copy")
+    if os.path.isdir(tmp_dir):
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+atexit.register(_cleanup_temp_copies)
+
+
+def _is_removable_path(path: str) -> bool:
+    resolved = os.path.realpath(os.path.expanduser(path))
+    for p in _REMOVABLE_PREFIXES:
+        if p.startswith("/") and resolved.startswith(p):
+            return True
+        if p in resolved:
+            return True
+    return False
+
+
+def _ensure_local(path: str, log) -> str:
+    """If path is on a removable device, copy it to a local temp location.
+
+    Returns the (possibly new) local path.
+    """
+    if not _is_removable_path(path):
+        return path
+    log(f"Source is on removable media — copying to local temp first...")
+    local = os.path.join(tempfile.gettempdir(), "niruvi_local_copy", os.path.basename(path))
+    os.makedirs(os.path.dirname(local), exist_ok=True)
+    shutil.copy2(path, local)
+    os.chmod(local, 0o755)
+    log(f"Local copy: {local}")
+    return local
 
 
 def _find_extracted_dir(extract_dir: str) -> str:
@@ -16,10 +57,16 @@ def _find_extracted_dir(extract_dir: str) -> str:
     raise RuntimeError("No extracted directory found.")
 
 
-def _run_extraction(appimage_path: str, extract_dir: str):
-    os.chmod(appimage_path, 0o755)
+def _run_extraction(appimage_path: str, extract_dir: str, log=None):
+    path = _ensure_local(appimage_path, log or (lambda m: None))
+    safe_dir = os.path.join(extract_dir, "squashfs-root")
+    if extract_safely(path, safe_dir):
+        extracted = _find_extracted_dir(extract_dir)
+        if extracted:
+            return extracted
+    os.chmod(path, 0o755)
     proc = subprocess.Popen(
-        [appimage_path, "--appimage-extract"],
+        [path, "--appimage-extract"],
         cwd=extract_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -38,9 +85,17 @@ def _atomic_install(extracted_dir: str, dest_dir: str):
     os.makedirs(parent, exist_ok=True)
     staging = dest_dir + ".staging"
     if os.path.exists(staging):
-        shutil.rmtree(staging)
-    shutil.copytree(extracted_dir, staging, dirs_exist_ok=True)
-    os.replace(staging, dest_dir)
+        try:
+            shutil.rmtree(staging)
+        except OSError:
+            pass
+    try:
+        shutil.copytree(extracted_dir, staging, dirs_exist_ok=True)
+        os.replace(staging, dest_dir)
+    except Exception:
+        if os.path.exists(staging):
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 def extract_appimage_sync(appimage_path: str, dest_dir: str) -> None:
@@ -68,34 +123,40 @@ class ExtractionWorker(QThread):
             self.log_message.emit(f"Extracting {self.appimage_path}...")
             self.progress_updated.emit(10)
 
+            appimage = _ensure_local(self.appimage_path, self.log_message.emit)
+
             with tempfile.TemporaryDirectory() as extract_dir:
-                self.log_message.emit("Running --appimage-extract...")
+                self.log_message.emit("Extracting (safe mode)...")
                 self.progress_updated.emit(20)
 
-                proc = subprocess.Popen(
-                    [self.appimage_path, "--appimage-extract"],
-                    cwd=extract_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                self._process = proc
-                stdout, stderr = proc.communicate(timeout=300)
-                if proc.returncode != 0:
-                    self.extraction_error.emit(f"Extraction failed: {stderr}")
-                    return
+                safe_dir = os.path.join(extract_dir, "squashfs-root")
+                extracted = None
+                if not extract_safely(appimage, safe_dir):
+                    self.log_message.emit("Safe extraction failed, trying --appimage-extract...")
+                    proc = subprocess.Popen(
+                        [appimage, "--appimage-extract"],
+                        cwd=extract_dir,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    self._process = proc
+                    stdout, stderr = proc.communicate(timeout=300)
+                    if proc.returncode != 0:
+                        self.extraction_error.emit(f"Extraction failed: {stderr}")
+                        return
 
                 self.progress_updated.emit(50)
                 self.log_message.emit("Extraction complete. Copying files...")
 
                 try:
-                    extracted_dir = _find_extracted_dir(extract_dir)
+                    extracted_dir_path = _find_extracted_dir(extract_dir)
                 except RuntimeError as e:
                     self.extraction_error.emit(str(e))
                     return
 
                 self.progress_updated.emit(70)
-                _atomic_install(extracted_dir, self.dest_dir)
+                _atomic_install(extracted_dir_path, self.dest_dir)
                 self.progress_updated.emit(90)
 
                 if not os.path.isdir(self.dest_dir):
@@ -122,3 +183,6 @@ class ExtractionWorker(QThread):
                 self._process.wait(5)
             except Exception:
                 pass
+        staging = self.dest_dir + ".staging"
+        if os.path.exists(staging):
+            shutil.rmtree(staging, ignore_errors=True)

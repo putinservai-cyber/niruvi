@@ -34,3 +34,6 @@ venv/
 
 # Runtime data
 .niruvi/
+
+# Built AppImages
+Niruvi-x86_64.AppImage

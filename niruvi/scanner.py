@@ -14,9 +14,8 @@ from pathlib import Path
 
 from niruvi.appimage_metadata import AppImageMetadata
 
-SUSPICIOUS_PATTERNS = []  # Script extensions alone are not suspicious in AppImages.
-# Suspicion is now based on script content matching SUSPICIOUS_SCRIPT_PATTERNS.
-# Files matching these patterns are scanned for suspicious content regardless of extension.
+# Suspicion is based on script content matching SUSPICIOUS_SCRIPT_PATTERNS.
+# Files matching these extensions are scanned for suspicious content regardless of extension.
 SCAN_ANYWAY_EXTENSIONS = [
     ".sh", ".bash", ".zsh",
     ".pl", ".rb",
@@ -32,17 +31,24 @@ SUSPICIOUS_FILENAMES = [
 ]
 
 SUSPICIOUS_SCRIPT_PATTERNS = [
-    b"wget ",
-    b"curl ",
-    b"chmod 777 ",
-    b"chmod -R 777 ",
-    b"sudo ",
-    b"pkexec ",
+    b"wget http://",
+    b"wget https://",
+    b"curl http://",
+    b"curl https://",
+    b"chmod 777 /",
+    b"chmod -R 777 /",
     b"> /dev/sda",
-    b"| bash",
-    b"| sh",
+    b"| bash -c",
+    b"| sh -c",
     b"/dev/tcp/",
     b"base64 --decode",
+    b"exec bash",
+    b"exec sh",
+    b"curl -s http://",
+    b"wget -q http://",
+    b"chmod 4777",
+    b"pkexec",
+    b"sudo rm -rf /",
 ]
 
 
@@ -135,7 +141,7 @@ def _risk_order(level: str) -> int:
     return {"safe": 0, "low": 1, "medium": 2, "high": 3}.get(level, 0)
 
 
-def _extract_safely(appimage_path: str, dest: str) -> bool:
+def extract_safely(appimage_path: str, dest: str) -> bool:
     """Extract an AppImage without executing its code.
     
     Uses the ELF header offset to extract the embedded squashfs filesystem
@@ -200,7 +206,7 @@ def _scan_contents(appimage_path: str) -> dict:
     try:
         with tempfile.TemporaryDirectory(prefix="niruvi-scan-") as tmp:
             extracted = os.path.join(tmp, "squashfs-root")
-            if not _extract_safely(appimage_path, extracted):
+            if not extract_safely(appimage_path, extracted):
                 result["suspicious_scripts"].append(
                     "Could not extract AppImage contents for scanning — unsquashfs not available"
                 )
@@ -230,7 +236,7 @@ def _scan_contents(appimage_path: str) -> dict:
                             try:
                                 if os.path.getsize(fpath) < 1024 * 1024:
                                     with open(fpath, "rb") as fh:
-                                        content = fh.read(4096)
+                                        content = fh.read()
                                     for pattern in SUSPICIOUS_SCRIPT_PATTERNS:
                                         if pattern in content:
                                             result["suspicious_scripts"].append(rel)

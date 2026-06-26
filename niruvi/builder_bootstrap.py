@@ -25,9 +25,17 @@ def _sanitize_bash_string(value: str, field_name: str = "value") -> str:
     return value[:100]
 
 
-def _apprun_script(app_name: str, app_version: str = "") -> str:
+def _apprun_script(app_name: str, app_version: str = "", style: str = "bash") -> str:
     safe_name = _sanitize_bash_string(app_name, "app_name")
     safe_ver = _sanitize_bash_string(app_version, "app_version")
+
+    if style == "qt6":
+        return _apprun_qt6_content(safe_name, safe_ver)
+
+    return _apprun_bash_content(safe_name, safe_ver)
+
+
+def _apprun_bash_content(safe_name: str, safe_ver: str) -> str:
     return f'''#!/bin/bash
 HERE="$(dirname "$(readlink -f "$0")")"
 APP_NAME="{safe_name}"
@@ -121,6 +129,161 @@ if [ "$1" = "--update" ]; then
 fi
 
 if [ "$1" = "--check-updates" ]; then
+    if [ -f "$HERE/.niruvi-install/update.sh" ]; then
+        exec "$HERE/.niruvi-install/update.sh" --check-only "$@"
+    fi
+    exit 0
+fi
+
+# ── Check for update (auto-prompt on version mismatch) ──
+if [ -f "$MARKER" ] && [ -f "$META" ] && [ -n "$APP_VERSION" ]; then
+    INSTALLED_VER=$(python3 -c "import json; print(json.load(open('$META')).get('version',''))" 2>/dev/null || echo "")
+    if [ -n "$INSTALLED_VER" ] && [ "$INSTALLED_VER" != "$APP_VERSION" ]; then
+        if _confirm "Update Available" \\
+"Version $APP_VERSION is available (installed: $INSTALLED_VER).
+
+Update now?"; then
+            if [ -f "$HERE/.niruvi-install/update.sh" ]; then
+                exec "$HERE/.niruvi-install/update.sh" "$@"
+            else
+                exec "$HERE/.niruvi-install/install.sh" "$@"
+            fi
+            exit 0
+        fi
+    fi
+fi
+
+# ── Background update check (non-blocking, runs every 7 days) ──
+if [ -f "$META" ] && [ -f "$HERE/.niruvi-install/update.sh" ]; then
+    LAST_CHECK=$(python3 -c "import json; print(json.load(open('$META')).get('last_update_check',0))" 2>/dev/null || echo "0")
+    NOW=$(date +%s)
+    INTERVAL=$((7 * 86400))
+    if [ $((NOW - LAST_CHECK)) -gt $INTERVAL ] 2>/dev/null; then
+        "$HERE/.niruvi-install/update.sh" --check-silent &
+    fi
+fi
+
+# ── Launch installed or run installer ──
+if [ -f "$MARKER" ] && [ -f "$INSTALL_DIR/AppRun" ]; then
+    exec "$INSTALL_DIR/AppRun" "$@"
+fi
+
+exec "$HERE/.niruvi-install/install.sh" "$@"
+'''
+
+
+def _apprun_qt6_content(safe_name: str, safe_ver: str) -> str:
+    return f'''#!/bin/bash
+HERE="$(dirname "$(readlink -f "$0")")"
+APP_NAME="{safe_name}"
+APP_VERSION="{safe_ver}"
+
+INSTALL_DIR="${{INSTALL_DIR:-$HOME/Applications/$APP_NAME}}"
+MARKER="$INSTALL_DIR/.installed"
+META="$INSTALL_DIR/.appimage-manager.json"
+WIZARD="$HERE/.niruvi-install/self_install_wizard.py"
+
+_pyqt6_available() {{
+    python3 -c "from PyQt6.QtWidgets import QApplication" 2>/dev/null
+}}
+
+_gui_available() {{
+    command -v zenity &>/dev/null || command -v kdialog &>/dev/null
+}}
+
+_msg() {{
+    local title="$1" text="$2" kind="$3"
+    if command -v zenity &>/dev/null; then
+        zenity --"$kind" --title="$title" --text="$text" 2>/dev/null
+    elif command -v kdialog &>/dev/null; then
+        local kk
+        case "$kind" in info) kk="msgbox" ;; warning|warn) kk="sorry" ;; error) kk="error" ;; *) kk="msgbox" ;; esac
+        kdialog --"$kk" "$text" --title "$title" 2>/dev/null
+    else
+        echo ""
+        echo "  $title"
+        echo "  $text"
+        echo ""
+    fi
+}}
+
+_confirm() {{
+    local title="$1" text="$2"
+    if command -v zenity &>/dev/null; then
+        zenity --question --title="$title" --text="$text" --width=400 2>/dev/null
+    elif command -v kdialog &>/dev/null; then
+        kdialog --yesno "$text" --title "$title" 2>/dev/null
+    else
+        echo ""
+        echo "  $title"
+        echo "  $text"
+        read -p "  [Y/n]: " REPLY
+        [ "$REPLY" != "n" ] && [ "$REPLY" != "N" ]
+    fi
+}}
+
+# ── Version / Help ──
+if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
+    INSTALLED_VER="?"
+    if [ -f "$META" ]; then
+        INSTALLED_VER=$(python3 -c "import json; print(json.load(open('$META')).get('version','?'))" 2>/dev/null || echo "?")
+    fi
+    echo "$APP_NAME $APP_VERSION (installed: $INSTALLED_VER)"
+    exit 0
+fi
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    echo "$APP_NAME $APP_VERSION — Self-Installing Application"
+    echo ""
+    echo "Usage: $APP_NAME [options]"
+    echo ""
+    echo "Options:"
+    echo "  --help, -h       Show this help"
+    echo "  --version, -v    Show version"
+    echo "  --install        Run the installer"
+    echo "  --uninstall      Run the uninstaller"
+    echo "  --update         Check for and apply updates"
+    echo "  --check-updates  Silently check for updates"
+    echo ""
+    echo "This AppImage uses a custom self-installer."
+    echo "Run without arguments to install or launch."
+    exit 0
+fi
+
+# ── CLI mode with PyQt6 wizard (falls back to bash if wizard fails) ──
+if [ "$1" = "--uninstall" ]; then
+    if _pyqt6_available && [ -f "$WIZARD" ]; then
+        python3 "$WIZARD" "--uninstall" && exit 0
+    fi
+    exec "$HERE/.niruvi-install/uninstall.sh" "$@"
+    exit 0
+fi
+
+if [ "$1" = "--install" ]; then
+    if _pyqt6_available && [ -f "$WIZARD" ]; then
+        python3 "$WIZARD" "--install" && exit 0
+    fi
+    exec "$HERE/.niruvi-install/install.sh" "$@"
+    exit 0
+fi
+
+if [ "$1" = "--update" ]; then
+    if _pyqt6_available && [ -f "$WIZARD" ]; then
+        python3 "$WIZARD" "--update" && exit 0
+    fi
+    if [ -f "$HERE/.niruvi-install/update.sh" ]; then
+        exec "$HERE/.niruvi-install/update.sh" "$@"
+    else
+        _msg "No Updater" "This AppImage was built without an updater." "warning"
+        exit 1
+    fi
+    exit 0
+fi
+
+if [ "$1" = "--check-updates" ]; then
+    if _pyqt6_available && [ -f "$WIZARD" ]; then
+        python3 "$WIZARD" "--check-updates" && exit 0
+    fi
     if [ -f "$HERE/.niruvi-install/update.sh" ]; then
         exec "$HERE/.niruvi-install/update.sh" --check-only "$@"
     fi
@@ -1187,7 +1350,7 @@ else
     exit 1
 fi
 
-JSON_DATA=$(eval "$FETCH_CMD" 2>/dev/null || echo "")
+JSON_DATA=$(curl -sL -- "$UPDATE_URL" 2>/dev/null || echo "")
 
 if [ -z "$JSON_DATA" ]; then
     _msg "Update Check Failed" "Could not reach update server.
@@ -1582,6 +1745,7 @@ _INSTALLER_STYLES = {
     "macos": "macos",
     "minimal": "minimal",
     "installbuilder": "installbuilder",
+    "qt6": "qt6",
 }
 
 
@@ -1604,7 +1768,7 @@ def inject_bootstrap(appdir: str, app_name: str, app_version: str = "",
         app_name: Application name
         app_version: Version string
         exec_name: Executable name within AppDir
-        installer_style: 'wizard' | 'macos' | 'minimal' | 'installbuilder'
+        installer_style: 'qt6' | 'wizard' | 'macos' | 'minimal' | 'installbuilder'
         brand_name: Custom installer title (defaults to app_name)
         license_file: Path to EULA text file (embedded in install dir)
         components: List of dicts: [{'id','label','default':True,'description':''}]
@@ -1669,25 +1833,43 @@ def inject_bootstrap(appdir: str, app_name: str, app_version: str = "",
         dest.chmod(0o755)
         config["post_install_content"] = "embedded"
 
+    # Write config.json for the Python wizard
+    config_json = {
+        k: v for k, v in config.items()
+        if k not in ("license_content", "pre_install_content", "post_install_content")
+    }
+    config_json["install_dir"] = os.path.expanduser("~/Applications")
+    (install_dir / "config.json").write_text(
+        __import__("json").dumps(config_json, indent=2)
+    )
+
+    # Inject self_install_wizard.py (standalone PyQt6 installer wizard)
+    wizard_src_path = Path(__file__).parent / "self_installer_wizard.py"
+    if wizard_src_path.exists():
+        dest_wizard = install_dir / "self_install_wizard.py"
+        dest_wizard.write_bytes(wizard_src_path.read_bytes())
+        dest_wizard.chmod(0o755)
+
     # AppRun
-    apprun_content = _apprun_script(app_name, app_version)
+    apprun_style = "qt6" if installer_style == "qt6" else "bash"
+    apprun_content = _apprun_script(app_name, app_version, style=apprun_style)
     apprun_path = appdir_path / "AppRun"
     apprun_path.write_text(apprun_content)
     apprun_path.chmod(0o755)
 
-    # install.sh — build from config
+    # install.sh — build from config (always keep as fallback)
     install_content = _build_install_script(config)
     install_path = install_dir / "install.sh"
     install_path.write_text(install_content)
     install_path.chmod(0o755)
 
-    # uninstall.sh
+    # uninstall.sh (always keep as fallback)
     uninstall_content = _uninstall_script(app_name)
     uninstall_path = install_dir / "uninstall.sh"
     uninstall_path.write_text(uninstall_content)
     uninstall_path.chmod(0o755)
 
-    # update.sh
+    # update.sh (always keep as fallback)
     if updater_url:
         update_content = _updater_script(app_name, app_version, updater_url)
         update_path = install_dir / "update.sh"

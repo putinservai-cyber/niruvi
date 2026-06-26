@@ -1,0 +1,61 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (e.g. 3.1.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            python3 python3-pip python3-pyqt6 \
+            libqt6widgets6 libfuse2 \
+            squashfs-tools librsvg2-bin
+
+      - name: Install Python dependencies
+        run: |
+          pip install --break-system-packages setuptools wheel
+
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            sed -i "s/__version__ = .*/__version__ = \"${{ inputs.version }}\"/" niruvi/_version.py
+          else
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build AppImage
+        run: |
+          chmod +x asset/appimagetool-x86_64.AppImage
+          bash build-appimage.sh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Niruvi v${{ steps.version.outputs.VERSION }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          body_path: README.md
+          files: Niruvi-x86_64.AppImage
+          fail_on_unmatched_files: true
+          generate_release_notes: true
