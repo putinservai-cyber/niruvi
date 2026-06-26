@@ -78,6 +78,8 @@ class HelpDialog(QDialog):
             ("Welcome", self._page_welcome, "go-home"),
             ("Installing Apps", self._page_install, "list-add"),
             ("Managing Apps", self._page_manage, "preferences-other"),
+            ("App Info", self._page_appinfo, "dialog-information"),
+            ("Updates", self._page_updates, "emblem-downloads"),
             ("Removing Apps", self._page_uninstall, "edit-delete"),
             ("Building AppImages", self._page_build, "applications-utilities"),
             ("Self-Installing Format", self._page_selfinstall, "package-x-generic"),
@@ -126,10 +128,13 @@ class HelpDialog(QDialog):
 <h3>Key capabilities</h3>
 <ul>
 <li><b>Install</b> &mdash; Drag-and-drop or browse for an AppImage to install it into a managed directory with desktop integration.</li>
-<li><b>Build</b> &mdash; Create AppImages from DEB, RPM, or tar archives with optional self-installing wizard.</li>
+<li><b>Updates</b> &mdash; Per-app update URL configuration with automatic detection from GitHub and GitLab repository URLs. Background auto-update checks with desktop notifications.</li>
+<li><b>Build</b> &mdash; Create AppImages from DEB, RPM, tar archives, or project folders with optional self-installing wizard.</li>
 <li><b>Desktop integration</b> &mdash; Automatic .desktop entries, shortcuts, and icon theme installation.</li>
 <li><b>Safety</b> &mdash; Backup/rollback on updates, SHA256 verification, and built-in security scanning.</li>
-<li><b>Self-Installing AppImages</b> &mdash; Package your application as an AppImage that installs itself on first run &mdash; perfect for managed deployments.</li>
+<li><b>Per-app customization</b> &mdash; Override display names, custom icons, environment variables, and command-line arguments per application.</li>
+<li><b>Side-by-side installs</b> &mdash; Install multiple versions of the same app alongside each other.</li>
+<li><b>Import/Export</b> &mdash; Export and import your app list as JSON.</li>
 </ul>
 
 <h3>Quick start</h3>
@@ -172,20 +177,95 @@ installation is blocked. Medium-risk files show a warning that you can override.
 
 <h3>App list</h3>
 <p>Installed apps appear in the main list with name, version, and icon. Use the <b>Search</b> box
-to filter by name, and the <b>Sort</b> dropdown to order by name or version.</p>
+to filter by name, and the <b>Sort</b> dropdown to order by name, version, size, or install date.</p>
 
 <h3>Right-click context menu</h3>
 <ul>
+<li><b>App Info</b> &mdash; Open the detailed App Info dialog to view metadata and customize the app.</li>
 <li><b>Run</b> &mdash; Launch the application immediately.</li>
 <li><b>Update</b> &mdash; Replace the app with a newer AppImage file. A backup is created automatically.</li>
+<li><b>Check for Updates</b> &mdash; Check the configured update URL for newer versions.</li>
 <li><b>Uninstall</b> &mdash; Remove the app and all its files (desktop entry, shortcut, data).</li>
 <li><b>Open Folder</b> &mdash; Open the app's install directory in your file manager.</li>
 <li><b>Create / Remove Desktop Shortcut</b> &mdash; Toggle a desktop launcher icon.</li>
 </ul>
 
+<h3>Side-by-side installs</h3>
+<p>When you install an app that is already installed, you can choose <b>Install Side-by-Side</b>
+to keep both versions. The new copy gets a numbered suffix (e.g. <code>MyApp-2</code>).</p>
+
+<h3>Import / Export</h3>
+<p>Use <b>File &rarr; Export App List</b> to save your installation registry as a JSON file.
+Use <b>File &rarr; Import App List</b> to restore apps from a previously exported file.
+Duplicate apps are skipped during import.</p>
+
 <h3>Desktop integration</h3>
 <p>Niruvi automatically creates a <code>.desktop</code> entry on install so the app appears in your
 system application menu. Icons are installed into the XDG icon theme for cross-desktop compatibility.</p>"""
+
+    @staticmethod
+    def _page_appinfo():
+        return """<h2>App Info</h2>
+<p>Double-click an app or select <b>App Info</b> from the right-click menu to open the
+App Info dialog. This is the central place to view and customize your installed apps.</p>
+
+<h3>Sections</h3>
+<ul>
+<li><b>Details</b> &mdash; App name, path, size, install date, architecture, SHA256 hash, desktop entry path.</li>
+<li><b>Customization</b> &mdash; Override the display name, choose a custom icon, set command-line arguments, and manage environment variables.</li>
+<li><b>Updates</b> &mdash; Configure an update URL (GitHub repo, GitLab project, or direct download), choose update channel (stable/beta/nightly), enable background auto-updates.</li>
+<li><b>Files</b> &mdash; Browse the app's install directory in a file tree.</li>
+</ul>
+
+<h3>Customizing per-app behavior</h3>
+<ul>
+<li><b>Display name</b> &mdash; Override how the app appears in the list.</li>
+<li><b>Custom icon</b> &mdash; Pick a PNG/SVG/XPM file to use as the app's icon.</li>
+<li><b>Run arguments</b> &mdash; Arguments passed to the app when launched from Niruvi (e.g. <code>--verbose</code>).</li>
+<li><b>Environment variables</b> &mdash; Set variables that are exported before launching the app (e.g. <code>LANG=en_US.UTF-8</code>).</li>
+</ul>
+
+<h3>Actions bar</h3>
+<p>At the bottom of the dialog, you can <b>Run</b> or <b>Uninstall</b> the app directly.</p>"""
+
+    @staticmethod
+    def _page_updates():
+        return """<h2>Updates</h2>
+<p>Niruvi supports update checking for both itself and installed apps.</p>
+
+<h3>Niruvi self-update</h3>
+<p>Use <b>Tools &rarr; Check for Niruvi Updates</b> to check if a new version of Niruvi is
+available. Updates are downloaded from the GitHub releases page and verified by SHA256.</p>
+
+<h3>Per-app update URLs</h3>
+<p>Each installed app can have an update URL configured in its App Info dialog.
+Niruvi supports three types of update sources:</p>
+
+<ul>
+<li><b>GitHub repository</b> &mdash; Paste a GitHub repo URL (e.g. <code>https://github.com/user/repo</code>).
+Niruvi automatically queries the GitHub API to find the latest release and download
+the AppImage asset matching your system architecture.</li>
+<li><b>GitLab project</b> &mdash; Paste a GitLab project URL. Niruvi uses the GitLab API to
+find the latest release.</li>
+<li><b>Direct URL</b> &mdash; A direct download link to an AppImage. Niruvi checks for
+filename-based version detection.</li>
+</ul>
+
+<h3>Checking for updates</h3>
+<p>Use <b>Check for Updates</b> in the App Info dialog to manually check a single app.
+Use <b>Tools &rarr; Check All Apps for Updates</b> to check all configured apps at once.
+If a newer version is found, you'll be prompted to download and install it.</p>
+
+<h3>Background auto-updates</h3>
+<p>When enabled in Settings, Niruvi periodically checks all apps that have
+<b>Auto-update in background</b> enabled (configured per-app in the App Info dialog).
+On finding an update, a desktop notification is shown (if the system supports it),
+or a dialog prompts you to install.</p>
+
+<h3>Update channels</h3>
+<p>Each app can be assigned an update channel: <b>stable</b> (default), <b>beta</b>, or
+<b>nightly</b>. This affects which release GitHub/GitLab resolves to when the
+API supports it.</p>"""
 
     @staticmethod
     def _page_uninstall():
@@ -216,64 +296,44 @@ system application menu. Icons are installed into the XDG icon theme for cross-d
     def _page_build():
         return """<h2>Building AppImages</h2>
 
-<p>Niruvi can build AppImage packages from DEB, RPM, or tar archives. This is useful for
-repackaging traditional Linux packages into portable AppImages.</p>
+<p>Niruvi can build AppImage packages from DEB, RPM, tar archives, or project folders.
+This is useful for repackaging traditional Linux packages into portable AppImages.</p>
 
 <h3>Source types</h3>
-<p>Choose between two source types using the radio buttons:</p>
+<p>Choose between two source types:</p>
 <ul>
-<li><b>Package file (DEB/RPM/tar)</b> &mdash; Extract an existing Linux package and repackage it as an AppImage.</li>
-<li><b>Project folder</b> &mdash; Select a local project directory. The folder contents are copied directly into the AppDir, making it easy to package your own applications without creating a DEB or RPM first.</li>
+<li><b>Package file</b> &mdash; Extract a DEB, RPM, or tar archive and repackage it as an AppImage.</li>
+<li><b>Project folder</b> &mdash; Select a local project directory. Contents are copied directly into the AppDir, making it easy to package your own applications.</li>
 </ul>
 
 <h3>Basic build</h3>
 <ol>
 <li>Click <b>Build AppImage</b> in the Tools menu or on the toolbar.</li>
-<li>Select a source type: <b>Package file</b> (DEB, RPM, or <code>.tar.gz</code>/<code>.tar.xz</code>) or <b>Project folder</b>.</li>
+<li>Select a source type: <b>Package file</b> or <b>Project folder</b>.</li>
 <li>Browse to select the source file or folder.</li>
-<li>Set the app name and version (auto-detected from the filename or folder name if left empty).</li>
+<li>Set the app name and version (auto-detected if left empty).</li>
 <li>Choose an output directory.</li>
 <li>Click <b>Build AppImage</b>.</li>
 </ol>
 
 <h3>Post-build verification</h3>
-<p>After building, Niruvi automatically verifies the output AppImage:</p>
-<ul>
-<li>Checks that the file exists and has a valid ELF header.</li>
-<li>Verifies the file is executable.</li>
-<li>Runs <code>--version</code> on it to confirm it works.</li>
-<li>Shows a detailed build summary with tips.</li>
-</ul>
+<p>After building, Niruvi verifies the output AppImage — checks the ELF header, confirms
+it's executable, runs <code>--version</code>, and shows a detailed build summary.</p>
 
 <h3>Self-Installing AppImages</h3>
 <p>Enable <b>Self-Installing AppImage</b> to create an AppImage that installs itself
-when run for the first time &mdash; ideal for applications that need desktop integration.</p>
+on first run — ideal for applications that need desktop integration.</p>
 
-<p>When self-installing is enabled, additional options become available:</p>
-
-<h4>Installer UI style</h4>
+<p>When self-installing is enabled, these options are available:</p>
 <ul>
-<li><b>Wizard</b> &mdash; Uses zenity/kdialog dialog boxes. Simple and widely compatible.</li>
-<li><b>macOS Installer style</b> &mdash; Step-by-step wizard resembling macOS Installer.</li>
-<li><b>Minimal</b> &mdash; Terminal-only output, no GUI dependencies. Works headless.</li>
-<li><b>InstallBuilder style</b> &mdash; Professional multi-page wizard with Back/Next navigation, license page, directory chooser, component selection, summary, progress, and finish page.</li>
-</ul>
-
-<h4>Advanced Installer Options</h4>
-<ul>
-<li><b>Brand name</b> &mdash; Display name used in installer dialogs.</li>
-<li><b>License file</b> &mdash; EULA shown during installation for user acceptance.</li>
-<li><b>Pre/Post-install scripts</b> &mdash; Shell scripts run before or after extraction.</li>
-<li><b>Components</b> &mdash; Optional feature sets users can choose during install.</li>
+<li><b>Brand name</b> &mdash; Display name in installer dialogs.</li>
+<li><b>License file</b> &mdash; EULA shown during installation.</li>
+<li><b>Pre/Post-install scripts</b> &mdash; Shell scripts run before/after extraction.</li>
+<li><b>Components</b> &mdash; Optional feature sets users can choose.</li>
 <li><b>Update URL</b> &mdash; Remote JSON manifest for automatic updates.</li>
-<li><b>Welcome / Finish text</b> &mdash; Custom messages for the installer wizard.</li>
-<li><b>Rollback</b> &mdash; Automatic backup and restore on failure.</li>
-<li><b>Silent mode</b> &mdash; Non-interactive install via <code>--unattended</code>.</li>
-<li><b>Launch prompt</b> &mdash; Ask user if they want to run the app after install.</li>
-</ul>
-
-<p>Click the <b>Installer Settings</b> button for a dedicated tabbed configuration dialog
-with branding, messages, updates, and license selection.</p>"""
+<li><b>Welcome / Finish text</b> &mdash; Custom installer messages.</li>
+<li><b>Rollback, Silent mode, Launch prompt</b> &mdash; Installer behavior options.</li>
+</ul>"""
 
     @staticmethod
     def _page_selfinstall():
@@ -290,29 +350,14 @@ behaves like a traditionally installed application with desktop integration.</p>
 <li>Upon install, the AppImage extracts itself to <code>~/Applications/APP_NAME/</code>.</li>
 <li>A <code>.desktop</code> entry is created so the app appears in the system launcher.</li>
 <li>The AppImage can optionally be hidden or removed after installation.</li>
-<li>An uninstaller script is placed next to the app for easy removal.</li>
 </ol>
 
-<h3>Available installer styles</h3>
-<ul>
-<li><b>Wizard</b> &mdash; Uses zenity/kdialog. Good for everyday use on desktop Linux.</li>
-<li><b>macOS style</b> &mdash; Familiar step-by-step flow resembling macOS Installer.</li>
-<li><b>Minimal</b> &mdash; Pure terminal output. Works over SSH or in scripts.</li>
-<li><b>InstallBuilder style</b> &mdash; Feature-rich: Welcome &rarr; License &rarr; Directory &rarr; Components &rarr; Summary &rarr; Progress &rarr; Finish. Supports Back/Next, keyboard navigation, and auto-updater.</li>
-</ul>
+<h3>CLI flags for self-installing AppImages</h3>
+<pre>MyApp.AppImage --help           Show CLI usage
+MyApp.AppImage --install        Interactive install
+MyApp.AppImage --unattended     Silent install with defaults</pre>
 
-<h3>Auto-updater</h3>
-<p>When an <b>Update URL</b> is configured, the installed app periodically checks a JSON
-manifest for new versions. Updates can be applied with a single click &mdash;
-the app downloads the new version, verifies its SHA256 hash, and re-installs.</p>
-
-<p>Update manifest format (hosted at the configured URL):</p>
-<pre>{
-  "version": "2.0",
-  "download_url": "https://example.com/app-v2.0.AppImage",
-  "sha256": "abcdef...",
-  "changelog": "Bug fixes and improvements"
-}</pre>"""
+<p>Niruvi itself is distributed as a self-installing AppImage.</p>"""
 
     @staticmethod
     def _page_cli():
@@ -324,8 +369,20 @@ the app downloads the new version, verifies its SHA256 hash, and re-installs.</p
 <pre>niruvi                          Launch the GUI
 niruvi --install PATH           Silent install (no GUI)
 niruvi --uninstall APP_NAME     Remove an installed app
+niruvi --list                   List all installed apps
+niruvi --update-all             Check all apps for updates in terminal
+niruvi --update-check APP       Check a specific app for updates
+niruvi --is-installed PATH      Check if an AppImage is installed
 niruvi --version                Show version
 niruvi PATH.AppImage            Launch and open a specific AppImage</pre>
+
+<h3>Examples</h3>
+<pre>niruvi --install MyApp.AppImage
+niruvi --uninstall MyApp
+niruvi --list
+niruvi --update-all
+niruvi --update-check MyApp
+niruvi --is-installed /path/to/MyApp.AppImage</pre>
 
 <h3>Self-installing silent mode</h3>
 <p>AppImages built with the self-installing format support:</p>
@@ -374,14 +431,25 @@ accepts the license if present, and skips all interactive prompts.</p>"""
 <td>Install icon to XDG theme directory</td>
 </tr>
 <tr>
-<td><code>check_updates</code></td><td><code>true</code></td>
-<td>Automatically check for Niruvi updates</td>
+<td><code>auto_scan_before_install</code></td><td><code>true</code></td>
+<td>Run security scan before every install</td>
 </tr>
 <tr>
-<td><code>build_output_dir</code></td><td><code>~/Applications</code></td>
-<td>Default output directory for AppImage builds</td>
+<td><code>update_check_interval</code></td><td><code>weekly</code></td>
+<td>How often to check for app updates in background (daily/weekly/monthly)</td>
 </tr>
-</table>"""
+<tr>
+<td><code>auto_update_apps</code></td><td><code>false</code></td>
+<td>Enable background auto-update checks for apps with per-app auto-update enabled</td>
+</tr>
+</table>
+
+<h3>Background Updates</h3>
+<p>The <b>Background Updates</b> section controls periodic update checking. When enabled,
+Niruvi checks all apps that have <b>Auto-update in background</b> turned on in their
+App Info page. The check interval can be set to daily, weekly, or monthly.</p>
+<p>When an update is found, Niruvi attempts to show a desktop notification. If the
+system doesn't support tray notifications, a standard dialog is shown instead.</p>"""
 
     @staticmethod
     def _page_security():
@@ -392,7 +460,7 @@ installation. It looks for suspicious patterns commonly associated with malware.
 
 <h3>Scan levels</h3>
 <ul>
-<li><b>High risk</b> &mdash; Dangerous patterns detected. Installation is blocked.</li>
+<li><b>High risk</b> &mdash; Dangerous patterns detected. Installation is blocked unless you explicitly acknowledge the warning.</li>
 <li><b>Medium risk</b> &mdash; Suspicious patterns found. You can choose to proceed or cancel.</li>
 <li><b>Low / None</b> &mdash; No issues. Installation proceeds normally.</li>
 </ul>
@@ -404,7 +472,12 @@ installation. It looks for suspicious patterns commonly associated with malware.
 <li>Suspicious network connections (hardcoded IPs, known malicious domains)</li>
 <li>Unsafe file permissions</li>
 <li>Unexpected SUID/setuid binaries</li>
+<li>Fork bombs, <code>dd</code> overwrites, <code>exec</code> injection patterns</li>
 </ul>
+
+<h3>Self-scan</h3>
+<p>Use <b>Help &rarr; Security Self-Check</b> to run a security scan on Niruvi's own
+AppImage. This is useful after downloading a new version to verify its integrity.</p>
 
 <h3>SHA256 verification</h3>
 <p>Every AppImage is verified by SHA256 hash during installation and when applying
