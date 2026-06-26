@@ -57,8 +57,14 @@ def extract_package(src: str, dest: str) -> bool:
             subprocess.run(['ar', 'x', src], cwd=dest, capture_output=True, timeout=60, check=True)
             for f in os.listdir(dest):
                 if f.startswith('data.tar'):
-                    subprocess.run(['tar', '-xf', os.path.join(dest, f), '-C', dest],
-                                   capture_output=True, timeout=60, check=True)
+                    decompress = []
+                    if f.endswith('.zst'):
+                        if shutil.which('zstd'):
+                            decompress = ['--zstd']
+                    subprocess.run(
+                        ['tar', '-xf', os.path.join(dest, f), '-C', dest] + decompress,
+                        capture_output=True, timeout=60, check=True,
+                    )
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
                 elif f.startswith('control.tar') or f == 'debian-binary':
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
@@ -96,22 +102,26 @@ def extract_package(src: str, dest: str) -> bool:
 def _flatten_appdir(appdir: str):
     SKIP = frozenset({'usr', 'opt', 'etc', 'lib', 'bin', 'sbin'})
     entries = [e for e in os.listdir(appdir) if not e.startswith('.')]
-    if len(entries) != 1:
-        return
-    name = entries[0]
-    if name in SKIP:
-        return
-    candidate = os.path.join(appdir, name)
-    if not os.path.isdir(candidate):
-        return
-    has_desktop = any(f.endswith('.desktop') for _, _, files in os.walk(candidate) for f in files)
-    if not has_desktop:
-        return
-    for item in os.listdir(candidate):
-        src = os.path.join(candidate, item)
-        dst = os.path.join(appdir, item)
-        shutil.move(src, dst)
-    os.rmdir(candidate)
+    # Try each entry as a candidate for flattening
+    for name in list(entries):
+        if name in SKIP:
+            continue
+        candidate = os.path.join(appdir, name)
+        if not os.path.isdir(candidate):
+            continue
+        has_desktop = any(f.endswith('.desktop') for _, _, files in os.walk(candidate) for f in files)
+        if not has_desktop:
+            continue
+        for item in os.listdir(candidate):
+            src = os.path.join(candidate, item)
+            dst = os.path.join(appdir, item)
+            if os.path.exists(dst):
+                if os.path.isdir(dst):
+                    shutil.rmtree(dst)
+                else:
+                    os.unlink(dst)
+            shutil.move(src, dst)
+        os.rmdir(candidate)
 
 
 def _fix_absolute_symlinks(root: str):
@@ -215,6 +225,9 @@ def _create_apprun(appdir: str, exec_path: str) -> str:
         '',
         'export PATH="${HERE}/usr/bin:${HERE}/usr/sbin:${HERE}/bin:${HERE}/sbin:$PATH"',
         'export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"',
+        'export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${HERE}/usr/lib/aarch64-linux-gnu:${HERE}/lib:${HERE}/lib/x86_64-linux-gnu:${HERE}/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH"',
+        'export PYTHONPATH="${HERE}/usr/lib/python3/dist-packages:${HERE}/usr/lib/python3/site-packages:$PYTHONPATH"',
+        'export QT_PLUGIN_PATH="${HERE}/usr/lib/qt6/plugins:${HERE}/usr/lib/qt5/plugins:${HERE}/usr/lib/x86_64-linux-gnu/qt6/plugins:${HERE}/usr/lib/aarch64-linux-gnu/qt6/plugins:$QT_PLUGIN_PATH"',
         '',
         f'exec "$HERE/{exec_rel}" "$@"',
     ]
@@ -277,7 +290,7 @@ class BuildWorker(QThread):
 
     def __init__(self, source_path, output_dir, app_name=None, app_version=None,
                  self_installing=False, default_install_dir=None,
-                 installer_style="wizard",
+                 installer_style="qt6",
                  brand_name="", license_file="",
                  components=None, pre_install_script="",
                  post_install_script="", enable_rollback=True,
@@ -305,6 +318,17 @@ class BuildWorker(QThread):
         self.finish_message = finish_message
         self.enable_launch_at_finish = enable_launch_at_finish
         self.is_folder_source = is_folder_source
+        self._process = None
+        self._cancelled = False
+
+    def stop(self):
+        self._cancelled = True
+        if self._process and self._process.poll() is None:
+            try:
+                self._process.terminate()
+                self._process.wait(5)
+            except Exception:
+                pass
 
     def run(self):
         try:
@@ -333,7 +357,7 @@ class BuildWorker(QThread):
                             shutil.copytree(src, dst, symlinks=True, ignore_dangling_symlinks=True)
                         else:
                             shutil.copy2(src, dst)
-                    self.log.emit(f"Copied folder contents to AppDir")
+                    self.log.emit("Copied folder contents to AppDir")
                     self.progress.emit(30)
 
                     # Scan for existing desktop file and icon
@@ -342,13 +366,11 @@ class BuildWorker(QThread):
                     # If no AppRun found, auto-create a basic one
                     apprun_path = os.path.join(appdir, 'AppRun')
                     if not os.path.exists(apprun_path):
-                        # Try to find a main executable
                         candidates = []
                         for f in os.listdir(appdir):
                             fp = os.path.join(appdir, f)
                             if os.path.isfile(fp) and os.access(fp, os.X_OK) and not f.startswith('.'):
                                 candidates.append(f)
-                        # Check for .py entry point
                         for f in ('main.py', 'app.py', '__main__.py', 'run.py', 'start.py'):
                             if os.path.isfile(os.path.join(appdir, f)):
                                 candidates.insert(0, f)
@@ -433,26 +455,52 @@ class BuildWorker(QThread):
                 if version:
                     env['VERSION'] = version
 
-                proc = subprocess.Popen(
+                self._process = subprocess.Popen(
                     [appimagetool, appdir, out_path],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     text=True, env=env,
                 )
-                stdout, stderr = proc.communicate(timeout=600)
-                if stdout:
-                    for line in stdout.strip().split('\n'):
-                        if line.strip():
-                            self.log.emit(f"  {line.strip()}")
-                if proc.returncode != 0:
-                    self.error.emit(f'appimagetool failed: {stderr.strip()}')
+
+                stdout_lines = []
+                timeout = 600
+                elapsed = 0
+                while elapsed < timeout and not self._cancelled:
+                    try:
+                        line = self._process.stdout.readline() if self._process.stdout else ''
+                        if line:
+                            line = line.strip()
+                            if line:
+                                self.log.emit(f"  {line}")
+                                stdout_lines.append(line)
+                        if self._process.poll() is not None:
+                            break
+                        import time
+                        time.sleep(0.5)
+                        elapsed += 0.5
+                    except Exception:
+                        break
+
+                if self._cancelled:
+                    self._process.kill()
+                    self._process.wait()
+                    self.error.emit("Build cancelled")
+                    return
+
+                if elapsed >= timeout:
+                    self._process.kill()
+                    self._process.wait()
+                    self.error.emit("Build timed out (10 minute limit)")
+                    return
+
+                stderr_output = self._process.stderr.read() if self._process.stderr else ''
+                if self._process.returncode != 0:
+                    self.error.emit(f'appimagetool failed: {stderr_output.strip()}')
                     return
 
                 self.progress.emit(100)
                 self.log.emit(f"Build successful: {out_path}")
                 self.finished.emit(out_path)
 
-        except subprocess.TimeoutExpired:
-            self.error.emit("Build timed out (10 minute limit)")
         except RuntimeError as e:
             self.error.emit(str(e))
         except Exception as e:

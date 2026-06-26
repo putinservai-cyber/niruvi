@@ -12,7 +12,11 @@ class InstallationRecord:
     def __init__(self, name: str, path: str, version: str = "",
                  install_date: str = "", install_type: str = "extract",
                  source_sha256: str = "", desktop_file: str = "",
-                 desktop_shortcut: str = ""):
+                 desktop_shortcut: str = "", update_url: str = "",
+                 architecture: str = "", display_name_override: str = "",
+                 custom_icon_path: str = "", env_vars: dict | None = None,
+                 run_args: str = "", auto_update: bool = False,
+                 update_channel: str = "stable"):
         self.name = name
         self.path = path
         self.version = version
@@ -21,6 +25,14 @@ class InstallationRecord:
         self.source_sha256 = source_sha256
         self.desktop_file = desktop_file
         self.desktop_shortcut = desktop_shortcut
+        self.update_url = update_url
+        self.architecture = architecture
+        self.display_name_override = display_name_override
+        self.custom_icon_path = custom_icon_path
+        self.env_vars = env_vars or {}
+        self.run_args = run_args
+        self.auto_update = auto_update
+        self.update_channel = update_channel
 
     def to_dict(self) -> dict:
         return {
@@ -32,6 +44,14 @@ class InstallationRecord:
             "source_sha256": self.source_sha256,
             "desktop_file": self.desktop_file,
             "desktop_shortcut": self.desktop_shortcut,
+            "update_url": self.update_url,
+            "architecture": self.architecture,
+            "display_name_override": self.display_name_override,
+            "custom_icon_path": self.custom_icon_path,
+            "env_vars": self.env_vars,
+            "run_args": self.run_args,
+            "auto_update": self.auto_update,
+            "update_channel": self.update_channel,
         }
 
     @classmethod
@@ -45,6 +65,14 @@ class InstallationRecord:
             source_sha256=data.get("source_sha256", ""),
             desktop_file=data.get("desktop_file", ""),
             desktop_shortcut=data.get("desktop_shortcut", ""),
+            update_url=data.get("update_url", ""),
+            architecture=data.get("architecture", ""),
+            display_name_override=data.get("display_name_override", ""),
+            custom_icon_path=data.get("custom_icon_path", ""),
+            env_vars=data.get("env_vars", {}),
+            run_args=data.get("run_args", ""),
+            auto_update=data.get("auto_update", False),
+            update_channel=data.get("update_channel", "stable"),
         )
 
 

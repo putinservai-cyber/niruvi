@@ -47,6 +47,10 @@ from niruvi.icon_utils import get_pixmap_from_file, get_pixmap_from_data, to_png
 from niruvi.appimage_metadata import AppImageMetadata
 from niruvi.appimage_assets import extract_metadata
 from niruvi.self_update import check_for_updates
+from niruvi.background_updater import BackgroundUpdater
+from niruvi.update_sources import resolve_update_source
+from niruvi.installation_registry import InstallationRecord
+from niruvi.settings import _settings
 
 _DETACHED: list[subprocess.Popen] = []
 
@@ -112,8 +116,11 @@ class AppManager(QMainWindow):
         self.installed_apps: dict = {}
         self.worker: ExtractionWorker | None = None
         self._metadata_worker: MetadataWorker | None = None
+        self._background_updater = BackgroundUpdater(self)
+        self._background_updater.update_found.connect(self._on_background_update_found)
         self._init_ui()
         self.scan_installed()
+        self._start_background_updater()
 
     def _init_ui(self):
         menubar = self.menuBar()
@@ -127,6 +134,16 @@ class AppManager(QMainWindow):
         settings_action = QAction(get_icon("preferences-system"), "Settings...", self)
         settings_action.triggered.connect(self.open_settings)
         file_menu.addAction(settings_action)
+
+        file_menu.addSeparator()
+
+        export_action = QAction(get_icon("document-save-as"), "Export App List...", self)
+        export_action.triggered.connect(self._export_app_list)
+        file_menu.addAction(export_action)
+
+        import_action = QAction(get_icon("document-open"), "Import App List...", self)
+        import_action.triggered.connect(self._import_app_list)
+        file_menu.addAction(import_action)
 
         file_menu.addSeparator()
 
@@ -313,6 +330,7 @@ class AppManager(QMainWindow):
         self._status_bar.showMessage("Ready")
 
     def closeEvent(self, event):
+        self._background_updater.stop()
         if self._metadata_worker and self._metadata_worker.isRunning():
             self._metadata_worker.quit()
             self._metadata_worker.wait(1000)
@@ -571,7 +589,7 @@ class AppManager(QMainWindow):
         if self._is_already_installed(app_name, path):
             dlg = QDialog(self)
             dlg.setWindowTitle("Already Installed")
-            dlg.setFixedSize(400, 200)
+            dlg.setFixedSize(420, 240)
             dlg.setModal(True)
             layout = QVBoxLayout(dlg)
             layout.setContentsMargins(24, 24, 24, 24)
@@ -591,7 +609,12 @@ class AppManager(QMainWindow):
             btn_reinstall.clicked.connect(lambda: dlg.done(1))
             btn_row.addWidget(btn_reinstall)
 
-            btn_remove = QPushButton(get_icon("edit-delete"), "Remove")
+            btn_sbs = QPushButton(get_icon("list-add"), "Install Side-by-Side")
+            btn_sbs.setToolTip("Install as a separate version alongside the existing one")
+            btn_sbs.clicked.connect(lambda: dlg.done(3))
+            btn_row.addWidget(btn_sbs)
+
+            btn_remove = QPushButton(get_icon("edit-delete"), "Remove & Install")
             btn_remove.clicked.connect(lambda: dlg.done(2))
             btn_row.addWidget(btn_remove)
 
@@ -607,6 +630,15 @@ class AppManager(QMainWindow):
             elif reply == 2:
                 self._uninstall_app(app_name)
                 return
+            elif reply == 3:
+                suffix = 2
+                base_name = app_name
+                while base_name in self.installed_apps:
+                    base_name = f"{app_name}-{suffix}"
+                    suffix += 1
+                app_name = base_name
+                info = info.copy() if info else {}
+                info["Name"] = app_name
 
         wizard = InstallWizard(path, self, appimage_info=info, icon_data=icon_data)
         wizard.exec()
@@ -658,7 +690,10 @@ class AppManager(QMainWindow):
         elif action == update_action:
             self._update_app(app_name)
         elif check_update_action and action == check_update_action:
-            self._show_app_info(app_name)
+            app_info = self.installed_apps.get(app_name, {})
+            current_version = app_info.get("version", "")
+            update_url = app_info.get("update_url", "")
+            self._check_single_app_update(app_name, update_url, current_version)
         elif action == uninstall_action:
             self._uninstall_app(app_name)
         elif action == open_folder_action:
@@ -691,10 +726,20 @@ class AppManager(QMainWindow):
                     "or its files were moved. Please reinstall the app.",
                 )
                 return
+        registry = InstallationRegistry()
+        record = registry.get(app_name)
+        env = os.environ.copy()
+        if record and record.env_vars:
+            env.update(record.env_vars)
+        cmd = [apprun]
+        if record and record.run_args:
+            import shlex
+            cmd.extend(shlex.split(record.run_args))
         try:
             p = subprocess.Popen(
-                [apprun],
+                cmd,
                 cwd=app_dir,
+                env=env,
                 start_new_session=True,
             )
             _track_detached(p)
@@ -848,7 +893,7 @@ class AppManager(QMainWindow):
     def _check_all_app_updates(self):
         registry = InstallationRegistry()
         records = registry.get_all()
-        apps_with_url = [(r.name, r.update_url) for r in records if r.update_url]
+        apps_with_url = [(r.name, r.update_url, r.version, r.update_channel) for r in records if r.update_url]
         if not apps_with_url:
             QMessageBox.information(
                 self, "No Update URLs",
@@ -858,44 +903,79 @@ class AppManager(QMainWindow):
             return
         updated = 0
         failed = 0
-        for name, url in apps_with_url:
-            app_info = self.installed_apps.get(name)
-            if not app_info:
-                continue
-            current_version = app_info.get("version", "")
+        up_to_date = 0
+        for name, url, current_version, channel in apps_with_url:
             if not current_version or current_version == "unknown":
+                failed += 1
                 continue
             try:
-                resp = urllib.request.urlopen(url, timeout=15)
-                manifest = json.loads(resp.read().decode("utf-8"))
-                latest = manifest.get("version", "").lstrip("vV")
-                download_url = manifest.get("download_url", "")
-                if not latest or not download_url:
+                info = resolve_update_source(url, current_version, channel=channel)
+                if not info or not info.version:
                     failed += 1
                     continue
                 from niruvi.self_update import compare_versions
-                if compare_versions(latest, 'gt', current_version):
+                if compare_versions(info.version, 'gt', current_version):
                     reply = QMessageBox.question(
                         self, f"Update Available: {name}",
-                        f"Version {latest} is available for {name}.\n"
-                        f"Current: {current_version}\n\n"
+                        f"Version {info.version} is available for {name}.\n"
+                        f"Current: {current_version}\n"
+                        f"Source: {info.source_type}\n\n"
+                        + (f"What's new:\n{info.changelog[:300]}\n\n" if info.changelog else "") +
                         "Download and install now?",
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     )
                     if reply == QMessageBox.StandardButton.Yes:
-                        self._download_app_update(name, download_url, latest)
+                        self._download_app_update(name, info.download_url, info.version)
                         updated += 1
                     else:
                         failed += 1
                 else:
-                    self._status_bar.showMessage(f"{name} is up to date (v{current_version})")
+                    up_to_date += 1
             except Exception as e:
                 self._status_bar.showMessage(f"Update check failed for {name}: {e}")
-        if updated == 0 and failed == 0:
+        if updated == 0 and failed == 0 and up_to_date > 0:
             QMessageBox.information(self, "All Up to Date", "All configured apps are already up to date.")
         elif updated > 0:
             self.scan_installed()
             self._status_bar.showMessage(f"Updated {updated} app(s)")
+
+    def _check_single_app_update(self, app_name: str, update_url: str, current_version: str):
+        if not update_url:
+            QMessageBox.information(
+                self, "No Update URL",
+                f"No update URL configured for {app_name}.\n\n"
+                "Open App Info to set one.",
+            )
+            return
+        if not current_version or current_version == "unknown":
+            QMessageBox.information(
+                self, "Unknown Version",
+                f"The current version of {app_name} is unknown. Update check cannot proceed."
+            )
+            return
+        try:
+            info = resolve_update_source(update_url, current_version)
+            if not info or not info.version:
+                QMessageBox.warning(self, "Update Check Failed", f"Could not resolve update source for {app_name}.")
+                return
+            from niruvi.self_update import compare_versions
+            if compare_versions(info.version, 'gt', current_version):
+                msg = f"Version {info.version} is available for {app_name}.\nCurrent: {current_version}\n"
+                if info.changelog:
+                    msg += f"\nWhat's new:\n{info.changelog[:500]}"
+                reply = QMessageBox.question(
+                    self, f"Update Available: {app_name}", msg + "\n\nDownload and install now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._download_app_update(app_name, info.download_url, info.version)
+            else:
+                QMessageBox.information(
+                    self, "Up to Date",
+                    f"{app_name} (version {current_version}) is already the latest version."
+                )
+        except Exception as e:
+            QMessageBox.warning(self, "Update Check Failed", str(e))
 
     def _download_app_update(self, app_name: str, download_url: str, latest_version: str):
         from niruvi.app_info_dialog import AppInfoDialog
@@ -1007,6 +1087,110 @@ class AppManager(QMainWindow):
 
     def _check_all_updates(self):
         check_for_updates(self)
+
+    def _start_background_updater(self):
+        interval = _settings.get("update_check_interval", "weekly")
+        from niruvi.background_updater import INTERVAL_OPTIONS
+        seconds = INTERVAL_OPTIONS.get(interval, 604800)
+        auto_update = _settings.get("auto_update_apps", False)
+        if seconds > 0:
+            self._background_updater.start(seconds, auto_update)
+
+    def _on_background_update_found(self, result):
+        from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
+        app = QApplication.instance()
+        has_tray = app and hasattr(app, "desktop") and QSystemTrayIcon.isSystemTrayAvailable()
+        if has_tray:
+            try:
+                tray = QSystemTrayIcon(
+                    get_icon("emblem-downloads", "emblem-important"),
+                    app.activeWindow() or self,
+                )
+                tray.setToolTip(f"Update available for {result.app_name}")
+                menu = QMenu()
+                show_action = menu.addAction(f"Show {result.app_name} update")
+                show_action.triggered.connect(
+                    lambda: self._show_app_update_notification(result)
+                )
+                tray.setContextMenu(menu)
+                tray.show()
+                tray.showMessage(
+                    "Update Available",
+                    f"{result.app_name} v{result.latest_version} is available",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    5000,
+                )
+                return
+            except Exception:
+                pass
+        reply = QMessageBox.question(
+            self, "Update Available",
+            f"{result.app_name} v{result.latest_version} is available "
+            f"(current: v{result.current_version}).\n\n"
+            f"Source: {result.source_type}\n"
+            + (f"\n{result.changelog[:300]}" if result.changelog else "") +
+            "\n\nDownload and install now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._download_app_update(result.app_name, result.download_url, result.latest_version)
+
+    def _show_app_update_notification(self, result):
+        app_info = self.installed_apps.get(result.app_name)
+        if app_info:
+            self._show_app_info(result.app_name)
+
+    def _export_app_list(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export App List", "niruvi-apps.json",
+            "JSON files (*.json);;All files (*)",
+        )
+        if not file_path:
+            return
+        registry = InstallationRegistry()
+        records = registry.get_all()
+        data = [r.to_dict() for r in records]
+        try:
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=2)
+            self._status_bar.showMessage(f"Exported {len(data)} app(s) to {file_path}")
+        except OSError as e:
+            QMessageBox.critical(self, "Export Failed", str(e))
+
+    def _import_app_list(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import App List", "",
+            "JSON files (*.json);;All files (*)",
+        )
+        if not file_path:
+            return
+        try:
+            with open(file_path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            QMessageBox.critical(self, "Import Failed", f"Could not read file:\n{e}")
+            return
+        if not isinstance(data, list):
+            QMessageBox.critical(self, "Import Failed", "Invalid format: expected a list of apps.")
+            return
+        registry = InstallationRegistry()
+        imported = 0
+        skipped = 0
+        for item in data:
+            name = item.get("name", "")
+            if not name:
+                skipped += 1
+                continue
+            if registry.get(name):
+                skipped += 1
+                continue
+            record = InstallationRecord.from_dict(item)
+            registry.add(record)
+            imported += 1
+        self.scan_installed()
+        self._status_bar.showMessage(
+            f"Imported {imported} app(s)" + (f", skipped {skipped}" if skipped else "")
+        )
 
     def open_settings(self):
         dialog = SettingsDialog(self)

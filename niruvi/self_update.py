@@ -20,10 +20,17 @@ NIRUVI_APPIMAGE_NAME = "Niruvi-x86_64.AppImage"
 
 def compare_versions(v1, op, v2):
     def parse_version(v):
+        v = v.lstrip("vV")
         parts = []
         for p in v.split('.'):
+            digit = ''
+            for ch in p:
+                if ch.isdigit():
+                    digit += ch
+                else:
+                    break
             try:
-                parts.append(int(p))
+                parts.append(int(digit)) if digit else parts.append(0)
             except ValueError:
                 parts.append(0)
         return parts
@@ -133,6 +140,10 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
     progress.setAutoClose(True)
     progress.setValue(0)
 
+    backup_path: str | None = None
+    temp_path: str | None = None
+    dest: str | None = None
+
     try:
         fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
         os.close(fd)
@@ -169,6 +180,7 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
         shutil.copy2(temp_path, dest)
         os.chmod(dest, 0o755)
         Path(temp_path).unlink(missing_ok=True)
+        temp_path = None
 
         meta_path = os.path.join(NIRUVI_INSTALL_DIR, ".appimage-manager.json")
         meta = {}
@@ -180,8 +192,9 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
         with open(meta_path, "w") as f:
             json.dump(meta, f)
 
-        if os.path.exists(backup_path):
+        if backup_path and os.path.exists(backup_path):
             os.remove(backup_path)
+        backup_path = None
 
         reply = QMessageBox.question(
             parent,
@@ -198,8 +211,14 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
             parent.close()
 
     except Exception as e:
-        if os.path.exists(backup_path):
-            if os.path.exists(dest):
-                os.remove(dest)
-            os.rename(backup_path, dest)
+        if backup_path and os.path.exists(backup_path) and dest:
+            try:
+                if os.path.exists(dest):
+                    os.remove(dest)
+                os.rename(backup_path, dest)
+            except Exception:
+                pass
+        if temp_path:
+            Path(temp_path).unlink(missing_ok=True)
+        progress.close()
         QMessageBox.critical(parent, "Update Failed", f"Failed to download or install update:\n{e}")

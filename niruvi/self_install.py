@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 
+_DETACHED: list[subprocess.Popen] = []
+
 from PyQt6.QtWidgets import (
     QApplication, QMessageBox, QProgressDialog,
 )
@@ -98,15 +100,14 @@ def _create_self_desktop_entry():
 def run_self_install():
     """Entry point: detect first run, optionally install, then launch GUI.
 
-    This function creates its own QApplication if one doesn't exist yet.
+    Creates a single QApplication and reuses it — never creates two.
     """
-    from niruvi.main import main
-
     appimage = os.environ.get("APPIMAGE")
 
     if appimage and not _is_installed():
         has_cli_flags = any(a in sys.argv for a in ("--help", "-h", "--version", "--install", "--uninstall"))
         if has_cli_flags:
+            from niruvi.main import main
             main()
             return
 
@@ -151,7 +152,8 @@ def run_self_install():
                     f"It will now launch from the installed location.",
                 )
 
-                subprocess.Popen([os.path.join(INSTALL_DIR, "AppRun")])
+                p = subprocess.Popen([os.path.join(INSTALL_DIR, "AppRun")])
+                _DETACHED.append(p)
                 sys.exit(0)
             except Exception as e:
                 progress.close()
@@ -162,8 +164,20 @@ def run_self_install():
                     f"The AppImage will run in portable mode instead.",
                 )
 
-        app.quit()
+        # Reuse the existing QApplication — do NOT quit and recreate
+        from niruvi.manager import AppManager
+        from niruvi.settings import load_settings, get_data_dir, DEFAULT_INSTALL_DIR, DESKTOP_DIR
 
+        os.makedirs(get_data_dir(), exist_ok=True)
+        os.makedirs(DEFAULT_INSTALL_DIR, exist_ok=True)
+        os.makedirs(DESKTOP_DIR, exist_ok=True)
+        load_settings()
+
+        window = AppManager()
+        window.show()
+        sys.exit(app.exec())
+
+    from niruvi.main import main
     main()
 
 

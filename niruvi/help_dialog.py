@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QFont
+from niruvi._version import __app_name__
 from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
@@ -32,13 +33,14 @@ class LicenseDialog(QDialog):
             Path(__file__).resolve().parent.parent / "LICENSE",
             Path(__file__).resolve().parent.parent.parent / "LICENSE",
             Path(os.getcwd()) / "LICENSE",
+            Path.home() / ".local" / "share" / __app_name__ / "LICENSE",
+            Path("/usr/share") / __app_name__ / "LICENSE",
         ]
         text = "License file not found."
         for p in candidates:
             if p.exists():
                 text = p.read_text()
                 break
-
         browser.setPlainText(text)
         layout.addWidget(browser, 1)
 
@@ -73,20 +75,20 @@ class HelpDialog(QDialog):
         )
 
         pages = [
-            ("Welcome", self._page_welcome),
-            ("Installing Apps", self._page_install),
-            ("Managing Apps", self._page_manage),
-            ("Removing Apps", self._page_uninstall),
-            ("Building AppImages", self._page_build),
-            ("Self-Installing Format", self._page_selfinstall),
-            ("Silent / CLI Mode", self._page_cli),
-            ("Settings", self._page_settings),
-            ("Security Scanner", self._page_security),
-            ("Troubleshooting", self._page_trouble),
+            ("Welcome", self._page_welcome, "go-home"),
+            ("Installing Apps", self._page_install, "list-add"),
+            ("Managing Apps", self._page_manage, "preferences-other"),
+            ("Removing Apps", self._page_uninstall, "edit-delete"),
+            ("Building AppImages", self._page_build, "applications-utilities"),
+            ("Self-Installing Format", self._page_selfinstall, "package-x-generic"),
+            ("Silent / CLI Mode", self._page_cli, "utilities-terminal"),
+            ("Settings", self._page_settings, "preferences-system"),
+            ("Security Scanner", self._page_security, "dialog-warning"),
+            ("Troubleshooting", self._page_trouble, "dialog-information"),
         ]
         self._page_map = pages
-        for title, _ in pages:
-            nav.addItem(QListWidgetItem(get_icon("help-contents"), title))
+        for title, _, icon_name in pages:
+            nav.addItem(QListWidgetItem(get_icon(icon_name, "help-contents"), title))
         nav.currentRowChanged.connect(self._on_page_changed)
         splitter.addWidget(nav)
 
@@ -112,7 +114,7 @@ class HelpDialog(QDialog):
 
     def _show_page(self, idx: int):
         if 0 <= idx < len(self._page_map):
-            _, renderer = self._page_map[idx]
+            _, renderer, _ = self._page_map[idx]
             self.content.setHtml(renderer())
 
     @staticmethod

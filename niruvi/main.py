@@ -7,7 +7,7 @@ from urllib.parse import urlparse, unquote
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from niruvi.settings import load_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR
+from niruvi.settings import load_settings, get_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR
 from niruvi.manager import AppManager, get_appimage_metadata
 from niruvi.wizard import InstallWizard
 from niruvi.installation_registry import InstallationRegistry, InstallationRecord
@@ -26,7 +26,7 @@ def process_appimage(path_str: str, parent=None):
     app_name = info.get("Name", path.stem)
 
     if parent is None:
-        parent = QWidget()
+        parent = QApplication.activeWindow() or QWidget()
 
     registry = InstallationRegistry()
     existing = registry.lookup_by_name(app_name) or registry.lookup_by_path(str(path))
@@ -36,7 +36,7 @@ def process_appimage(path_str: str, parent=None):
 
         dlg = QDialog(parent)
         dlg.setWindowTitle("Already Installed")
-        dlg.setFixedSize(400, 200)
+        dlg.setFixedSize(420, 240)
         dlg.setModal(True)
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -52,11 +52,14 @@ def process_appimage(path_str: str, parent=None):
         btn_row = QHBoxLayout()
         btn_reinstall = QPushButton(get_icon("view-refresh"), "Re-integrate")
         btn_reinstall.clicked.connect(lambda: dlg.done(1))
+        btn_sbs = QPushButton(get_icon("list-add"), "Install Side-by-Side")
+        btn_sbs.clicked.connect(lambda: dlg.done(3))
         btn_remove = QPushButton(get_icon("edit-delete"), "Remove")
         btn_remove.clicked.connect(lambda: dlg.done(2))
         btn_cancel = QPushButton(get_icon("dialog-cancel"), "Cancel")
         btn_cancel.clicked.connect(lambda: dlg.done(0))
         btn_row.addWidget(btn_reinstall)
+        btn_row.addWidget(btn_sbs)
         btn_row.addWidget(btn_remove)
         btn_row.addWidget(btn_cancel)
         layout.addLayout(btn_row)
@@ -79,6 +82,15 @@ def process_appimage(path_str: str, parent=None):
             except Exception:
                 pass
             return
+        elif reply == 3:
+            suffix = 2
+            base_name = app_name
+            while registry.lookup_by_name(base_name):
+                base_name = f"{app_name}-{suffix}"
+                suffix += 1
+            app_name = base_name
+            info = info.copy() if info else {}
+            info["Name"] = app_name
 
     wiz = InstallWizard(str(path), parent, appimage_info=info, icon_data=icon_data)
     wiz.exec()
@@ -134,6 +146,9 @@ def _resolve_path(raw: str) -> str:
 
 
 def main():
+    # Suppress Qt Wayland debug noise ("plugin supports grabbing the mouse only for popup windows")
+    os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.wayland.warning=false")
+
     parser = argparse.ArgumentParser(
         prog="Niruvi",
         description="Niruvi — Universal Linux AppImage Manager",
@@ -142,6 +157,10 @@ def main():
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--install", metavar="PATH", help="Install an AppImage (silent, no GUI)")
     parser.add_argument("--uninstall", metavar="APP", help="Uninstall an installed app")
+    parser.add_argument("--list", action="store_true", help="List installed apps (CLI)")
+    parser.add_argument("--update-all", action="store_true", help="Check all apps for updates (CLI)")
+    parser.add_argument("--update-check", metavar="APP", help="Check a specific app for updates (CLI)")
+    parser.add_argument("--is-installed", metavar="PATH", help="Check if an AppImage is installed (CLI)")
     args = parser.parse_args()
 
     if args.version:
@@ -182,6 +201,78 @@ def main():
             pass
         print(f"Uninstalled: {args.uninstall}")
         sys.exit(0)
+
+    if args.list:
+        registry = InstallationRegistry()
+        records = registry.get_all()
+        if not records:
+            print("No apps installed.")
+        else:
+            print(f"{'Name':<30} {'Version':<20} {'Path'}")
+            print("-" * 80)
+            for r in sorted(records, key=lambda x: x.name.lower()):
+                print(f"{r.name:<30} {r.version:<20} {r.path}")
+        sys.exit(0)
+
+    if args.update_all:
+        registry = InstallationRegistry()
+        records = registry.get_all()
+        apps = [(r.name, r.update_url, r.version) for r in records if r.update_url]
+        if not apps:
+            print("No apps with update URLs configured.")
+            sys.exit(0)
+        print(f"Checking {len(apps)} app(s) for updates...")
+        from niruvi.update_sources import resolve_update_source
+        from niruvi.self_update import compare_versions
+        updates = []
+        for name, url, ver in apps:
+            try:
+                info = resolve_update_source(url, ver)
+                if info and info.version and compare_versions(info.version, 'gt', ver):
+                    updates.append((name, ver, info.version, info.download_url))
+                    print(f"  {name}: {ver} -> {info.version} (update available)")
+                else:
+                    print(f"  {name}: {ver} (up to date)")
+            except Exception as e:
+                print(f"  {name}: error - {e}")
+        if updates:
+            print(f"\n{len(updates)} update(s) available. Use 'niruvi' GUI to install them.")
+        else:
+            print("\nAll apps are up to date.")
+        sys.exit(0)
+
+    if args.update_check:
+        registry = InstallationRegistry()
+        record = registry.lookup_by_name(args.update_check)
+        if not record:
+            print(f"Error: '{args.update_check}' is not installed.", file=sys.stderr)
+            sys.exit(1)
+        if not record.update_url:
+            print(f"No update URL configured for '{args.update_check}'.")
+            sys.exit(0)
+        from niruvi.update_sources import resolve_update_source
+        from niruvi.self_update import compare_versions
+        try:
+            info = resolve_update_source(record.update_url, record.version)
+            if info and info.version and compare_versions(info.version, 'gt', record.version):
+                print(f"{record.name}: {record.version} -> {info.version} (update available)")
+            else:
+                print(f"{record.name}: {record.version} (up to date)")
+        except Exception as e:
+            print(f"Error checking updates: {e}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+
+    if args.is_installed:
+        raw = _resolve_path(args.is_installed)
+        registry = InstallationRegistry()
+        record = registry.lookup_by_path(raw) or registry.lookup_by_name(Path(raw).stem)
+        if record:
+            print(f"Installed: {record.name} v{record.version}")
+            sys.exit(0)
+        else:
+            print("Not installed.")
+            sys.exit(1)
 
     # --- GUI path ---
     file_to_process = None

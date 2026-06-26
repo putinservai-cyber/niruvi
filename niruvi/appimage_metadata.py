@@ -17,6 +17,8 @@ ARCH_MAP = {
     50: 'ia64',
     20: 'ppc',
     21: 'ppc64le',
+    243: 'riscv64',
+    258: 'loongarch64',
 }
 
 
@@ -108,6 +110,8 @@ class AppImageMetadata:
             f.seek(shoff)
             sections = f.read(shnum * shentsize)
 
+        if shstrndx >= shnum:
+            return None
         strtab_entry = sections[shstrndx * shentsize:(shstrndx + 1) * shentsize]
         if is_64:
             strtab_offset = struct.unpack(endian + 'Q', strtab_entry[24:32])[0]

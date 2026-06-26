@@ -38,7 +38,9 @@ _settings = {
     "portable_home": False,
     "portable_config": False,
     "icon_in_theme": True,
-    "auto_scan_before_install": True,
+        "auto_scan_before_install": True,
+        "update_check_interval": "weekly",
+        "auto_update_apps": False,
 }
 
 
@@ -183,6 +185,32 @@ class SettingsPage(QWidget):
 
         layout.addWidget(defaults_group)
 
+        update_group = QGroupBox("Background Updates")
+        update_layout = QVBoxLayout(update_group)
+        update_layout.setSpacing(2)
+
+        self.auto_update_apps_row = _ToggleRow(
+            "Auto-update apps in background",
+            "When enabled, Niruvi periodically checks all apps that have auto-update "
+            "enabled and notifies you of available updates"
+        )
+        self.auto_update_apps_row.setChecked(_settings.get("auto_update_apps", False))
+        update_layout.addWidget(self.auto_update_apps_row)
+
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(QLabel("Check interval:"))
+        self.update_interval_combo = QComboBox()
+        self.update_interval_combo.addItems(["daily", "weekly", "monthly"])
+        current_interval = _settings.get("update_check_interval", "weekly")
+        idx = self.update_interval_combo.findText(current_interval)
+        if idx >= 0:
+            self.update_interval_combo.setCurrentIndex(idx)
+        interval_row.addWidget(self.update_interval_combo)
+        interval_row.addStretch()
+        update_layout.addLayout(interval_row)
+
+        layout.addWidget(update_group)
+
         icon_group = QGroupBox("Icons")
         icon_layout = QVBoxLayout(icon_group)
 
@@ -241,6 +269,8 @@ class SettingsPage(QWidget):
         _settings["portable_home"] = self.portable_home_row.isChecked()
         _settings["portable_config"] = self.portable_config_row.isChecked()
         _settings["auto_scan_before_install"] = self.auto_scan_row.isChecked()
+        _settings["auto_update_apps"] = self.auto_update_apps_row.isChecked()
+        _settings["update_check_interval"] = self.update_interval_combo.currentText()
         _settings["icon_in_theme"] = self.icon_theme_radio.isChecked()
         save_settings()
 

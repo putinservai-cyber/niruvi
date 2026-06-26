@@ -4,6 +4,8 @@ import tempfile
 import shutil
 from pathlib import Path
 
+from niruvi.scanner import extract_safely
+
 
 def _ensure_executable(path):
     st = os.stat(path)
@@ -19,8 +21,16 @@ def _find_squashfs_root(extract_dir):
 
 
 def _extract_once(appimage_path):
-    _ensure_executable(appimage_path)
     tmp = tempfile.TemporaryDirectory(prefix="aim-extract-")
+    # Try safe extraction first (no code execution)
+    safe_dir = os.path.join(tmp.name, "squashfs-root")
+    if extract_safely(appimage_path, safe_dir):
+        squashfs = _find_squashfs_root(tmp.name)
+        if squashfs is not None:
+            return tmp, squashfs
+
+    # Fallback to --appimage-extract (executes the binary)
+    _ensure_executable(appimage_path)
     try:
         subprocess.run(
             [appimage_path, "--appimage-extract"],
