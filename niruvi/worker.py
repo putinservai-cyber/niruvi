@@ -79,18 +79,17 @@ def _run_extraction(appimage_path: str, extract_dir: str, log=None):
 
 
 def _atomic_install(extracted_dir: str, dest_dir: str):
-    """Copy extracted_dir to a staging location on the same filesystem as dest_dir,
-    then atomically rename staging → dest_dir."""
+    """Copy extracted_dir to dest_dir, removing dest_dir first if it exists.
+    Uses a staging directory for crash safety — if the copy fails, dest_dir is untouched."""
     parent = os.path.dirname(dest_dir)
     os.makedirs(parent, exist_ok=True)
     staging = dest_dir + ".staging"
     if os.path.exists(staging):
-        try:
-            shutil.rmtree(staging)
-        except OSError:
-            pass
+        shutil.rmtree(staging, ignore_errors=True)
     try:
         shutil.copytree(extracted_dir, staging, dirs_exist_ok=True)
+        if os.path.exists(dest_dir):
+            shutil.rmtree(dest_dir)
         os.replace(staging, dest_dir)
     except Exception:
         if os.path.exists(staging):
