@@ -435,17 +435,14 @@ class BuildDialog(QDialog):
         except Exception:
             warnings.append("Could not read file header for validation.")
 
-        # Quick sanity: try running --version if it's a self-installing AppImage
+        # Try --appimage-help (handled by runtime, won't launch the app)
         try:
             result = subprocess.run(
-                [path, "--version"],
+                [path, "--appimage-help"],
                 capture_output=True, text=True, timeout=15
             )
-            if result.returncode == 0:
-                output = result.stdout.strip()[:100]
-                self.log_text.append(f"AppImage version check: {output}")
-            else:
-                warnings.append(f"AppImage returned exit code {result.returncode} on version check.")
+            if result.returncode != 0:
+                warnings.append(f"AppImage runtime check failed (exit {result.returncode}).")
         except (subprocess.TimeoutExpired, OSError) as e:
             warnings.append(f"Could not verify AppImage: {e}")
 
