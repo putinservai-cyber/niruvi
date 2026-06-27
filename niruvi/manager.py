@@ -1369,6 +1369,18 @@ class AppManager(QMainWindow):
         dlg = DeviceInfoDialog(self)
         dlg.exec()
 
+    def _show_report_page(self):
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Report Issue")
+        dlg.setMinimumSize(520, 400)
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(ReportPage(dlg))
+        btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btn.rejected.connect(dlg.accept)
+        layout.addWidget(btn)
+        dlg.exec()
+
     def _show_license(self):
         dlg = HelpDialog(self, initial_page="License")
         dlg.exec()
