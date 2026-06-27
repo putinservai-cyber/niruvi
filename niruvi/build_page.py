@@ -438,21 +438,18 @@ class BuildWorker(QThread):
                 else:
                     # Find any reasonable icon even if name doesn't match
                     found_icon = None
+                    best_score = -1
                     for root, _, files in os.walk(appdir):
                         for f in files:
-                            if f.endswith(('.png', '.svg')) and ('256' in f or '128' in f or 'logo' in f.lower()):
-                                found_icon = os.path.join(root, f)
-                                break
-                        if found_icon:
-                            break
-                    if not found_icon:
-                        for root, _, files in os.walk(appdir):
-                            for f in files:
-                                if f.endswith(('.png', '.svg')):
+                            if f.endswith(('.png', '.svg')):
+                                score = 0
+                                if '256' in f: score = 3
+                                elif '128' in f: score = 2
+                                elif 'logo' in f.lower(): score = 1
+                                else: score = -1
+                                if score > best_score:
+                                    best_score = score
                                     found_icon = os.path.join(root, f)
-                                    break
-                            if found_icon:
-                                break
                     if found_icon:
                         icon_dir = os.path.join(appdir, 'usr', 'share', 'icons', 'hicolor', '256x256', 'apps')
                         Path(icon_dir).mkdir(parents=True, exist_ok=True)
@@ -462,6 +459,23 @@ class BuildWorker(QThread):
                 app_name = meta['name']
                 exec_name = meta['exec_name']
                 version = self.app_version or _detect_version(self.source_path)
+
+                # Fix wrapper scripts that call binaries in the same directory
+                exec_in_appdir = os.path.join(appdir, 'usr', 'bin', exec_name)
+                if os.path.isfile(exec_in_appdir):
+                    with open(exec_in_appdir) as f:
+                        content = f.read(4096)
+                    m = re.search(r'\$HERE/([^"\s]+)', content)
+                    if m:
+                        dep = m.group(1)
+                        dep_path = os.path.join(os.path.dirname(exec_in_appdir), dep)
+                        if not os.path.exists(dep_path):
+                            for root, _, files in os.walk(appdir):
+                                if dep in files:
+                                    actual = os.path.join(root, dep)
+                                    os.symlink(os.path.relpath(actual, os.path.dirname(dep_path)), dep_path)
+                                    self.log.emit(f"Created symlink: {dep} -> {actual}")
+                                    break
 
                 if self.self_installing:
                     self.log.emit("Injecting self-installer bootstrap...")
