@@ -2,10 +2,8 @@ import json
 import logging
 import os
 import re
-import struct
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.parse import urlparse
 
 
@@ -286,6 +284,4 @@ def guess_appimage_name(repo_url: str, app_name: str) -> str | None:
         f"{repo_name}-{arch}.AppImage",
         f"{app_name}.AppImage",
     ]
-    for c in candidates:
-        return c
-    return None
+    return candidates[0] if candidates else None

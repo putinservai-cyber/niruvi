@@ -156,7 +156,7 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
             return
 
         if expected_sha256:
-            actual = hashlib.sha256(Path(temp_path).read_bytes()).hexdigest()
+            actual = digest.hex()
             if actual.lower() != expected_sha256.lower():
                 Path(temp_path).unlink(missing_ok=True)
                 QMessageBox.critical(

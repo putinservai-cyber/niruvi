@@ -2,8 +2,6 @@ import logging
 import os
 import stat
 import subprocess
-import shlex
-from pathlib import Path
 
 HOOKS_DIR = os.path.expanduser("~/.config/niruvi/hooks")
 

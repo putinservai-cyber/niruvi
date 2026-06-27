@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 
 from PyQt6.QtCore import Qt
 from niruvi.utils import get_icon
@@ -235,7 +236,7 @@ class SettingsPage(QWidget):
         hooks_layout.addWidget(hooks_desc)
 
         open_hooks_btn = QPushButton(get_icon("folder-open"), "Open Hooks Directory")
-        open_hooks_btn.clicked.connect(lambda: os.system(f'xdg-open "{hooks_dir}" 2>/dev/null || true'))
+        open_hooks_btn.clicked.connect(lambda: subprocess.Popen(['xdg-open', hooks_dir], start_new_session=True))
         hooks_layout.addWidget(open_hooks_btn)
 
         layout.addWidget(hooks_group)

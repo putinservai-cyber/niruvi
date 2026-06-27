@@ -102,8 +102,10 @@ class InstallWorker(QThread):
     def _is_type1_appimage(path: str) -> bool:
         try:
             with open(path, "rb") as f:
-                magic = f.read(8)
-            return magic[:4] == b"\x7fELF" and magic[4] == 2
+                magic = f.read(12)
+            if magic[:4] != b"\x7fELF":
+                return False
+            return magic[8:10] != b"AI"  # Type2 has "AI" at offset 8
         except Exception:
             return False
 
@@ -111,7 +113,7 @@ class InstallWorker(QThread):
         if self._is_type1_appimage(self.self_appimage):
             self.log.emit("Detected Type1 AppImage — using unsquashfs...")
             proc = subprocess.Popen(
-                ["unsquashfs", "-d", "squashfs-root", "-f", self.self_appimage],
+                ["unsquashfs", "-d", "squashfs-root", "-force", self.self_appimage],
                 cwd=self.dest,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )

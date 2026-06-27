@@ -119,6 +119,7 @@ class InstallWizard(QWizard):
         self._desktop_info = None
         self._backup_dir: str | None = None
 
+        self._scan_page_id = -1
         self._scan_page = None
         self._scan_result = None
         self._integration_page_id = -1
@@ -391,7 +392,7 @@ class InstallWizard(QWizard):
     def _on_page_changed(self, idx):
         if idx == self._scan_page_id:
             self._run_security_scan()
-        elif idx == 3:
+        elif idx == self._progress_page_id:
             self._do_install()
         if self.currentPage() and self.currentPage().isFinalPage():
             self.button(QWizard.WizardButton.BackButton).hide()
@@ -406,6 +407,8 @@ class InstallWizard(QWizard):
             return self._integration_page_id
         elif cid == self._integration_page_id:
             return self._progress_page_id
+        elif cid == self._progress_page_id:
+            return self._progress_page_id + 1
         return -1
 
     def _run_security_scan(self):

@@ -3,7 +3,6 @@ import logging
 import os
 import subprocess
 import time
-from pathlib import Path
 
 HEALTH_DAYS_THRESHOLD = 60
 

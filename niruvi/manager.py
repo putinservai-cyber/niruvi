@@ -33,21 +33,20 @@ from niruvi.desktop_utils import (
     create_desktop_shortcut,
     find_desktop_for_app,
     find_desktop_shortcut,
-    refresh_desktop_database,
     parse_desktop_file,
 )
 from niruvi.wizard import InstallWizard
 from niruvi.build_dialog import BuildDialog
-from niruvi.help_dialog import HelpDialog, LicenseDialog
+from niruvi.help_dialog import HelpDialog
 from niruvi.device_info import DeviceInfoDialog
 from niruvi.uninstall_dialog import UninstallWizard
 from niruvi.report_page import ReportPage
 from niruvi.utils import get_icon
 from niruvi.scanner import scan_appimage, self_scan
-from niruvi.hooks import run_hooks, ensure_hooks_dir, list_hooks
-from niruvi.health_check import check_app_health, format_health_icon, get_health_summary
+from niruvi.hooks import run_hooks, ensure_hooks_dir
+from niruvi.health_check import check_app_health, get_health_summary
 from niruvi.installation_registry import InstallationRegistry
-from niruvi.icon_utils import get_pixmap_from_file, get_pixmap_from_data, to_png_bytes
+from niruvi.icon_utils import get_pixmap_from_file, to_png_bytes
 from niruvi.appimage_metadata import AppImageMetadata
 from niruvi.appimage_assets import extract_metadata
 from niruvi.self_update import check_for_updates
@@ -1149,7 +1148,10 @@ class AppManager(QMainWindow):
         progress.setAutoClose(True)
         progress.setValue(0)
         temp_path = None
-        dest_dir = self.installed_apps[app_name]["path"]
+        app_info = self.installed_apps.get(app_name)
+        if app_info is None:
+            return
+        dest_dir = app_info["path"]
         try:
             fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
             os.close(fd)

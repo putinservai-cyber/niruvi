@@ -1,5 +1,3 @@
-import os
-import tempfile
 from pathlib import Path
 
 from PyQt6.QtCore import QBuffer, QIODevice, QSize, Qt
