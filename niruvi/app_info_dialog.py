@@ -2,7 +2,6 @@ import datetime
 import hashlib
 import json
 import os
-import subprocess
 import shutil
 import tempfile
 import urllib.request
@@ -19,6 +18,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QWidget,
 )
 
+from niruvi._version import __app_name__
 from niruvi.utils import get_icon
 from niruvi.toggle_switch import ToggleSwitch
 from niruvi.installation_registry import InstallationRegistry
@@ -69,43 +69,6 @@ def _format_size(size_bytes: int) -> str:
 
 def _format_date(timestamp: float) -> str:
     return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _get_gpu_info() -> list[str]:
-    info = []
-    try:
-        result = subprocess.run(
-            ["glxinfo", "-B"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                low = line.lower()
-                if "opengl renderer" in low or "opengl vendor" in low or "opengl version" in low:
-                    info.append(line.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        info.append("glxinfo not available")
-    try:
-        result = subprocess.run(
-            ["vulkaninfo", "--summary"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                low = line.strip().lower()
-                if low.startswith("gpu") or "device name" in low or "driver version" in low or "vulkan" in low:
-                    val = line.strip()
-                    if val and val not in info:
-                        info.append(val)
-        else:
-            info.append("vulkaninfo: no Vulkan drivers found")
-    except FileNotFoundError:
-        info.append("vulkaninfo not available")
-    except subprocess.TimeoutExpired:
-        info.append("vulkaninfo timed out")
-    if not info:
-        info.append("No GPU information available")
-    return info
 
 
 class UpdateCheckWorker(QThread):
@@ -448,25 +411,6 @@ class AppInfoDialog(QDialog):
 
         layout.addWidget(update_group)
 
-        # ── GPU Diagnostics Section ──
-        gpu_group = QGroupBox("GPU / Vulkan")
-        gpu_group.setStyleSheet(_SECTION_STYLE)
-        gpu_layout = QVBoxLayout(gpu_group)
-        gpu_layout.setSpacing(4)
-        gpu_info = _get_gpu_info()
-        if gpu_info:
-            for line in gpu_info:
-                lbl = QLabel(line)
-                lbl.setWordWrap(True)
-                lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-                gpu_layout.addWidget(lbl)
-        else:
-            gpu_layout.addWidget(QLabel("No GPU information available."))
-        refresh_gpu_btn = QPushButton(get_icon("view-refresh"), "Refresh GPU Info")
-        refresh_gpu_btn.clicked.connect(lambda: self._refresh_gpu_info(gpu_layout))
-        gpu_layout.addWidget(refresh_gpu_btn)
-        layout.addWidget(gpu_group)
-
         # ── Files Section ──
         files_group = QGroupBox("Files")
         files_group.setStyleSheet(_SECTION_STYLE)
@@ -491,15 +435,17 @@ class AppInfoDialog(QDialog):
         action_layout.setContentsMargins(20, 10, 20, 10)
         action_layout.setSpacing(8)
 
-        self.btn_run = QPushButton(get_icon("media-playback-start"), "Run")
-        self.btn_run.setStyleSheet("QPushButton { padding: 8px 18px; font-weight: bold; }")
-        self.btn_run.clicked.connect(lambda: self._run_app())
-        action_layout.addWidget(self.btn_run)
+        is_self = (self._app_name == __app_name__)
+        if not is_self:
+            self.btn_run = QPushButton(get_icon("media-playback-start"), "Run")
+            self.btn_run.setStyleSheet("QPushButton { padding: 8px 18px; font-weight: bold; }")
+            self.btn_run.clicked.connect(lambda: self._run_app())
+            action_layout.addWidget(self.btn_run)
 
-        self.btn_uninstall = QPushButton(get_icon("edit-delete"), "Uninstall")
-        self.btn_uninstall.setStyleSheet("QPushButton { padding: 8px 18px; color: #c44; }")
-        self.btn_uninstall.clicked.connect(lambda: self._uninstall_app())
-        action_layout.addWidget(self.btn_uninstall)
+            self.btn_uninstall = QPushButton(get_icon("edit-delete"), "Uninstall")
+            self.btn_uninstall.setStyleSheet("QPushButton { padding: 8px 18px; color: #c44; }")
+            self.btn_uninstall.clicked.connect(lambda: self._uninstall_app())
+            action_layout.addWidget(self.btn_uninstall)
 
         action_layout.addStretch()
 
@@ -741,22 +687,6 @@ class AppInfoDialog(QDialog):
         parent = self.parent()
         if parent and hasattr(parent, "_run_app"):
             parent._run_app(self._app_name)
-
-    def _refresh_gpu_info(self, layout: QVBoxLayout):
-        while layout.count() > 0:
-            item = layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        gpu_info = _get_gpu_info()
-        if gpu_info:
-            for line in gpu_info:
-                lbl = QLabel(line)
-                lbl.setWordWrap(True)
-                lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-                layout.insertWidget(layout.count() - 1, lbl)
-        refresh_btn = QPushButton(get_icon("view-refresh"), "Refresh GPU Info")
-        refresh_btn.clicked.connect(lambda: self._refresh_gpu_info(layout))
-        layout.addWidget(refresh_btn)
 
     def _uninstall_app(self):
         self.accept()

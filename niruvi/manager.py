@@ -19,6 +19,7 @@ from PyQt6.QtCore import Qt, QSize, QThread, QEventLoop, pyqtSignal
 from PyQt6.QtGui import QAction, QPixmap, QIcon, QDragEnterEvent, QDropEvent
 from pathlib import Path
 
+from niruvi._version import __app_name__
 from niruvi.settings import (
     get_settings,
     DEFAULT_INSTALL_DIR,
@@ -38,6 +39,7 @@ from niruvi.desktop_utils import (
 from niruvi.wizard import InstallWizard
 from niruvi.build_dialog import BuildDialog
 from niruvi.help_dialog import HelpDialog, LicenseDialog
+from niruvi.device_info import DeviceInfoDialog
 from niruvi.uninstall_dialog import UninstallWizard
 from niruvi.report_page import ReportPage
 from niruvi.utils import get_icon
@@ -167,6 +169,10 @@ class AppManager(QMainWindow):
         health_action = QAction(get_icon("emblem-important", "dialog-warning"), "Health Check...", self)
         health_action.triggered.connect(self._show_health_report)
         tools_menu.addAction(health_action)
+
+        device_action = QAction(get_icon("computer", "video-display", "system-search"), "Device Info...", self)
+        device_action.triggered.connect(self._show_device_info)
+        tools_menu.addAction(device_action)
 
         tools_menu.addSeparator()
 
@@ -695,10 +701,13 @@ class AppManager(QMainWindow):
             return
 
         app_info = self.installed_apps[app_name]
+        is_self = (app_name == __app_name__)
         menu = QMenu()
         info_action = menu.addAction(get_icon("help-about", "dialog-information"), "App Info")
         menu.addSeparator()
-        run_action = menu.addAction(get_icon("media-playback-start"), "Run")
+        run_action = None
+        if not is_self:
+            run_action = menu.addAction(get_icon("media-playback-start"), "Run")
         update_action = menu.addAction(get_icon("emblem-downloads"), "Update...")
         has_url = bool(app_info.get("update_url"))
         check_update_action = menu.addAction(
@@ -739,7 +748,7 @@ class AppManager(QMainWindow):
 
     def _on_app_double_clicked(self, item):
         app_name = item.data(Qt.ItemDataRole.UserRole)
-        if app_name:
+        if app_name and app_name != __app_name__:
             self._run_app(app_name)
 
     def _run_app(self, app_name: str):
@@ -1356,20 +1365,12 @@ class AppManager(QMainWindow):
         dlg = HelpDialog(self)
         dlg.exec()
 
-    def _show_report_page(self):
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Report Issue")
-        dlg.setMinimumSize(520, 400)
-        layout = QVBoxLayout(dlg)
-        layout.addWidget(ReportPage(dlg))
-        btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn.rejected.connect(dlg.accept)
-        layout.addWidget(btn)
+    def _show_device_info(self):
+        dlg = DeviceInfoDialog(self)
         dlg.exec()
 
     def _show_license(self):
-        dlg = LicenseDialog(self)
+        dlg = HelpDialog(self, initial_page="License")
         dlg.exec()
 
     def _run_self_security_check(self):

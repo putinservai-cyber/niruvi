@@ -732,13 +732,13 @@ class LicenseDialog(QDialog):
 class HelpDialog(QDialog):
     """Comprehensive help dialog for the Niruvi application."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, initial_page=None):
         super().__init__(parent)
         self.setWindowTitle("Niruvi Help")
         self.setMinimumSize(720, 540)
-        self._init_ui()
+        self._init_ui(initial_page)
 
-    def _init_ui(self):
+    def _init_ui(self, initial_page=None):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
@@ -767,6 +767,7 @@ class HelpDialog(QDialog):
             ("Settings", self._page_settings, "preferences-system"),
             ("Security Scanner", self._page_security, "dialog-warning"),
             ("Troubleshooting", self._page_trouble, "dialog-information"),
+            ("License", self._page_license, "emblem-documents"),
         ]
         self._page_map = pages
         for title, _, icon_name in pages:
@@ -789,6 +790,12 @@ class HelpDialog(QDialog):
         btn.rejected.connect(self.accept)
         layout.addWidget(btn)
 
+        if initial_page:
+            for i, (title, _, _) in enumerate(pages):
+                if title == initial_page:
+                    nav.setCurrentRow(i)
+                    self._show_page(i)
+                    return
         self._show_page(0)
 
     def _on_page_changed(self, idx: int):
@@ -1218,3 +1225,25 @@ or feature request. Before reporting:</p>
 <li>Click <b>Copy Report</b> in the error dialog to capture system info and logs.</li>
 <li>Include the copied report in your GitHub issue for faster debugging.</li>
 </ol>"""
+
+    @staticmethod
+    def _page_license():
+        text = _GPL3_TEXT
+        appdir = os.environ.get("APPDIR", "")
+        candidates = [
+            Path(__file__).resolve().parent.parent / "LICENSE",
+            Path(__file__).resolve().parent.parent.parent / "LICENSE",
+            Path(__file__).resolve().parent / "LICENSE",
+            Path(os.getcwd()) / "LICENSE",
+            Path.home() / ".local" / "share" / "Niruvi" / "LICENSE",
+            Path("/usr/share") / "Niruvi" / "LICENSE",
+        ]
+        if appdir:
+            candidates.append(Path(appdir) / "LICENSE")
+        for p in candidates:
+            if p.exists():
+                text = p.read_text()
+                break
+        import html
+        escaped = html.escape(text)
+        return f"<h2>License (GPL-3.0)</h2><pre style='font-size:9pt;'>{escaped}</pre>"
