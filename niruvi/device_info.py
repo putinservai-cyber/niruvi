@@ -5,12 +5,8 @@ import subprocess
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QListWidget, QListWidgetItem, QSplitter,
-    QTextBrowser, QDialogButtonBox,
+    QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox,
 )
-
-from niruvi.utils import get_icon
 
 
 def _collect_system_info() -> dict[str, str]:
@@ -92,68 +88,26 @@ class DeviceInfoDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Device Information")
-        self.setMinimumSize(640, 480)
+        self.setMinimumSize(520, 400)
         self._info = _collect_system_info()
         self._init_ui()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setFont(QFont("sans-serif", 10))
+        browser.setStyleSheet("QTextBrowser { padding: 12px; }")
 
-        nav = QListWidget()
-        nav.setFixedWidth(180)
-        nav.setCurrentRow(0)
-        nav.setStyleSheet(
-            "QListWidget { border: none; }"
-            "QListWidget::item { padding: 8px 12px; }"
-            "QListWidget::item:selected { background: palette(highlight); color: palette(highlighted-text); }"
-        )
-
-        categories = list(self._info.keys())
-        icon_map = {
-            "Operating System": "computer",
-            "Distribution": "computer",
-            "Kernel": "computer",
-            "Architecture": "computer",
-            "Hostname": "computer",
-            "Processor": "cpu",
-            "CPU": "cpu",
-            "CPU Cores": "cpu",
-            "Memory": "drive-harddisk",
-            "GPU (OpenGL)": "video-display",
-            "GPU (Vulkan)": "video-display",
-        }
-        for key in categories:
-            icon_name = icon_map.get(key, "system-search")
-            nav.addItem(QListWidgetItem(get_icon(icon_name, "system-search"), key))
-        nav.currentRowChanged.connect(self._on_page_changed)
-        splitter.addWidget(nav)
-
-        self.content = QTextBrowser()
-        self.content.setOpenExternalLinks(True)
-        self.content.setFont(QFont("sans-serif", 10))
-        self.content.setStyleSheet("QTextBrowser { padding: 12px; }")
-        splitter.addWidget(self.content)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-
-        layout.addWidget(splitter, 1)
+        html = "<table>"
+        for key, val in self._info.items():
+            escaped = str(val).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+            html += f"<tr><td><b>{key}</b></td><td>{escaped}</td></tr>"
+        html += "</table>"
+        browser.setHtml(html)
+        layout.addWidget(browser, 1)
 
         btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         btn.rejected.connect(self.accept)
         layout.addWidget(btn)
-
-        self._show_page(0)
-
-    def _on_page_changed(self, idx: int):
-        self._show_page(idx)
-
-    def _show_page(self, idx: int):
-        keys = list(self._info.keys())
-        if 0 <= idx < len(keys):
-            key = keys[idx]
-            val = self._info[key]
-            html = f"<h2>{key}</h2><pre style='font-size:10pt;'>{val}</pre>"
-            self.content.setHtml(html)
