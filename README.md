@@ -80,7 +80,7 @@ Niruvi makes this workflow smarter:
 ## Screenshots
 
 <p align="center">
-  <img src="asset/screenshot/Screenshot_20260627_154622.png" width="720">
+  <img src="asset/screenshot/Screenshot_20260627_155102.png" width="720">
 </p>
 
 <p align="center">

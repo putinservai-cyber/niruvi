@@ -404,15 +404,21 @@ class AppManager(QMainWindow):
         registry = InstallationRegistry()
 
         if os.path.isdir(install_dir):
-            seen_real = set()
+            real_map = {}
             for item in sorted(os.listdir(install_dir)):
                 app_dir = os.path.join(install_dir, item)
                 if not os.path.isdir(app_dir):
                     continue
                 real = os.path.realpath(app_dir)
-                if real in seen_real:
+                is_link = os.path.islink(app_dir)
+                if real in real_map:
+                    existing_is_link = real_map[real][1]
+                    if existing_is_link and not is_link:
+                        real_map[real] = (item, is_link, app_dir)
                     continue
-                seen_real.add(real)
+                real_map[real] = (item, is_link, app_dir)
+
+            for item, is_link, app_dir in real_map.values():
                 seen.add(item)
                 apprun = os.path.join(app_dir, "AppRun")
                 if not os.path.isfile(apprun) or not os.access(apprun, os.X_OK):
@@ -490,7 +496,7 @@ class AppManager(QMainWindow):
                 key = item.data(Qt.ItemDataRole.UserRole)
                 items.append((key, item))
         if idx == 0:
-            items.sort(key=lambda x: x[0].lower())
+            items.sort(key=lambda x: x[1].text().lower())
         elif idx == 1:
             items.sort(key=lambda x: self.installed_apps.get(x[0], {}).get("version", ""))
         elif idx == 2:
