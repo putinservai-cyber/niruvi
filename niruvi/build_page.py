@@ -50,10 +50,12 @@ def detect_package_type(path: str) -> str:
     return 'unknown'
 
 
-def extract_package(src: str, dest: str) -> bool:
+def extract_package(src: str, dest: str) -> tuple[bool, str]:
     t = detect_package_type(src)
     try:
         if t == 'deb':
+            if not shutil.which('ar'):
+                return False, "'ar' not found (needed for .deb extraction, install 'binutils')"
             subprocess.run(['ar', 'x', src], cwd=dest, capture_output=True, timeout=60, check=True)
             for f in os.listdir(dest):
                 if f.startswith('data.tar'):
@@ -68,7 +70,7 @@ def extract_package(src: str, dest: str) -> bool:
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
                 elif f.startswith('control.tar') or f == 'debian-binary':
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
-            return True
+            return True, ""
         elif t == 'rpm':
             if shutil.which('rpm2archive'):
                 tmp = tempfile.NamedTemporaryFile(suffix='.tgz', delete=False)
@@ -85,7 +87,7 @@ def extract_package(src: str, dest: str) -> bool:
                 finally:
                     Path(tmp_path).unlink(missing_ok=True)
                 if ok:
-                    return True
+                    return True, ""
             if shutil.which('rpm2cpio'):
                 cpio = os.path.join(dest, 'rpm.cpio')
                 with open(cpio, 'wb') as f:
@@ -94,14 +96,23 @@ def extract_package(src: str, dest: str) -> bool:
                     with open(cpio, 'rb') as f:
                         subprocess.run(['cpio', '-idm'], stdin=f, capture_output=True, timeout=120, cwd=dest)
                     Path(cpio).unlink(missing_ok=True)
-                    return True
-            return False
+                    return True, ""
+            missing = []
+            if not shutil.which('rpm2archive'):
+                missing.append('rpm2archive')
+            if not shutil.which('rpm2cpio'):
+                missing.append('rpm2cpio')
+            if not shutil.which('cpio'):
+                missing.append('cpio')
+            return False, f"Missing tools for RPM extraction: {', '.join(missing)}"
         elif t == 'tar':
             subprocess.run(['tar', '-xf', src, '-C', dest], capture_output=True, timeout=120, check=True)
-            return True
-    except Exception:
-        return False
-    return False
+            return True, ""
+    except subprocess.CalledProcessError as e:
+        return False, f"Extraction failed (exit {e.returncode}): {e.stderr.decode(errors='ignore')[:200]}"
+    except Exception as e:
+        return False, str(e)
+    return False, "Unknown extraction error"
 
 
 def _flatten_appdir(appdir: str):
@@ -392,8 +403,9 @@ class BuildWorker(QThread):
                         self.error.emit(f"Unsupported package type: {Path(self.source_path).suffix}")
                         return
                     self.log.emit(f"Detected package type: {pkg_type}")
-                    if not extract_package(self.source_path, appdir):
-                        self.error.emit(f"Failed to extract {Path(self.source_path).name}")
+                    ok, err_msg = extract_package(self.source_path, appdir)
+                    if not ok:
+                        self.error.emit(f"Failed to extract {Path(self.source_path).name}: {err_msg}")
                         return
                     _flatten_appdir(appdir)
                     _fix_absolute_symlinks(appdir)
@@ -405,17 +417,47 @@ class BuildWorker(QThread):
                     self.log.emit(f"Found icon: {meta['icon']}")
                 if meta['desktop_file']:
                     self.log.emit(f"Found desktop: {meta['desktop_file']}")
+                    root_desktop = os.path.join(appdir, os.path.basename(meta['desktop_file']))
+                    if not os.path.exists(root_desktop):
+                        shutil.copy2(meta['desktop_file'], root_desktop)
                 else:
                     self.log.emit(f"Creating desktop file for {meta['name']}")
                     _create_desktop(appdir, meta['name'], meta['exec_name'])
                 self.progress.emit(50)
 
+                icon_name = meta['desktop_info'].get('Icon', '') or meta['name']
                 if meta['icon']:
                     icon_dir = os.path.join(appdir, 'usr', 'share', 'icons', 'hicolor', '256x256', 'apps')
                     Path(icon_dir).mkdir(parents=True, exist_ok=True)
-                    dest_icon = os.path.join(icon_dir, f"{meta['name']}{Path(meta['icon']).suffix}")
+                    dest_icon = os.path.join(icon_dir, f"{icon_name}{Path(meta['icon']).suffix}")
                     if meta['icon'] != dest_icon:
                         shutil.copy2(meta['icon'], dest_icon)
+                    root_icon = os.path.join(appdir, f"{icon_name}{Path(meta['icon']).suffix}")
+                    if not os.path.exists(root_icon):
+                        shutil.copy2(meta['icon'], root_icon)
+                else:
+                    # Find any reasonable icon even if name doesn't match
+                    found_icon = None
+                    for root, _, files in os.walk(appdir):
+                        for f in files:
+                            if f.endswith(('.png', '.svg')) and ('256' in f or '128' in f or 'logo' in f.lower()):
+                                found_icon = os.path.join(root, f)
+                                break
+                        if found_icon:
+                            break
+                    if not found_icon:
+                        for root, _, files in os.walk(appdir):
+                            for f in files:
+                                if f.endswith(('.png', '.svg')):
+                                    found_icon = os.path.join(root, f)
+                                    break
+                            if found_icon:
+                                break
+                    if found_icon:
+                        icon_dir = os.path.join(appdir, 'usr', 'share', 'icons', 'hicolor', '256x256', 'apps')
+                        Path(icon_dir).mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(found_icon, os.path.join(icon_dir, f"{icon_name}{Path(found_icon).suffix}"))
+                        shutil.copy2(found_icon, os.path.join(appdir, f"{icon_name}{Path(found_icon).suffix}"))
 
                 app_name = meta['name']
                 exec_name = meta['exec_name']
@@ -460,8 +502,9 @@ class BuildWorker(QThread):
                 if version:
                     env['VERSION'] = version
 
+                appimagetool_cmd = [appimagetool, "--no-appstream", appdir, out_path]
                 self._process = subprocess.Popen(
-                    [appimagetool, appdir, out_path],
+                    appimagetool_cmd,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     text=True, env=env,
                 )
@@ -499,8 +542,36 @@ class BuildWorker(QThread):
 
                 stderr_output = self._process.stderr.read() if self._process.stderr else ''
                 if self._process.returncode != 0:
-                    self.error.emit(f'appimagetool failed: {stderr_output.strip()}')
-                    return
+                    # Fallback: try extracting appimagetool and running directly
+                    extract_dir = os.path.join(os.path.dirname(appimagetool), 'appimagetool-extracted')
+                    if not os.path.isdir(extract_dir):
+                        self.log.emit("FUSE not available, extracting appimagetool...")
+                        subprocess.run([appimagetool, '--appimage-extract'], cwd=os.path.dirname(appimagetool),
+                                       capture_output=True, timeout=120)
+                        if os.path.isdir('squashfs-root'):
+                            shutil.move('squashfs-root', extract_dir)
+                    if os.path.isdir(extract_dir):
+                        inner_tool = os.path.join(extract_dir, 'usr', 'bin', 'appimagetool')
+                        if not os.path.isfile(inner_tool):
+                            for root, _, files in os.walk(extract_dir):
+                                if 'appimagetool' in files:
+                                    inner_tool = os.path.join(root, 'appimagetool')
+                                    break
+                        if os.path.isfile(inner_tool):
+                            self.log.emit("Retrying with extracted appimagetool...")
+                            self._process = subprocess.Popen(
+                                [inner_tool, "--no-appstream", appdir, out_path],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, env=env,
+                            )
+                            self._process.wait(timeout=600)
+                            if self._process.returncode == 0:
+                                stderr_output = ''
+                            else:
+                                stderr_output = self._process.stderr.read() if self._process.stderr else ''
+                    if stderr_output:
+                        self.error.emit(f'appimagetool failed: {stderr_output.strip()}')
+                        return
 
                 self.progress.emit(100)
                 self.log.emit(f"Build successful: {out_path}")
