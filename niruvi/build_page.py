@@ -497,64 +497,53 @@ class BuildWorker(QThread):
 
                 self.log.emit("Running appimagetool...")
                 self.progress.emit(70)
-                # Remove any stale output file that could be "Text file busy"
-                if os.path.exists(out_path):
-                    try:
-                        os.unlink(out_path)
-                    except Exception:
-                        pass
                 env = os.environ.copy()
                 env['ARCH'] = 'x86_64'
                 if version:
                     env['VERSION'] = version
 
-                appimagetool_cmd = [appimagetool, "--no-appstream", appdir, out_path]
-                self._process = subprocess.Popen(
-                    appimagetool_cmd,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    text=True, env=env,
-                )
+                # Write to temp file then atomically rename to avoid "Text file busy"
+                tmp_out = out_path + '.tmp.' + str(os.getpid())
 
-                stdout_lines = []
-                timeout = 600
-                elapsed = 0
-                while elapsed < timeout and not self._cancelled:
-                    try:
-                        line = self._process.stdout.readline() if self._process.stdout else ''
-                        if line:
-                            line = line.strip()
-                            if line:
-                                self.log.emit(f"  {line}")
-                                stdout_lines.append(line)
-                        if self._process.poll() is not None:
-                            break
-                        import time
-                        time.sleep(0.5)
-                        elapsed += 0.5
-                    except Exception:
-                        break
-
-                if self._cancelled:
-                    self._process.kill()
-                    self._process.wait()
-                    self.error.emit("Build cancelled")
-                    return
-
-                if elapsed >= timeout:
-                    self._process.kill()
-                    self._process.wait()
-                    self.error.emit("Build timed out (10 minute limit)")
-                    return
-
-                stderr_output = self._process.stderr.read() if self._process.stderr else ''
-                if self._process.returncode != 0:
-                    # Remove stale output file that might be "Text file busy"
-                    if os.path.exists(out_path):
+                def _run_appimagetool(tool_bin):
+                    proc = subprocess.Popen(
+                        [tool_bin, "--no-appstream", appdir, tmp_out],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        text=True, env=env,
+                    )
+                    timeout = 600
+                    elapsed = 0
+                    while elapsed < timeout and not self._cancelled:
                         try:
-                            os.unlink(out_path)
+                            line = proc.stdout.readline() if proc.stdout else ''
+                            if line:
+                                line = line.strip()
+                                if line:
+                                    self.log.emit(f"  {line}")
+                            if proc.poll() is not None:
+                                break
+                            import time
+                            time.sleep(0.5)
+                            elapsed += 0.5
                         except Exception:
-                            pass
-                    # Fallback: try extracting appimagetool and running directly
+                            break
+                    if self._cancelled:
+                        proc.kill()
+                        proc.wait()
+                        return None, "Build cancelled"
+                    if elapsed >= timeout:
+                        proc.kill()
+                        proc.wait()
+                        return None, "Build timed out (10 minute limit)"
+                    stderr = proc.stderr.read() if proc.stderr else ''
+                    return proc.returncode, stderr
+
+                ret, err = _run_appimagetool(appimagetool)
+                if ret is None:
+                    self.error.emit(err)
+                    return
+                if ret != 0 and not os.path.isfile(tmp_out):
+                    # Fallback: extract appimagetool and run directly
                     cache_dir = os.path.dirname(appimagetool)
                     extract_dir = os.path.join(cache_dir, 'appimagetool-extracted')
                     if not os.path.isdir(extract_dir):
@@ -575,19 +564,31 @@ class BuildWorker(QThread):
                                     break
                         if os.path.isfile(inner_tool):
                             self.log.emit("Retrying with extracted appimagetool...")
-                            self._process = subprocess.Popen(
-                                [inner_tool, "--no-appstream", appdir, out_path],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, env=env,
-                            )
-                            self._process.wait(timeout=600)
-                            if self._process.returncode == 0:
-                                stderr_output = ''
+                            ret2, err2 = _run_appimagetool(inner_tool)
+                            if ret2 is None:
+                                self.error.emit(err2)
+                                return
+                            if ret2 == 0 and os.path.isfile(tmp_out):
+                                ret, err = 0, ''
                             else:
-                                stderr_output = self._process.stderr.read() if self._process.stderr else ''
-                    if stderr_output:
-                        self.error.emit(f'appimagetool failed: {stderr_output.strip()}')
+                                err = err2
+                    if ret != 0:
+                        if os.path.exists(tmp_out):
+                            os.unlink(tmp_out)
+                        self.error.emit(f'appimagetool failed: {err.strip()}')
                         return
+
+                # Atomically rename temp output to final path
+                if os.path.exists(out_path):
+                    try:
+                        os.unlink(out_path)
+                    except OSError:
+                        pass
+                try:
+                    os.rename(tmp_out, out_path)
+                except OSError as e:
+                    self.error.emit(f'Could not write output file: {e}')
+                    return
 
                 self.progress.emit(100)
                 self.log.emit(f"Build successful: {out_path}")
