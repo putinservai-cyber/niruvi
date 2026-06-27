@@ -1,6 +1,7 @@
 {
-  "version": "3.1.0",
+  "version": "3.1.1",
   "app_name": "Niruvi",
-  "download_url": "https://github.com/putinservai-cyber/niruvi/releases/download/v3.1.0/Niruvi-x86_64.AppImage",
-  "sha256": "a8b0ea4212c8bbf5135bbeda871800353fa0e09da453c28b389fa873f058b75a"
+  "download_url": "https://github.com/putinservai-cyber/niruvi/releases/download/v3.1.1/Niruvi-x86_64.AppImage",
+  "sha256": "3e868db7287fa5d075bbab2d2e695c927b6d559f21f1076144e3f622939fac16",
+  "changelog": "- Runtime hooks system\n- Health monitoring (60-day staleness check)\n- Multi-fallback execution (FUSE → namespace → extract)\n- GPU/Vulkan diagnostics in App Info\n- Fixed duplicate Godot entries\n- Fixed Remove & Install not installing\n- Fixed scan page never completing (no finish button)\n- Fixed per-app crash breaking entire scan\n- Fixed double temp-copy of removable AppImages"
 }
