@@ -80,18 +80,15 @@ Niruvi makes this workflow smarter:
 ## Screenshots
 
 <p align="center">
-  <img src="asset/screenshot/Screenshot_20260627_152504.png" alt="Main window with installed apps" width="720"><br>
-  <em>Main window showing installed applications with health indicators</em>
+  <img src="asset/screenshot/Screenshot_20260627_152504.png" width="720">
 </p>
 
 <p align="center">
-  <img src="asset/screenshot/Screenshot_20260627_152628.png" alt="App Info dialog" width="720"><br>
-  <em>App Info dialog with details, customization, updates, hooks, and GPU diagnostics</em>
+  <img src="asset/screenshot/Screenshot_20260627_152628.png" width="720">
 </p>
 
 <p align="center">
-  <img src="asset/screenshot/Screenshot_20260627_153009.png" alt="Build dialog" width="720"><br>
-  <em>Building a self-installing AppImage from source</em>
+  <img src="asset/screenshot/Screenshot_20260627_153009.png" width="720">
 </p>
 
 ---
