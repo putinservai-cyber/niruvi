@@ -404,10 +404,15 @@ class AppManager(QMainWindow):
         registry = InstallationRegistry()
 
         if os.path.isdir(install_dir):
+            seen_real = set()
             for item in sorted(os.listdir(install_dir)):
                 app_dir = os.path.join(install_dir, item)
                 if not os.path.isdir(app_dir):
                     continue
+                real = os.path.realpath(app_dir)
+                if real in seen_real:
+                    continue
+                seen_real.add(real)
                 seen.add(item)
                 apprun = os.path.join(app_dir, "AppRun")
                 if not os.path.isfile(apprun) or not os.access(apprun, os.X_OK):

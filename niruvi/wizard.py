@@ -300,6 +300,14 @@ class InstallWizard(QWizard):
                 self.app_icon_label.setPixmap(pixmap)
                 self.success_icon.setPixmap(pixmap)
 
+        if not self._icon_pixmap:
+            self._load_appimage_metadata(path)
+
+        if not self._icon_pixmap:
+            generic = get_icon("package-x-generic", "application-x-archive").pixmap(64, 64)
+            if generic and not generic.isNull():
+                self.app_icon_label.setPixmap(generic)
+
         install_dir = get_settings()["install_dir"]
         self.dest_dir = os.path.join(install_dir, self.app_name)
         self.dest_dir_label.setText(self.dest_dir)
@@ -333,6 +341,23 @@ class InstallWizard(QWizard):
             meta = AppImageMetadata(self.appimage_path or path)
             self._architecture = meta.architecture
             self.app_size_label.setText(f"Size: {os.path.getsize(self.appimage_path or path) / 1024 / 1024:.1f} MB | Arch: {meta.architecture} | Type: Type{meta.type}")
+        except Exception:
+            pass
+
+        if self._icon_pixmap:
+            return
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="aim-info-") as tmp:
+                assets = extract_metadata(path, tmp)
+                icon_path = assets.get("icon")
+                if icon_path and os.path.isfile(icon_path):
+                    from niruvi.icon_utils import get_pixmap_from_file
+                    pixmap = get_pixmap_from_file(icon_path, 64)
+                    if pixmap and not pixmap.isNull():
+                        self._icon_pixmap = pixmap
+                        self.app_icon_label.setPixmap(pixmap)
+                        self.success_icon.setPixmap(pixmap)
         except Exception:
             pass
 

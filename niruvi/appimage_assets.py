@@ -165,6 +165,10 @@ def _find_icon_in_dir(extracted_dir, icon_name):
                 candidate = extracted_dir / "usr" / "share" / "icons" / "hicolor" / size_dir / "apps" / f"{icon_name}{ext}"
                 if candidate.exists() and candidate.stat().st_size > 0:
                     return candidate
+        for ext in (".png", ".svg", ".xpm"):
+            candidate = extracted_dir / "usr" / "share" / "pixmaps" / f"{icon_name}{ext}"
+            if candidate.exists() and candidate.stat().st_size > 0:
+                return candidate
         for candidate in extracted_dir.rglob(f"{icon_name}*"):
             if candidate.is_file() and candidate.suffix in (".png", ".svg", ".xpm", "") and candidate.stat().st_size > 0:
                 return candidate
@@ -179,6 +183,7 @@ def _find_icon_in_dir(extracted_dir, icon_name):
         extracted_dir / "usr" / "share" / "icons" / "hicolor" / "scalable" / "apps",
         extracted_dir / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps",
         extracted_dir / "usr" / "share" / "icons" / "hicolor" / "128x128" / "apps",
+        extracted_dir / "usr" / "share" / "pixmaps",
     ]:
         if icon_dir.exists():
             for icon_file in icon_dir.iterdir():
@@ -186,11 +191,23 @@ def _find_icon_in_dir(extracted_dir, icon_name):
                     return icon_file
 
     icons_base = extracted_dir / "usr" / "share" / "icons"
-    if icons_base.exists():
+    if icons_base.exists() and icons_base.is_dir():
         best = None
         best_size = 0
         for ext in ("*.png", "*.svg", "*.xpm"):
             for icon_file in icons_base.rglob(ext):
+                if icon_file.is_file() and icon_file.stat().st_size > best_size:
+                    best = icon_file
+                    best_size = icon_file.stat().st_size
+        if best:
+            return best
+
+    pixmaps_base = extracted_dir / "usr" / "share" / "pixmaps"
+    if pixmaps_base.exists() and pixmaps_base.is_dir():
+        best = None
+        best_size = 0
+        for ext in ("*.png", "*.svg", "*.xpm"):
+            for icon_file in pixmaps_base.rglob(ext):
                 if icon_file.is_file() and icon_file.stat().st_size > best_size:
                     best = icon_file
                     best_size = icon_file.stat().st_size

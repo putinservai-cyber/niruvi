@@ -89,8 +89,14 @@ echo "==> Copying AppDir assets"
 cp "$ASSET_DIR/niruvi.desktop" "$APPDIR/"
 cp "$ASSET_DIR/niruvi.png" "$APPDIR/"
 cp "$ASSET_DIR/niruvi.svg" "$APPDIR/"
+if [ -f "$ASSET_DIR/LICENSE" ]; then
+    cp "$ASSET_DIR/LICENSE" "$APPDIR/LICENSE"
+fi
 if [ -d "$ASSET_DIR/icons" ]; then
     cp -r "$ASSET_DIR/icons" "$APPDIR/"
+fi
+if [ -d "$ASSET_DIR/screenshot" ]; then
+    cp -r "$ASSET_DIR/screenshot" "$APPDIR/screenshot"
 fi
 
 echo "==> Creating AppRun"

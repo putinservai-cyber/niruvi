@@ -1,5 +1,9 @@
 # Niruvi — Universal Linux AppImage Manager
 
+<p align="center">
+  <img src="asset/screenshot/Screenshot_20260627_152504.png" alt="Niruvi Main Window" width="720">
+</p>
+
 Niruvi is a desktop application for **installing**, **managing**, **updating**, and **building**
 AppImage applications on Linux. It combines a clean Qt6 interface with robust safety features
 and a powerful AppImage builder that supports both traditional packages and local project folders.
@@ -55,11 +59,40 @@ Niruvi makes this workflow smarter:
 - **Input sanitization** — all user-provided values are sanitized before being used in generated scripts
 - **No telemetry** — Niruvi does not collect usage data, call home, or share any information
 
+### Health Monitoring & Diagnostics
+- **Health checks** — apps with no updates for 60+ days are flagged in the app list
+- **Multi-fallback execution** — automatically tries FUSE → namespace → temp extraction if a
+  method fails
+- **GPU diagnostics** — OpenGL and Vulkan device info shown in each app's info dialog
+
+### Runtime Hooks
+- **Pre-launch hooks** — place executable `.hook` scripts in `~/.config/niruvi/hooks/` to run
+  before app launch. Hooks receive `APP_NAME` and `APP_DIR` environment variables.
+
 ### User Interface
 - **Built-in help system** — press F1 for comprehensive documentation on all features
 - **Error report dialog** — detailed, human-readable error messages with step-by-step fix suggestions
 - **Build summary dialog** — post-build results with file size, validation status, and quick tips
 - **Report Issue page** — one-click access to the GitHub issues page with diagnostic information
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="asset/screenshot/Screenshot_20260627_152504.png" alt="Main window with installed apps" width="720"><br>
+  <em>Main window showing installed applications with health indicators</em>
+</p>
+
+<p align="center">
+  <img src="asset/screenshot/Screenshot_20260627_152628.png" alt="App Info dialog" width="720"><br>
+  <em>App Info dialog with details, customization, updates, hooks, and GPU diagnostics</em>
+</p>
+
+<p align="center">
+  <img src="asset/screenshot/Screenshot_20260627_153009.png" alt="Build dialog" width="720"><br>
+  <em>Building a self-installing AppImage from source</em>
+</p>
 
 ---
 
@@ -71,7 +104,6 @@ Niruvi makes this workflow smarter:
 - **appimagetool** — included in the `asset/` directory for building AppImages
 
 Optional dependencies:
-- `requests` — enables automatic update checking
 - `librsvg` (`rsvg-convert`) — better SVG icon conversion
 - `unsquashfs` — enables static security scanning without executing AppImages
 - `ClamAV` (`clamscan`) — optional malware scanning
@@ -211,37 +243,50 @@ Niruvi takes security seriously:
 ## Project Structure
 
 ```
-niruvi/                        # Core application package
-├── __init__.py                # Package exports
-├── __main__.py                # Entry point for `python -m niruvi`
-├── _version.py                # Version string
-├── appimage_assets.py         # Asset extraction from AppImage files
-├── appimage_metadata.py       # ELF header parsing and metadata
-├── builder_bootstrap.py               # Self-extraction bootstrap logic
-├── build_dialog.py            # AppImage build dialog (Qt6 UI)
-├── build_page.py              # Build worker thread and utilities
-├── builder_builder_bootstrap.py       # Install script generation
-├── constants.py               # Application-wide constants
-├── desktop_utils.py           # .desktop entry and shortcut management
-├── help_dialog.py             # Built-in help system and license viewer
-├── icon_utils.py              # Icon format conversion utilities
-├── installation_registry.py   # JSON-based installation registry
-├── main.py                    # CLI entry point and argument parsing
-├── manager.py                 # Main window (AppManager)
-├── report_dialog.py           # Error report and build summary dialogs
-├── report_page.py             # GitHub issues reporting page
-├── scanner.py                 # Static security analysis
-├── self_install.py            # Self-installing AppImage logic
-├── self_update.py             # Automatic update checking and installation
-├── settings.py                # Settings management
-├── utils.py                   # General utility functions
-├── wizard.py                  # Installation wizard
-└── worker.py                  # Extraction worker thread
-asset/                         # Build assets
+niruvi/                         # Core application package
+├── __init__.py                 # Package exports
+├── __main__.py                 # Entry point for `python -m niruvi`
+├── _version.py                 # Version string
+├── appimage_assets.py          # Asset extraction from AppImage files
+├── appimage_metadata.py        # ELF header parsing and metadata
+├── app_info_dialog.py          # App info dialog (details, customization, GPU)
+├── background_updater.py       # Background update checker thread
+├── build_dialog.py             # AppImage build dialog (Qt6 UI)
+├── build_page.py               # Build worker thread and utilities
+├── builder_bootstrap.py        # Install script generation
+├── constants.py                # Application-wide constants
+├── desktop_utils.py            # .desktop entry and shortcut management
+├── health_check.py             # App health monitoring (staleness, FUSE check)
+├── help_dialog.py              # Built-in help system and license viewer
+├── hooks.py                    # Runtime hooks system (pre-launch scripts)
+├── icon_utils.py               # Icon format conversion utilities
+├── installation_registry.py    # JSON-based installation registry
+├── main.py                     # CLI entry point and argument parsing
+├── manager.py                  # Main window (AppManager)
+├── report_dialog.py            # Error report and build summary dialogs
+├── report_page.py              # GitHub issues reporting page
+├── scanner.py                  # Static security analysis
+├── self_install.py             # Self-installing AppImage logic
+├── self_installer_wizard.py    # Self-installer Qt6 wizard
+├── self_update.py              # Automatic update checking and installation
+├── settings.py                 # Settings management
+├── toggle_switch.py            # Toggle switch widget
+├── uninstall_dialog.py         # Uninstall wizard
+├── update_sources.py           # Update source resolution (GitHub/GitLab/direct)
+├── utils.py                    # General utility functions
+├── wizard.py                   # Installation wizard
+└── worker.py                   # Extraction worker thread
+asset/                          # Build assets
+├── LICENSE                     # GPL-3.0 license file
 ├── appimagetool-x86_64.AppImage
 ├── niruvi.desktop
 ├── niruvi.png
-└── niruvi.svg
+├── niruvi.svg
+├── screenshot/                 # Application screenshots
+│   ├── Screenshot_20260627_152504.png
+│   ├── Screenshot_20260627_152628.png
+│   └── Screenshot_20260627_153009.png
+└── icons/                      # Phosphor icon theme (52 icons)
 ```
 
 ---
@@ -260,9 +305,20 @@ This creates `Niruvi-x86_64.AppImage` in the project root.
 
 ## License
 
-Copyright (c) 2025 putinservai-cyber. All Rights Reserved.
+Copyright (c) 2025 putinservai-cyber.
 
-This is proprietary software. See the LICENSE file for terms.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Niruvi incorporates the following open-source components:
 - **PyQt6** — licensed under the GNU GPL v3
