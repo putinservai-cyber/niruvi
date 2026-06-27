@@ -40,11 +40,6 @@ Niruvi makes this workflow smarter:
 ### AppImage Builder
 - **Multiple source formats** — build from DEB, RPM, tar archives, or a local project folder
 - **Self-installing format** — create AppImages that install themselves with full desktop integration
-- **Installer styles**:
-  — **Wizard**: zenity/kdialog dialogs, simple and compatible
-  — **macOS style**: step-by-step flow with progress bar
-  — **Minimal**: terminal-only, works over SSH
-  — **InstallBuilder style**: professional multi-page wizard with Back/Next navigation
 - **Advanced options** — brand name, license/EULA, pre/post-install scripts, optional components,
   custom messages, rollback protection, silent mode, and auto-updater with SHA256 verification
 - **Post-build verification** — automatically checks ELF header, executable permissions, and runs
@@ -181,7 +176,7 @@ niruvi --version                   # Show the current version
 2. Select **Package file** as the source type
 3. Choose a DEB, RPM, or tar archive
 4. Set the app name and version (auto-detected if left empty)
-5. Optionally enable **Self-Installing AppImage** and configure the installer style
+5. Optionally enable **Self-Installing AppImage**
 6. Click **Build AppImage**
 
 ### From a project folder

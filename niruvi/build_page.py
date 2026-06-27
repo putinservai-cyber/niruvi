@@ -74,13 +74,18 @@ def extract_package(src: str, dest: str) -> bool:
                 tmp = tempfile.NamedTemporaryFile(suffix='.tgz', delete=False)
                 tmp_path = tmp.name
                 tmp.close()
+                ok = False
                 try:
                     subprocess.run(['rpm2archive', src, '-o', tmp_path],
                                    capture_output=True, timeout=120, check=True)
                     subprocess.run(['tar', '-xzf', tmp_path, '-C', dest], timeout=120, check=True)
+                    ok = True
+                except Exception:
+                    pass
                 finally:
                     Path(tmp_path).unlink(missing_ok=True)
-                return True
+                if ok:
+                    return True
             if shutil.which('rpm2cpio'):
                 cpio = os.path.join(dest, 'rpm.cpio')
                 with open(cpio, 'wb') as f:
