@@ -497,6 +497,12 @@ class BuildWorker(QThread):
 
                 self.log.emit("Running appimagetool...")
                 self.progress.emit(70)
+                # Remove any stale output file that could be "Text file busy"
+                if os.path.exists(out_path):
+                    try:
+                        os.unlink(out_path)
+                    except Exception:
+                        pass
                 env = os.environ.copy()
                 env['ARCH'] = 'x86_64'
                 if version:
@@ -542,14 +548,24 @@ class BuildWorker(QThread):
 
                 stderr_output = self._process.stderr.read() if self._process.stderr else ''
                 if self._process.returncode != 0:
+                    # Remove stale output file that might be "Text file busy"
+                    if os.path.exists(out_path):
+                        try:
+                            os.unlink(out_path)
+                        except Exception:
+                            pass
                     # Fallback: try extracting appimagetool and running directly
-                    extract_dir = os.path.join(os.path.dirname(appimagetool), 'appimagetool-extracted')
+                    cache_dir = os.path.dirname(appimagetool)
+                    extract_dir = os.path.join(cache_dir, 'appimagetool-extracted')
                     if not os.path.isdir(extract_dir):
-                        self.log.emit("FUSE not available, extracting appimagetool...")
-                        subprocess.run([appimagetool, '--appimage-extract'], cwd=os.path.dirname(appimagetool),
-                                       capture_output=True, timeout=120)
-                        if os.path.isdir('squashfs-root'):
-                            shutil.move('squashfs-root', extract_dir)
+                        self.log.emit("appimagetool FUSE failed, extracting...")
+                        sqfs = os.path.join(cache_dir, 'squashfs-root')
+                        if os.path.isdir(sqfs):
+                            shutil.rmtree(sqfs, ignore_errors=True)
+                        subprocess.run([appimagetool, '--appimage-extract'],
+                                       cwd=cache_dir, capture_output=True, timeout=120)
+                        if os.path.isdir(sqfs):
+                            shutil.move(sqfs, extract_dir)
                     if os.path.isdir(extract_dir):
                         inner_tool = os.path.join(extract_dir, 'usr', 'bin', 'appimagetool')
                         if not os.path.isfile(inner_tool):
