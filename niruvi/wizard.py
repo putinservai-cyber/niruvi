@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.settings import get_settings
-from niruvi.worker import ExtractionWorker, _ensure_local
+from niruvi.worker import ExtractionWorker, _ensure_local, _is_removable_path
 from niruvi.desktop_utils import (
     get_version, create_desktop_entry, create_desktop_shortcut,
     find_icon_in_appdir, parse_desktop_file_content, refresh_desktop_database,
@@ -121,6 +121,8 @@ class InstallWizard(QWizard):
 
         self._scan_page = None
         self._scan_result = None
+        self._integration_page_id = -1
+        self._progress_page_id = -1
 
         self._build_pages()
         self._configure_buttons()
@@ -214,7 +216,7 @@ class InstallWizard(QWizard):
         l3.addWidget(self.cb_portable_config)
 
         l3.addStretch()
-        self.addPage(p3)
+        self._integration_page_id = self.addPage(p3)
 
         p4 = QWizardPage()
         p4.setTitle("Installing")
@@ -241,7 +243,7 @@ class InstallWizard(QWizard):
         self.log_text.setFont(mono_font)
         self.log_text.setVisible(False)
         l4.addWidget(self.log_text)
-        self.addPage(p4)
+        self._progress_page_id = self.addPage(p4)
 
         p_success = QWizardPage()
         p_success.setFinalPage(True)
@@ -270,12 +272,15 @@ class InstallWizard(QWizard):
         self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
 
     def _select_file(self, path: str):
-        self.appimage_path = _ensure_local(path, self.log_text.append)
+        if _is_removable_path(path):
+            self.appimage_path = _ensure_local(path, self.log_text.append)
+        else:
+            self.appimage_path = path
         base = os.path.splitext(os.path.basename(self.appimage_path))[0]
         self.app_name = base
 
         self.app_path_label.setText(f"Source: {path}")
-        size_mb = os.path.getsize(path) / 1024 / 1024
+        size_mb = os.path.getsize(self.appimage_path) / 1024 / 1024
         self.app_size_label.setText(f"Size: {size_mb:.1f} MB")
 
         if self._appimage_info.get("Name"):
@@ -325,9 +330,9 @@ class InstallWizard(QWizard):
     def _load_appimage_metadata(self, path):
         self._architecture = ""
         try:
-            meta = AppImageMetadata(path)
+            meta = AppImageMetadata(self.appimage_path or path)
             self._architecture = meta.architecture
-            self.app_size_label.setText(f"Size: {os.path.getsize(path) / 1024 / 1024:.1f} MB | Arch: {meta.architecture} | Type: Type{meta.type}")
+            self.app_size_label.setText(f"Size: {os.path.getsize(self.appimage_path or path) / 1024 / 1024:.1f} MB | Arch: {meta.architecture} | Type: Type{meta.type}")
         except Exception:
             pass
 
@@ -371,29 +376,30 @@ class InstallWizard(QWizard):
         if cid == 0:
             if get_settings().get("auto_scan_before_install", True):
                 return self._scan_page_id
-            return 1
+            return self._integration_page_id
         elif cid == self._scan_page_id:
-            return 2  # FIXED: was returning 1 (itself), now correctly routes to Integration Options
-        elif cid == 1:
-            return 2
-        elif cid == 2:
-            return 3
+            return self._integration_page_id
+        elif cid == self._integration_page_id:
+            return self._progress_page_id
         return -1
 
     def _run_security_scan(self):
         if not self.appimage_path or not os.path.isfile(self.appimage_path):
-            self._scan_page.scan_result_label.setText(
-                "<span style='color:orange;'><b>Scan skipped</b></span><br><br>"
-                "No AppImage file available."
-            )
+            self._scan_page.set_scan_result({
+                "risk_level": "low",
+                "warnings": ["No AppImage file available"],
+                "sha256": "", "size_mb": 0,
+            })
             return
         from niruvi.scanner import scan_appimage
         try:
             result = scan_appimage(self.appimage_path)
         except Exception as e:
-            self._scan_page.scan_result_label.setText(
-                f"<span style='color:orange;'><b>Scan failed</b></span><br><br>{e}"
-            )
+            self._scan_page.set_scan_result({
+                "risk_level": "low",
+                "warnings": [f"Scan failed: {e}"],
+                "sha256": "", "size_mb": 0,
+            })
             return
         self._scan_result = result
         self._scan_page.set_scan_result(result)
@@ -404,9 +410,9 @@ class InstallWizard(QWizard):
                 QMessageBox.warning(self, "Error", "No AppImage file selected.")
                 return False
             return True
-        elif self.currentId() == 1:
+        elif self.currentId() == self._scan_page_id:
             return True
-        elif self.currentId() == 2:
+        elif self.currentId() == self._integration_page_id:
             if not self.cb_desktop_file.isChecked() and not self.cb_desktop_shortcut.isChecked():
                 reply = QMessageBox.question(
                     self,

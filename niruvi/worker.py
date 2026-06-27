@@ -26,7 +26,7 @@ def _is_removable_path(path: str) -> bool:
     for p in _REMOVABLE_PREFIXES:
         if p.startswith("/") and resolved.startswith(p):
             return True
-        if p in resolved:
+        if f"/{p}" in resolved or resolved.startswith(p):
             return True
     return False
 
@@ -57,7 +57,7 @@ def _find_extracted_dir(extract_dir: str) -> str:
     raise RuntimeError("No extracted directory found.")
 
 
-def _run_extraction(appimage_path: str, extract_dir: str, log=None):
+def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_tracker: list | None = None):
     path = _ensure_local(appimage_path, log or (lambda m: None))
     safe_dir = os.path.join(extract_dir, "squashfs-root")
     if extract_safely(path, safe_dir):
@@ -72,6 +72,8 @@ def _run_extraction(appimage_path: str, extract_dir: str, log=None):
         stderr=subprocess.PIPE,
         text=True,
     )
+    if process_tracker is not None:
+        process_tracker.append(proc)
     stdout, stderr = proc.communicate(timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"Extraction failed: {stderr.strip()}")
@@ -122,37 +124,19 @@ class ExtractionWorker(QThread):
             self.log_message.emit(f"Extracting {self.appimage_path}...")
             self.progress_updated.emit(10)
 
-            appimage = _ensure_local(self.appimage_path, self.log_message.emit)
-
             with tempfile.TemporaryDirectory() as extract_dir:
                 self.log_message.emit("Extracting (safe mode)...")
                 self.progress_updated.emit(20)
 
-                safe_dir = os.path.join(extract_dir, "squashfs-root")
-                extracted = None
-                if not extract_safely(appimage, safe_dir):
-                    self.log_message.emit("Safe extraction failed, trying --appimage-extract...")
-                    proc = subprocess.Popen(
-                        [appimage, "--appimage-extract"],
-                        cwd=extract_dir,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                    )
-                    self._process = proc
-                    stdout, stderr = proc.communicate(timeout=300)
-                    if proc.returncode != 0:
-                        self.extraction_error.emit(f"Extraction failed: {stderr}")
-                        return
+                _proc_tracker: list = []
+                extracted_dir_path = _run_extraction(
+                    self.appimage_path, extract_dir, self.log_message.emit, _proc_tracker
+                )
+                if _proc_tracker:
+                    self._process = _proc_tracker[0]
 
                 self.progress_updated.emit(50)
                 self.log_message.emit("Extraction complete. Copying files...")
-
-                try:
-                    extracted_dir_path = _find_extracted_dir(extract_dir)
-                except RuntimeError as e:
-                    self.extraction_error.emit(str(e))
-                    return
 
                 self.progress_updated.emit(70)
                 _atomic_install(extracted_dir_path, self.dest_dir)

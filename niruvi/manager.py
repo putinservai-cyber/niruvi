@@ -42,6 +42,8 @@ from niruvi.uninstall_dialog import UninstallWizard
 from niruvi.report_page import ReportPage
 from niruvi.utils import get_icon
 from niruvi.scanner import scan_appimage, self_scan
+from niruvi.hooks import run_hooks, ensure_hooks_dir, list_hooks
+from niruvi.health_check import check_app_health, format_health_icon, get_health_summary
 from niruvi.installation_registry import InstallationRegistry
 from niruvi.icon_utils import get_pixmap_from_file, get_pixmap_from_data, to_png_bytes
 from niruvi.appimage_metadata import AppImageMetadata
@@ -161,6 +163,10 @@ class AppManager(QMainWindow):
         scan_action = QAction(get_icon("bug", "tools-report-bug", "dialog-warning"), "Scan AppImage...", self)
         scan_action.triggered.connect(self._scan_appimage_dialog)
         tools_menu.addAction(scan_action)
+
+        health_action = QAction(get_icon("emblem-important", "dialog-warning"), "Health Check...", self)
+        health_action.triggered.connect(self._show_health_report)
+        tools_menu.addAction(health_action)
 
         tools_menu.addSeparator()
 
@@ -339,18 +345,24 @@ class AppManager(QMainWindow):
             self.worker.wait(1000)
         super().closeEvent(event)
 
-    def _add_app_to_list(self, key: str, app_dir: str, version: str, display_name: str | None = None, icon_path: str | None = None, update_url: str = "", architecture: str = "", display_name_override: str = "", custom_icon_path: str = ""):
+    def _add_app_to_list(self, key: str, app_dir: str, version: str, display_name: str | None = None, icon_path: str | None = None, update_url: str = "", architecture: str = "", display_name_override: str = "", custom_icon_path: str = "", health_info: dict | None = None):
         if display_name is None:
             display_name = key
         version_str = version if version and version != "unknown" else ""
         text = f"{display_name}" + (f"  (v{version_str})" if version_str else "")
         list_item = QListWidgetItem(text)
         list_item.setData(Qt.ItemDataRole.UserRole, key)
-        list_item.setToolTip(
+        tooltip = (
             f"Path: {app_dir}\n"
             f"Version: {version_str or 'unknown'}\n"
             f"Name: {key}"
         )
+        if health_info:
+            if health_info.get("issues"):
+                tooltip += f"\n⚠ Issues: {'; '.join(health_info['issues'])}"
+            if health_info.get("warnings"):
+                tooltip += f"\n⚡ Warnings: {'; '.join(health_info['warnings'])}"
+        list_item.setToolTip(tooltip)
         if icon_path:
             pixmap = get_pixmap_from_file(icon_path, 32)
             if pixmap and not pixmap.isNull():
@@ -400,25 +412,30 @@ class AppManager(QMainWindow):
                 apprun = os.path.join(app_dir, "AppRun")
                 if not os.path.isfile(apprun) or not os.access(apprun, os.X_OK):
                     continue
-                version = get_version(app_dir)
-                icon_path = self._find_app_icon(app_dir)
-                desktop_info = parse_desktop_file(
-                    os.path.join(app_dir, f"{item}.desktop")
-                ) if os.path.exists(os.path.join(app_dir, f"{item}.desktop")) else {}
-                desktop_info2 = {}
-                for f in os.listdir(app_dir):
-                    if f.endswith(".desktop"):
-                        desktop_info2 = parse_desktop_file(os.path.join(app_dir, f))
-                        break
-                info = desktop_info or desktop_info2
-                display_name = info.get("Name", item) if info else item
-                rec = registry.get(item)
-                update_url = rec.update_url if rec else ""
-                arch = rec.architecture if rec else ""
-                dn_override = rec.display_name_override if rec else ""
-                cust_icon = rec.custom_icon_path if rec else ""
-                display_name = dn_override or display_name
-                self._add_app_to_list(item, app_dir, version, display_name, icon_path, update_url, arch, dn_override, cust_icon)
+                try:
+                    version = get_version(app_dir)
+                    icon_path = self._find_app_icon(app_dir)
+                    desktop_info = parse_desktop_file(
+                        os.path.join(app_dir, f"{item}.desktop")
+                    ) if os.path.exists(os.path.join(app_dir, f"{item}.desktop")) else {}
+                    desktop_info2 = {}
+                    for f in os.listdir(app_dir):
+                        if f.endswith(".desktop"):
+                            desktop_info2 = parse_desktop_file(os.path.join(app_dir, f))
+                            break
+                    info = desktop_info or desktop_info2
+                    display_name = info.get("Name", item) if info else item
+                    rec = registry.get(item)
+                    update_url = rec.update_url if rec else ""
+                    arch = rec.architecture if rec else ""
+                    dn_override = rec.display_name_override if rec else ""
+                    cust_icon = rec.custom_icon_path if rec else ""
+                    display_name = dn_override or display_name
+                    health_info = check_app_health(item, app_dir, rec)
+                    self._add_app_to_list(item, app_dir, version, display_name, icon_path, update_url, arch, dn_override, cust_icon, health_info)
+                except Exception as e:
+                    logging.error("Failed to scan app %s: %s", item, e)
+                    continue
 
         stale = []
         for record in registry.get_all():
@@ -629,7 +646,9 @@ class AppManager(QMainWindow):
                 return
             elif reply == 2:
                 self._uninstall_app(app_name)
-                return
+                app_name = f"{app_name}-reinstall"
+                info = info.copy() if info else {}
+                info["Name"] = app_name
             elif reply == 3:
                 suffix = 2
                 base_name = app_name
@@ -680,6 +699,7 @@ class AppManager(QMainWindow):
         has_shortcut = bool(app_info.get("desktop_shortcut"))
         shortcut_text = "Remove Desktop Shortcut" if has_shortcut else "Create Desktop Shortcut"
         shortcut_action = menu.addAction(get_icon("user-desktop"), shortcut_text)
+        hooks_action = menu.addAction(get_icon("folder-open"), "Edit Hooks for This App")
         menu.addSeparator()
 
         action = menu.exec(self.installed_list.mapToGlobal(pos))
@@ -703,6 +723,8 @@ class AppManager(QMainWindow):
                 self._remove_desktop_shortcut(app_name)
             else:
                 self._create_desktop_shortcut(app_name)
+        elif action == hooks_action:
+            self._open_app_hooks(app_name)
 
     def _on_app_double_clicked(self, item):
         app_name = item.data(Qt.ItemDataRole.UserRole)
@@ -719,18 +741,17 @@ class AppManager(QMainWindow):
                 apprun = expected
                 app_dir = os.path.dirname(expected)
             else:
-                QMessageBox.critical(
-                    self, "Error",
-                    f"AppRun not found for '{app_name}'.<br><br>"
-                    "The app was installed from a device that is no longer connected, "
-                    "or its files were moved. Please reinstall the app.",
-                )
+                self._run_app_fallback(app_name, app_dir)
                 return
         registry = InstallationRegistry()
         record = registry.get(app_name)
         env = os.environ.copy()
         if record and record.env_vars:
             env.update(record.env_vars)
+        hook_results = run_hooks(app_name, app_dir, env)
+        for hr in hook_results:
+            if hr["returncode"] != 0:
+                logging.warning("Hook %s failed: %s", hr["hook"], hr["stderr"])
         cmd = [apprun]
         if record and record.run_args:
             import shlex
@@ -745,7 +766,90 @@ class AppManager(QMainWindow):
             _track_detached(p)
             self._status_bar.showMessage(f"Running {app_name}")
         except OSError as e:
-            QMessageBox.critical(self, "Run Error", str(e))
+            self._run_app_fallback(app_name, app_dir, env, record)
+
+    def _run_app_fallback(self, app_name: str, app_dir: str,
+                          env: dict | None = None, record=None):
+        appimage_path = self._find_appimage_in_dir(app_dir)
+        if appimage_path and os.path.isfile(appimage_path):
+            ret = self._try_extract_and_run(appimage_path, app_name, env, record)
+            if ret:
+                return
+        ret = self._try_extract_and_run_temp(app_dir, app_name, env, record)
+        if ret:
+            return
+        QMessageBox.critical(
+            self, "Run Error",
+            f"Could not run '{app_name}'.<br><br>"
+            "Failed to run via FUSE, namespace, or extraction.",
+        )
+
+    def _find_appimage_in_dir(self, app_dir: str) -> str | None:
+        for f in os.listdir(app_dir):
+            if f.endswith(".AppImage") and os.path.isfile(os.path.join(app_dir, f)):
+                return os.path.join(app_dir, f)
+        parent = os.path.dirname(app_dir)
+        for f in os.listdir(parent):
+            if f.lower().startswith(app_dir.lower().replace(" ", "")) and f.endswith(".AppImage"):
+                return os.path.join(parent, f)
+        return None
+
+    def _try_extract_and_run(self, appimage_path: str, app_name: str,
+                              env: dict | None = None, record=None) -> bool:
+        try:
+            from niruvi.health_check import check_namespace_available
+            use_namespace = check_namespace_available()
+            cmd = [appimage_path, "--appimage-extract-and-run"]
+            if record and record.run_args:
+                import shlex
+                cmd.extend(shlex.split(record.run_args))
+            if use_namespace:
+                runner = ["unshare", "--user", "--mount"]
+                runner.extend(cmd)
+                cmd = runner
+            p = subprocess.Popen(
+                cmd,
+                env=env or os.environ.copy(),
+                start_new_session=True,
+            )
+            _track_detached(p)
+            self._status_bar.showMessage(f"Running {app_name} (namespace mode)")
+            return True
+        except OSError:
+            return False
+
+    def _try_extract_and_run_temp(self, app_dir: str, app_name: str,
+                                   env: dict | None = None, record=None) -> bool:
+        import tempfile
+        import shutil
+        tmp = tempfile.mkdtemp(prefix=f"niruvi-{app_name}-")
+        try:
+            appimage_path = self._find_appimage_in_dir(app_dir)
+            if appimage_path and os.path.isfile(appimage_path):
+                from niruvi.worker import extract_appimage_sync
+                extract_appimage_sync(appimage_path, tmp)
+                apprun = os.path.join(tmp, "AppRun")
+                if os.path.isfile(apprun):
+                    cmd = [apprun]
+                    if record and record.run_args:
+                        import shlex
+                        cmd.extend(shlex.split(record.run_args))
+                    p = subprocess.Popen(
+                        cmd, cwd=tmp,
+                        env=env or os.environ.copy(),
+                        start_new_session=True,
+                    )
+                    _track_detached(p)
+                    self._status_bar.showMessage(f"Running {app_name} (extracted mode)")
+                    return True
+        except Exception as e:
+            logging.error("Temp extraction failed for %s: %s", app_name, e)
+        finally:
+            try:
+                shutil.rmtree(tmp, ignore_errors=True)
+            except OSError:
+                pass
+        return False
 
     def _uninstall_app(self, app_name: str):
         app_info = self.installed_apps[app_name]
@@ -759,8 +863,6 @@ class AppManager(QMainWindow):
         if wizard.exec() == QDialog.DialogCode.Accepted:
             self.scan_installed()
             self._status_bar.showMessage(f"Uninstalled {app_name}")
-        else:
-            self.scan_installed()
 
     def _update_app(self, app_name: str):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -882,6 +984,15 @@ class AppManager(QMainWindow):
         except OSError:
             QMessageBox.critical(self, "Error", "Could not open folder.")
 
+    def _open_app_hooks(self, app_name: str):
+        from niruvi.hooks import ensure_hooks_dir
+        hooks_dir = ensure_hooks_dir(app_name)
+        try:
+            p = subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True)
+            _track_detached(p)
+        except OSError:
+            QMessageBox.critical(self, "Error", "Could not open hooks directory.")
+
     def _show_app_info(self, app_name: str):
         app_info = self.installed_apps.get(app_name)
         if not app_info:
@@ -889,6 +1000,39 @@ class AppManager(QMainWindow):
         dlg = AppInfoDialog(app_name, app_info, self)
         dlg.exec()
         self.scan_installed()
+
+    def _show_health_report(self):
+        registry = InstallationRegistry()
+        summary = get_health_summary(self.installed_apps, registry)
+        lines = [
+            "<b>Health Report</b><br><br>",
+            f"<b>FUSE available:</b> {'Yes' if summary['fuse_available'] else 'No'}<br>",
+            f"<b>Namespaces available:</b> {'Yes' if summary['namespace_available'] else 'No'}<br><br>",
+            f"<b>Total apps:</b> {summary['total']}<br>",
+            f"<b>Healthy:</b> {summary['healthy']}<br>",
+            f"<b>With issues:</b> {summary['issues']}<br>",
+            f"<b>With warnings:</b> {summary['warnings']}<br><br>",
+        ]
+        if summary["issues"]:
+            lines.append("<b>Apps with issues:</b><br>")
+            for name, h in summary["results"].items():
+                if h["issues"]:
+                    lines.append(f"• <b>{name}</b>: {'; '.join(h['issues'])}<br>")
+            lines.append("<br>")
+        if summary["warnings"]:
+            lines.append("<b>Apps with warnings:</b><br>")
+            for name, h in summary["results"].items():
+                if h["warnings"]:
+                    lines.append(f"• <b>{name}</b>: {'; '.join(h['warnings'])}<br>")
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Health Check")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText("".join(lines))
+        msg.setIcon(QMessageBox.Icon.Information)
+        if summary["issues"]:
+            msg.setIcon(QMessageBox.Icon.Warning)
+        msg.exec()
 
     def _check_all_app_updates(self):
         registry = InstallationRegistry()

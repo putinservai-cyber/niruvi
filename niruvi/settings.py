@@ -211,6 +211,35 @@ class SettingsPage(QWidget):
 
         layout.addWidget(update_group)
 
+        hooks_group = QGroupBox("Hooks")
+        hooks_layout = QVBoxLayout(hooks_group)
+        hooks_layout.setSpacing(4)
+
+        hooks_dir = os.path.expanduser("~/.config/niruvi/hooks")
+        os.makedirs(hooks_dir, exist_ok=True)
+        hooks_label = QLabel(
+            f"Hooks directory:<br>"
+            f"<code>{hooks_dir}</code>"
+        )
+        hooks_label.setWordWrap(True)
+        hooks_label.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        hooks_layout.addWidget(hooks_label)
+
+        hooks_desc = QLabel(
+            "Place <code>.hook</code> scripts in the hooks directory (or a subdirectory "
+            "matching an app name) to run them before the app launches. "
+            "Scripts receive <code>APP_NAME</code> and <code>APP_DIR</code> environment variables."
+        )
+        hooks_desc.setWordWrap(True)
+        hooks_desc.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        hooks_layout.addWidget(hooks_desc)
+
+        open_hooks_btn = QPushButton(get_icon("folder-open"), "Open Hooks Directory")
+        open_hooks_btn.clicked.connect(lambda: os.system(f'xdg-open "{hooks_dir}" 2>/dev/null || true'))
+        hooks_layout.addWidget(open_hooks_btn)
+
+        layout.addWidget(hooks_group)
+
         icon_group = QGroupBox("Icons")
         icon_layout = QVBoxLayout(icon_group)
 

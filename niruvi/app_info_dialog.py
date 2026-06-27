@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import json
 import os
+import subprocess
 import shutil
 import tempfile
 import urllib.request
@@ -70,6 +71,43 @@ def _format_date(timestamp: float) -> str:
     return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _get_gpu_info() -> list[str]:
+    info = []
+    try:
+        result = subprocess.run(
+            ["glxinfo", "-B"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                low = line.lower()
+                if "opengl renderer" in low or "opengl vendor" in low or "opengl version" in low:
+                    info.append(line.strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        info.append("glxinfo not available")
+    try:
+        result = subprocess.run(
+            ["vulkaninfo", "--summary"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                low = line.strip().lower()
+                if low.startswith("gpu") or "device name" in low or "driver version" in low or "vulkan" in low:
+                    val = line.strip()
+                    if val and val not in info:
+                        info.append(val)
+        else:
+            info.append("vulkaninfo: no Vulkan drivers found")
+    except FileNotFoundError:
+        info.append("vulkaninfo not available")
+    except subprocess.TimeoutExpired:
+        info.append("vulkaninfo timed out")
+    if not info:
+        info.append("No GPU information available")
+    return info
+
+
 class UpdateCheckWorker(QThread):
     finished = pyqtSignal(bool, str, str, str)
     error = pyqtSignal(str)
@@ -112,7 +150,7 @@ class FileTreeWidget(QTreeWidget):
                 full = os.path.join(path, name)
                 try:
                     is_dir = os.path.isdir(full)
-                    item = QTreeWidgetItem(parent_item if parent_item else [self.invisibleRootItem()])
+                    item = QTreeWidgetItem(parent_item if parent_item else self.invisibleRootItem())
                     item.setText(0, name + "/" if is_dir else name)
                     item.setText(1, _format_size(os.path.getsize(full)) if not is_dir else "")
                     item.setText(2, _format_date(os.path.getmtime(full)))
@@ -228,10 +266,10 @@ class AppInfoDialog(QDialog):
         add_field("Path", app_dir)
         if os.path.isdir(app_dir):
             total = 0
-            for root, _, files in os.walk(app_dir):
+            for dirpath, _, files in os.walk(app_dir):
                 for f in files:
                     try:
-                        total += os.path.getsize(os.path.join(root, f))
+                        total += os.path.getsize(os.path.join(dirpath, f))
                     except OSError:
                         pass
             add_field("Size", _format_size(total))
@@ -409,6 +447,25 @@ class AppInfoDialog(QDialog):
         update_grid.addLayout(settings_row)
 
         layout.addWidget(update_group)
+
+        # ── GPU Diagnostics Section ──
+        gpu_group = QGroupBox("GPU / Vulkan")
+        gpu_group.setStyleSheet(_SECTION_STYLE)
+        gpu_layout = QVBoxLayout(gpu_group)
+        gpu_layout.setSpacing(4)
+        gpu_info = _get_gpu_info()
+        if gpu_info:
+            for line in gpu_info:
+                lbl = QLabel(line)
+                lbl.setWordWrap(True)
+                lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                gpu_layout.addWidget(lbl)
+        else:
+            gpu_layout.addWidget(QLabel("No GPU information available."))
+        refresh_gpu_btn = QPushButton(get_icon("view-refresh"), "Refresh GPU Info")
+        refresh_gpu_btn.clicked.connect(lambda: self._refresh_gpu_info(gpu_layout))
+        gpu_layout.addWidget(refresh_gpu_btn)
+        layout.addWidget(gpu_group)
 
         # ── Files Section ──
         files_group = QGroupBox("Files")
@@ -684,6 +741,22 @@ class AppInfoDialog(QDialog):
         parent = self.parent()
         if parent and hasattr(parent, "_run_app"):
             parent._run_app(self._app_name)
+
+    def _refresh_gpu_info(self, layout: QVBoxLayout):
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        gpu_info = _get_gpu_info()
+        if gpu_info:
+            for line in gpu_info:
+                lbl = QLabel(line)
+                lbl.setWordWrap(True)
+                lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                layout.insertWidget(layout.count() - 1, lbl)
+        refresh_btn = QPushButton(get_icon("view-refresh"), "Refresh GPU Info")
+        refresh_btn.clicked.connect(lambda: self._refresh_gpu_info(layout))
+        layout.addWidget(refresh_btn)
 
     def _uninstall_app(self):
         self.accept()

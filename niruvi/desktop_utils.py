@@ -69,16 +69,28 @@ _ICON_SIZE_DIRS = {
 }
 
 
+def _sanitize_icon_name(name: str) -> str:
+    return name.replace(" ", "-").replace("\t", "-").lower()
+
+
+def _format_exec_path(app_dir: str) -> str:
+    apprun = os.path.join(app_dir, "AppRun")
+    if " " in apprun:
+        return f'"{apprun}" %F'
+    return f"{apprun} %F"
+
+
 def install_icon_to_theme(icon_path: str, app_name: str) -> str | None:
     if not icon_path or not os.path.exists(icon_path):
         return None
     icon_path = str(icon_path)
     ext = os.path.splitext(icon_path)[1].lower()
     size_dir = _ICON_SIZE_DIRS.get(ext, "256x256")
+    icon_name = _sanitize_icon_name(app_name)
     icons_root = os.path.expanduser("~/.local/share/icons")
     target_dir = os.path.join(icons_root, "hicolor", size_dir, "apps")
     os.makedirs(target_dir, exist_ok=True)
-    target = os.path.join(target_dir, f"{app_name}{ext}")
+    target = os.path.join(target_dir, f"{icon_name}{ext}")
     try:
         shutil.copy2(icon_path, target)
         os.chmod(target, 0o644)
@@ -89,13 +101,13 @@ def install_icon_to_theme(icon_path: str, app_name: str) -> str | None:
     if ext == ".png":
         scalable_dir = os.path.join(icons_root, "hicolor", "scalable", "apps")
         os.makedirs(scalable_dir, exist_ok=True)
-        scalable_target = os.path.join(scalable_dir, f"{app_name}{ext}")
+        scalable_target = os.path.join(scalable_dir, f"{icon_name}{ext}")
         try:
             shutil.copy2(icon_path, scalable_target)
             os.chmod(scalable_target, 0o644)
         except OSError:
             pass
-    return app_name
+    return icon_name
 
 
 def _resolve_icon(app_dir: str, desktop_lines: list[str] | None = None) -> str | None:
@@ -138,7 +150,7 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
     has_startup = False
     for line in lines:
         if line.startswith("Exec="):
-            new_lines.append(f"Exec={app_dir}/AppRun %F\n")
+            new_lines.append(f"Exec={_format_exec_path(app_dir)}\n")
             has_exec = True
         elif line.startswith("Icon="):
             if icon_name:
@@ -155,7 +167,7 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
             new_lines.append(line)
 
     if not has_exec:
-        new_lines.append(f"Exec={app_dir}/AppRun %F\n")
+        new_lines.append(f"Exec={_format_exec_path(app_dir)}\n")
     if not has_categories:
         new_lines.append("Categories=Utility;\n")
     if not has_startup:
@@ -180,7 +192,7 @@ def create_desktop_shortcut(app_name: str, exec_path: str, icon_path: str | None
     os.makedirs(desktop_dir, exist_ok=True)
     shortcut_path = os.path.join(desktop_dir, f"{app_name}.desktop")
 
-    icon_value = app_name
+    icon_value = _sanitize_icon_name(app_name)
     if icon_path:
         installed = install_icon_to_theme(icon_path, app_name)
         if installed:
@@ -188,12 +200,13 @@ def create_desktop_shortcut(app_name: str, exec_path: str, icon_path: str | None
         else:
             icon_value = icon_path
 
+    exec_value = f'"{exec_path}"' if " " in exec_path else exec_path
     content = (
         "[Desktop Entry]\n"
         "Type=Application\n"
         f"Name={app_name}\n"
         "Comment=AppImage application managed by Niruvi\n"
-        f"Exec={exec_path} %F\n"
+        f"Exec={exec_value} %F\n"
         f"Icon={icon_value}\n"
         "Terminal=false\n"
         "Categories=Utility;\n"
@@ -217,7 +230,7 @@ def _create_generic_desktop(app_dir: str, app_name: str) -> str | None:
     content = (
         "[Desktop Entry]\n"
         f"Name={app_name}\n"
-        f"Exec={app_dir}/AppRun %F\n"
+        f"Exec={_format_exec_path(app_dir)}\n"
         "Type=Application\n"
         f"Icon={icon_name or 'application-x-executable'}\n"
         "Categories=Utility;\n"

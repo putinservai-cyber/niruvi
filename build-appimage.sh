@@ -11,7 +11,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 PYTHON_VERSION="$($PYTHON_BIN -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 PYTHON_LIB_DIR="$($PYTHON_BIN -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
 PYTHON_LIB_PARENT="$(dirname "$PYTHON_LIB_DIR")"
-SITE_PACKAGES_SRC="$($PYTHON_BIN -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
+SITE_PACKAGES_SRC="$($PYTHON_BIN -c 'import PyQt6, os; print(os.path.dirname(os.path.dirname(PyQt6.__file__)))' 2>/dev/null)" || SITE_PACKAGES_SRC="$($PYTHON_BIN -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
 LIBPYTHON_PATH="$($PYTHON_BIN -c 'import sysconfig; print(sysconfig.get_config_var("INSTSONAME") or "")')"
 
 if [ -z "$LIBPYTHON_PATH" ]; then
