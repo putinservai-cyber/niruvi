@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.health_check import check_system_compatibility
+from niruvi.sound_manager import play as play_sound
 from niruvi.utils import get_icon
 
 
@@ -277,6 +278,6 @@ class DeviceInfoDialog(QDialog):
         btn_layout.setContentsMargins(12, 8, 12, 8)
         btn_layout.addStretch()
         close_btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        close_btn.rejected.connect(self.accept)
+        close_btn.rejected.connect(lambda: (play_sound("click"), self.accept()))
         btn_layout.addWidget(close_btn)
         layout.addWidget(btn_bar)

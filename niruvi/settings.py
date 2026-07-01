@@ -529,12 +529,14 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def accept(self):
+        from niruvi.sound_manager import play as play_sound
         if self._page.apply():
+            play_sound("click")
             super().accept()
 
     def reject(self):
+        from niruvi.sound_manager import play as play_sound
         if self._page._has_changes():
-            from niruvi.sound_manager import play as play_sound
             play_sound("warning")
             reply = QMessageBox.question(
                 self, "Unsaved Changes",
@@ -543,4 +545,5 @@ class SettingsDialog(QDialog):
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
+        play_sound("click")
         super().reject()

@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 
 from PyQt6.QtCore import QObject, Qt, QEvent
 from PyQt6.QtWidgets import QApplication, QMenu, QAbstractButton
@@ -35,6 +36,8 @@ _audio_dir: str = ""
 _player: str | None = None
 _initialized = False
 _sound_filter: QObject | None = None
+_last_play_time: float = 0.0
+_PLAY_DEBOUNCE_MS: float = 0.15
 
 
 def _find_audio_dir() -> str:
@@ -69,8 +72,13 @@ def _init():
 
 
 def play(sound_name: str):
+    global _last_play_time
     if not _settings.get("sound_effects_enabled", True):
         return
+    now = time.time()
+    if now - _last_play_time < _PLAY_DEBOUNCE_MS:
+        return
+    _last_play_time = now
     _init()
     if not _player or not _audio_dir:
         return
