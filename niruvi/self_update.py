@@ -8,14 +8,42 @@ import urllib.request
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QProcess
+from niruvi.sound_manager import play as play_sound
 from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QWidget
 
 from niruvi import __version__
 
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/putinservai-cyber/niruvi/main/update.json"
 
-NIRUVI_INSTALL_DIR = os.path.expanduser("~/Applications/Niruvi")
 NIRUVI_APPIMAGE_NAME = "Niruvi-x86_64.AppImage"
+
+
+def _get_install_dir() -> str:
+    """Return the actual Niruvi installation directory.
+
+    Priority:
+    1. APPIMAGE env var → directory containing the running AppImage
+    2. INSTALLED_DIR from settings (~/Applications/Niruvi)
+    3. Fallback to ~/Applications/Niruvi
+    """
+    appimage = os.environ.get("APPIMAGE")
+    if appimage and os.path.isfile(appimage):
+        return os.path.dirname(os.path.realpath(appimage))
+    from niruvi.settings import INSTALLED_DIR
+    return os.path.expanduser(INSTALLED_DIR)
+
+
+def _get_appimage_path() -> str:
+    """Return the path to the Niruvi AppImage file."""
+    install_dir = _get_install_dir()
+    candidate = os.path.join(install_dir, NIRUVI_APPIMAGE_NAME)
+    if os.path.isfile(candidate):
+        return candidate
+    # fallback: look for any .AppImage in the install dir
+    for f in os.listdir(install_dir):
+        if f.endswith(".AppImage") and f.startswith("Niruvi"):
+            return os.path.join(install_dir, f)
+    return candidate
 
 
 def compare_versions(v1, op, v2):
@@ -93,6 +121,7 @@ def check_for_updates(parent: QWidget):
         changelog = manifest.get("changelog", "")
 
         if not latest_version or not download_url:
+            play_sound("warning")
             QMessageBox.warning(
                 parent, "Update Check",
                 "Update manifest is missing required fields (version, download_url)."
@@ -126,6 +155,7 @@ def check_for_updates(parent: QWidget):
             )
 
     except Exception as e:
+        play_sound("warning")
         QMessageBox.warning(
             parent,
             "Update Check Failed",
@@ -159,6 +189,7 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
             actual = digest.hex()
             if actual.lower() != expected_sha256.lower():
                 Path(temp_path).unlink(missing_ok=True)
+                play_sound("error")
                 QMessageBox.critical(
                     parent, "Verification Failed",
                     f"SHA256 mismatch!\n\n"
@@ -168,8 +199,9 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
                 )
                 return
 
-        os.makedirs(NIRUVI_INSTALL_DIR, exist_ok=True)
-        dest = os.path.join(NIRUVI_INSTALL_DIR, NIRUVI_APPIMAGE_NAME)
+        install_dir = _get_install_dir()
+        os.makedirs(install_dir, exist_ok=True)
+        dest = os.path.join(install_dir, NIRUVI_APPIMAGE_NAME)
 
         backup_path = dest + ".backup"
         if os.path.exists(dest):
@@ -177,12 +209,11 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
                 os.remove(backup_path)
             os.rename(dest, backup_path)
 
-        shutil.copy2(temp_path, dest)
+        os.replace(temp_path, dest)
         os.chmod(dest, 0o755)
-        Path(temp_path).unlink(missing_ok=True)
         temp_path = None
 
-        meta_path = os.path.join(NIRUVI_INSTALL_DIR, ".appimage-manager.json")
+        meta_path = os.path.join(install_dir, ".appimage-manager.json")
         meta = {}
         if os.path.exists(meta_path):
             with open(meta_path) as f:
@@ -221,4 +252,5 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
         if temp_path:
             Path(temp_path).unlink(missing_ok=True)
         progress.close()
+        play_sound("error")
         QMessageBox.critical(parent, "Update Failed", f"Failed to download or install update:\n{e}")

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QMessageBox
 from pathlib import Path
 
 from niruvi.settings import DESKTOP_DIR, get_settings
+from niruvi.sound_manager import play as play_sound
 
 
 def get_version(app_dir: str) -> str:
@@ -25,8 +26,13 @@ def get_version(app_dir: str) -> str:
             try:
                 with open(desktop_path) as df:
                     for line in df:
-                        if line.startswith("Version="):
-                            return line.strip().split("=", 1)[1]
+                        stripped = line.strip()
+                        # X-AppImage-Version is the standard field for app version
+                        if stripped.startswith("X-AppImage-Version="):
+                            return stripped.split("=", 1)[1]
+                        # X-App-Version is used by some apps
+                        if stripped.startswith("X-App-Version="):
+                            return stripped.split("=", 1)[1]
             except OSError:
                 pass
     return "unknown"
@@ -183,6 +189,7 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
         return dest_desktop
     except OSError as e:
         if parent:
+            play_sound("error")
             QMessageBox.critical(parent, "Error", f"Failed to write desktop file: {e}")
         return None
 

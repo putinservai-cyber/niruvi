@@ -31,16 +31,16 @@ def process_appimage(path_str: str, parent=None):
     registry = InstallationRegistry()
     existing = registry.lookup_by_name(app_name) or registry.lookup_by_path(str(path))
     if existing:
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QGridLayout, QLabel, QPushButton
         from PyQt6.QtGui import QIcon
 
         dlg = QDialog(parent)
         dlg.setWindowTitle("Already Installed")
-        dlg.setFixedSize(420, 240)
+        dlg.setFixedSize(480, 260)
         dlg.setModal(True)
         layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
 
         title = QLabel(f"<b>{app_name}</b> is already installed")
         title.setWordWrap(True)
@@ -49,20 +49,21 @@ def process_appimage(path_str: str, parent=None):
         layout.addWidget(desc)
         layout.addStretch()
 
-        btn_row = QHBoxLayout()
+        btn_grid = QGridLayout()
+        btn_grid.setSpacing(8)
         btn_reinstall = QPushButton(get_icon("view-refresh"), "Re-integrate")
         btn_reinstall.clicked.connect(lambda: dlg.done(1))
+        btn_grid.addWidget(btn_reinstall, 0, 0)
         btn_sbs = QPushButton(get_icon("list-add"), "Install Side-by-Side")
         btn_sbs.clicked.connect(lambda: dlg.done(3))
+        btn_grid.addWidget(btn_sbs, 0, 1)
         btn_remove = QPushButton(get_icon("edit-delete"), "Remove")
         btn_remove.clicked.connect(lambda: dlg.done(2))
+        btn_grid.addWidget(btn_remove, 1, 0)
         btn_cancel = QPushButton(get_icon("dialog-cancel"), "Cancel")
         btn_cancel.clicked.connect(lambda: dlg.done(0))
-        btn_row.addWidget(btn_reinstall)
-        btn_row.addWidget(btn_sbs)
-        btn_row.addWidget(btn_remove)
-        btn_row.addWidget(btn_cancel)
-        layout.addLayout(btn_row)
+        btn_grid.addWidget(btn_cancel, 1, 1)
+        layout.addLayout(btn_grid)
 
         reply = dlg.exec()
         if reply == 0:
@@ -283,6 +284,8 @@ def main():
             file_to_process = str(p)
 
     app = QApplication(sys.argv)
+    from niruvi.utils import _init_icon_theme
+    _init_icon_theme()
     app.setApplicationName("Niruvi")
     app.setApplicationVersion(__version__)
 
@@ -328,7 +331,24 @@ def main():
 
     window = AppManager()
     window.show()
-    sys.exit(app.exec())
+    ret = app.exec()
+    window.close()
+    from niruvi.sound_manager import uninstall_button_filter
+    uninstall_button_filter()
+    for _ in range(3):
+        import gc as _gc
+        _gc.collect()
+    for _attr in ('last_exc', 'last_value', 'last_traceback', 'last_type'):
+        try:
+            setattr(sys, _attr, None)
+        except AttributeError:
+            pass
+    for _ in range(3):
+        import gc as _gc
+        _gc.collect()
+    window = None
+    app = None
+    sys.exit(ret)
 
 
 if __name__ == "__main__":

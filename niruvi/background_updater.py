@@ -75,14 +75,25 @@ class BackgroundUpdater(QObject):
             records = registry.get_all()
             apps_with_url = [r for r in records if r.update_url and r.auto_update]
             for record in apps_with_url:
-                self._check_app(record.name, record.update_url, record.version)
+                channel = record.update_channel or "stable"
+                self._check_app(record.name, record.update_url, record.version, channel=channel)
         finally:
             self._check_in_progress = False
             self.all_checked.emit()
 
-    def _check_app(self, app_name: str, update_url: str, current_version: str):
+    def _check_app(self, app_name: str, update_url: str, current_version: str,
+                   channel: str = "stable"):
+        """Check for updates for a single app.
+
+        Args:
+            app_name: Name of the app.
+            update_url: Update URL to check.
+            current_version: Currently installed version.
+            channel: Update channel (stable, beta, nightly) — default "stable"
+                     unless overridden by the record.
+        """
         try:
-            info = resolve_update_source(update_url, current_version, channel="stable")
+            info = resolve_update_source(update_url, current_version, channel=channel)
             if not info or not info.version:
                 self.update_checked.emit(app_name, False)
                 return
@@ -103,9 +114,9 @@ class BackgroundUpdater(QObject):
             self.update_checked.emit(app_name, False)
 
     def check_app_sync(self, app_name: str, update_url: str,
-                       current_version: str) -> UpdateResult | None:
+                       current_version: str, channel: str = "stable") -> UpdateResult | None:
         try:
-            info = resolve_update_source(update_url, current_version, channel="stable")
+            info = resolve_update_source(update_url, current_version, channel=channel)
             if not info or not info.version:
                 return None
             if compare_versions(info.version, 'gt', current_version):

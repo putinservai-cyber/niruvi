@@ -1,8 +1,10 @@
 import atexit
+import hashlib
 import os
 import shutil
 import subprocess
 import tempfile
+import urllib.request
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -89,7 +91,7 @@ def _atomic_install(extracted_dir: str, dest_dir: str):
     if os.path.exists(staging):
         shutil.rmtree(staging, ignore_errors=True)
     try:
-        shutil.copytree(extracted_dir, staging, dirs_exist_ok=True)
+        shutil.copytree(extracted_dir, staging, dirs_exist_ok=True, symlinks=True, ignore_dangling_symlinks=True)
         if os.path.exists(dest_dir):
             shutil.rmtree(dest_dir)
         os.replace(staging, dest_dir)
@@ -169,3 +171,116 @@ class ExtractionWorker(QThread):
         staging = self.dest_dir + ".staging"
         if os.path.exists(staging):
             shutil.rmtree(staging, ignore_errors=True)
+
+
+class DownloadWorker(QThread):
+    """Downloads an AppImage from a URL with progress reporting."""
+
+    progress_updated = pyqtSignal(int)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+    speed_updated = pyqtSignal(str)
+
+    def __init__(self, url: str, dest_path: str, expected_sha256: str = "",
+                 parent=None):
+        super().__init__(parent)
+        self.url = url
+        self.dest_path = dest_path
+        self.expected_sha256 = expected_sha256
+        self._cancelled = False
+
+    def run(self):
+        try:
+            resp = urllib.request.urlopen(self.url, timeout=120)
+            total = int(resp.headers.get("Content-Length", 0))
+            chunk_size = 65536
+            downloaded = 0
+            sha256_hash = hashlib.sha256()
+            start_time = 0
+            import time
+            start_time = time.time()
+
+            with open(self.dest_path, "wb") as f:
+                while True:
+                    if self._cancelled:
+                        return
+                    chunk = resp.read(chunk_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    sha256_hash.update(chunk)
+                    downloaded += len(chunk)
+                    if total > 0:
+                        pct = int((downloaded / total) * 100)
+                        self.progress_updated.emit(pct)
+                    elapsed = time.time() - start_time
+                    if elapsed > 0:
+                        speed = downloaded / elapsed / 1024
+                        if speed > 1024:
+                            self.speed_updated.emit(f"{speed / 1024:.1f} MB/s")
+                        else:
+                            self.speed_updated.emit(f"{int(speed)} KB/s")
+
+            actual_sha = sha256_hash.hexdigest()
+            if self.expected_sha256:
+                if actual_sha.lower() != self.expected_sha256.lower():
+                    self.error.emit(
+                        f"SHA256 mismatch\nExpected: {self.expected_sha256}\nActual: {actual_sha}"
+                    )
+                    if os.path.exists(self.dest_path):
+                        os.unlink(self.dest_path)
+                    return
+
+            self.finished.emit(self.dest_path)
+        except Exception as e:
+            self.error.emit(str(e))
+
+    def cancel(self):
+        self._cancelled = True
+
+
+class InstallQueueWorker(QThread):
+    """Processes a queue of install tasks sequentially."""
+
+    task_started = pyqtSignal(str, int)
+    task_progress = pyqtSignal(int)
+    task_finished = pyqtSignal(str)
+    task_error = pyqtSignal(str)
+    all_finished = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._queue: list[dict] = []
+        self._running = False
+
+    def add_task(self, task: dict):
+        self._queue.append(task)
+
+    def add_tasks(self, tasks: list[dict]):
+        self._queue.extend(tasks)
+
+    def task_count(self) -> int:
+        return len(self._queue)
+
+    def run(self):
+        self._running = True
+        for i, task in enumerate(self._queue):
+            if not self._running:
+                break
+            appimage_path = task.get("appimage_path", "")
+            dest_dir = task.get("dest_dir", "")
+            app_name = task.get("app_name", "")
+            self.task_started.emit(app_name, i + 1)
+
+            worker = ExtractionWorker(appimage_path, dest_dir, app_name, None)
+            worker.progress_updated.connect(self.task_progress.emit)
+            worker.extraction_finished.connect(self.task_finished.emit)
+            worker.extraction_error.connect(self.task_error.emit)
+            worker.run()
+            worker.wait()
+
+        self.all_finished.emit()
+        self._running = False
+
+    def stop(self):
+        self._running = False

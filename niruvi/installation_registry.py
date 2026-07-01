@@ -16,7 +16,8 @@ class InstallationRecord:
                  architecture: str = "", display_name_override: str = "",
                  custom_icon_path: str = "", env_vars: dict | None = None,
                  run_args: str = "", auto_update: bool = False,
-                 update_channel: str = "stable"):
+                 update_channel: str = "stable",
+                 sandbox_config: dict | None = None):
         self.name = name
         self.path = path
         self.version = version
@@ -33,6 +34,7 @@ class InstallationRecord:
         self.run_args = run_args
         self.auto_update = auto_update
         self.update_channel = update_channel
+        self.sandbox_config = sandbox_config or {}
 
     def to_dict(self) -> dict:
         return {
@@ -52,6 +54,7 @@ class InstallationRecord:
             "run_args": self.run_args,
             "auto_update": self.auto_update,
             "update_channel": self.update_channel,
+            "sandbox_config": self.sandbox_config,
         }
 
     @classmethod
@@ -73,6 +76,7 @@ class InstallationRecord:
             run_args=data.get("run_args", ""),
             auto_update=data.get("auto_update", False),
             update_channel=data.get("update_channel", "stable"),
+            sandbox_config=data.get("sandbox_config", {}),
         )
 
 

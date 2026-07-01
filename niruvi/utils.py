@@ -3,40 +3,49 @@ import shutil
 import tempfile
 
 from PyQt6.QtCore import QDir
-from PyQt6.QtGui import QColor, QIcon, QPalette, QPixmapCache
+from PyQt6.QtGui import QColor, QIcon, QPalette, QPixmap, QPixmapCache
 from PyQt6.QtWidgets import QApplication
 
 _svg_cache: dict[str, str] = {}
 _known_icon_names: set[str] = set()
 _colorized_dir: str | None = None
+_icon_theme_initialized = False
 
 
 def _init_icon_theme():
-    icon_dir = os.environ.get("NIRUVI_ICON_DIR")
-    if not icon_dir:
-        appdir = os.environ.get("APPDIR")
-        if appdir:
-            candidate = os.path.join(appdir, "icons")
-            if os.path.isdir(candidate):
-                icon_dir = candidate
-    if not icon_dir:
-        here = os.path.dirname(os.path.abspath(__file__))
-        for parent in (here, os.path.dirname(here),
-                       os.path.join(os.path.dirname(here), "asset"),
-                       os.path.join(os.path.dirname(os.path.dirname(here)), "asset")):
-            candidate = os.path.join(parent, "icons")
-            if os.path.isdir(candidate):
-                icon_dir = candidate
-                break
-    if icon_dir and os.path.isdir(icon_dir):
-        paths = QIcon.themeSearchPaths()
+    global _icon_theme_initialized
+    if _icon_theme_initialized:
+        return
+
+    search_dirs = []
+    env_dir = os.environ.get("NIRUVI_ICON_DIR")
+    if env_dir:
+        search_dirs.append(env_dir)
+
+    appdir = os.environ.get("APPDIR")
+    if appdir:
+        search_dirs.append(os.path.join(appdir, "icons"))
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    for parent in (here, os.path.dirname(here),
+                   os.path.join(os.path.dirname(here), "asset"),
+                   os.path.join(os.path.dirname(os.path.dirname(here)), "asset")):
+        search_dirs.append(os.path.join(parent, "icons"))
+
+    icon_dir = None
+    for d in search_dirs:
+        if d and os.path.isdir(d):
+            icon_dir = d
+            break
+
+    if icon_dir:
+        paths = list(QIcon.themeSearchPaths())
         icon_dir = QDir(icon_dir).absolutePath()
         if icon_dir not in paths:
             paths.insert(0, icon_dir)
             QIcon.setThemeSearchPaths(paths)
 
-
-_init_icon_theme()
+    _icon_theme_initialized = True
 
 
 def _load_svg(name: str) -> str | None:
@@ -102,7 +111,18 @@ def _on_palette_changed(_palette=None):
     _rebuild_icons()
 
 
+def _fallback_icon() -> QIcon:
+    pixmap = QPixmapCache.find("niruvi_fallback_icon")
+    if pixmap and not pixmap.isNull():
+        return QIcon(pixmap)
+    pixmap = QPixmap(32, 32)
+    pixmap.fill(QColor(0x88, 0x88, 0x88))
+    QPixmapCache.insert("niruvi_fallback_icon", pixmap)
+    return QIcon(pixmap)
+
+
 def get_icon(*names: str) -> QIcon:
+    _init_icon_theme()
     app = QApplication.instance()
     if app and not hasattr(QIcon, "_niruvi_palette_connected"):
         app.paletteChanged.connect(_on_palette_changed)
@@ -121,4 +141,4 @@ def get_icon(*names: str) -> QIcon:
         if not icon.isNull():
             return icon
 
-    return QIcon.fromTheme("dialog-information")
+    return QIcon.fromTheme("dialog-information", _fallback_icon())

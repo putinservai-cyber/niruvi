@@ -28,7 +28,7 @@ def list_hooks(app_name: str) -> list[str]:
             continue
         for f in sorted(os.listdir(base)):
             path = os.path.join(base, f)
-            if f.endswith(".hook") and os.path.isfile(path) and os.access(path, os.X_OK):
+            if f.endswith(".hook") and os.path.isfile(path):
                 if f not in seen:
                     seen.add(f)
                     hooks.append(path)

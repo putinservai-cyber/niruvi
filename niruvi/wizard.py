@@ -10,7 +10,7 @@ from PyQt6.QtGui import QFont
 from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
     QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QMessageBox,
+    QLabel, QPushButton, QMessageBox, QLineEdit,
     QProgressBar, QCheckBox, QTextEdit,
 )
 
@@ -24,71 +24,53 @@ from niruvi.appimage_assets import extract_metadata
 from niruvi.appimage_metadata import AppImageMetadata
 from niruvi.icon_utils import get_pixmap_from_file
 from niruvi.installation_registry import InstallationRegistry, InstallationRecord
+from niruvi.sound_manager import play as play_sound
+
 
 
 class ScanPage(QWizardPage):
-    """Security scan results page with gating for high/medium risk."""
+    """Pre-install validation page."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._acknowledged = False
-        self._scan_result = None
-        self.setTitle("Security Scan")
-        self.setSubTitle("Scanning the AppImage for potential security risks.")
+        self._scan_result = {"risk_level": "safe", "warnings": [], "sha256": "", "size_mb": 0}
+        self.setTitle("AppImage Info")
+        self.setSubTitle("Validating the AppImage before installation.")
         layout = QVBoxLayout(self)
 
-        self.scan_result_label = QLabel("Scanning...")
+        self.scan_result_label = QLabel("Checking...")
         self.scan_result_label.setWordWrap(True)
         self.scan_result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scan_result_label.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.scan_result_label)
 
-        self.ignore_cb = QCheckBox("I understand the risks, proceed with installation anyway")
-        self.ignore_cb.setVisible(False)
-        self.ignore_cb.toggled.connect(self._on_ignore_toggled)
-        layout.addWidget(self.ignore_cb)
-
         layout.addStretch()
 
-    def _on_ignore_toggled(self, checked):
-        self._acknowledged = checked
-        self.completeChanged.emit()
-
     def isComplete(self):
-        if self._scan_result is None:
-            return False
-        risk = self._scan_result.get("risk_level", "unknown")
-        if risk in ("high", "medium"):
-            return self._acknowledged
         return True
 
     def set_scan_result(self, result):
         self._scan_result = result
-        risk = result.get("risk_level", "unknown")
+        lines = [f"<b>Size:</b> {result.get('size_mb', 0):.1f} MB"]
+        sha = result.get("sha256", "")[:16]
+        if sha:
+            lines.append(f"<br><b>SHA256:</b> {sha}...")
+        arch = result.get("architecture", "")
+        if arch:
+            lines.append(f"<br><b>Architecture:</b> {arch}")
+        fmt = result.get("format_check", {})
+        if fmt.get("valid"):
+            lines.append(f"<br><b>Format:</b> Valid ({fmt.get('fs_type', '?')})")
+        if fmt.get("executable") is False:
+            lines.append("<br><span style='color:orange;'>Not executable — will fix on install</span>")
+        if not fmt.get("fuse_available"):
+            lines.append("<br><span style='color:orange;'>FUSE unavailable</span>")
         warnings = result.get("warnings", [])
-        sha256 = result.get("sha256", "?")[:16]
-        size_mb = result.get("size_mb", 0)
-
-        color = {"safe": "green", "low": "orange", "medium": "orange", "high": "red"}.get(risk, "gray")
-        lines = [f"<b>Risk Level: <span style='color:{color};'>{risk.upper()}</span></b>"]
-        lines.append(f"<br>Size: {size_mb:.1f} MB")
-        lines.append(f"<br>SHA256: {sha256}...")
-
         if warnings:
-            lines.append("<br><br><b>Warnings:</b><br>")
-            lines.extend(f"• {w}" for w in warnings[:15])
-
-        if risk in ("high", "medium"):
-            lines.append("<br><br><span style='color:red;'><b>Proceed with caution</b> — review the warnings above.</span>")
-            self.ignore_cb.setVisible(True)
-            self.ignore_cb.setChecked(False)
-            self._acknowledged = False
-        else:
-            lines.append("<br><br><span style='color:green;'>No security issues detected.</span>")
-            self.ignore_cb.setVisible(False)
-            self.ignore_cb.setChecked(True)
-            self._acknowledged = True
-
+            lines.append("<br><br><b>Notes:</b><br>")
+            lines.extend(f"• {w}" for w in warnings[:8])
+        if not warnings:
+            lines.append("<br><br><span style='color:green;'>AppImage is ready to install.</span>")
         self.scan_result_label.setText("".join(lines))
         self.completeChanged.emit()
 
@@ -99,8 +81,53 @@ class ScanPage(QWizardPage):
 class InstallWizard(QWizard):
     def __init__(self, appimage_path=None, parent=None, appimage_info=None, icon_data=None):
         super().__init__(parent)
-        self.setFixedSize(580, 480)
+        self.setFixedSize(600, 500)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
+        self.setStyleSheet("""
+            QWizardPage { background: palette(window); }
+            QLabel { font-size: 12px; }
+            QLabel[heading="true"] { font-size: 14px; font-weight: bold; }
+            QProgressBar {
+                border: 1px solid palette(mid);
+                border-radius: 6px;
+                text-align: center;
+                height: 22px;
+                background: palette(window);
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4a9eff, stop:1 #6cb4ff);
+                border-radius: 5px;
+            }
+            QPushButton {
+                padding: 6px 16px;
+                border: 1px solid palette(mid);
+                border-radius: 5px;
+                background: palette(button);
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background: palette(light);
+                border-color: palette(highlight);
+            }
+            QPushButton:pressed {
+                background: palette(midlight);
+            }
+            QCheckBox {
+                spacing: 8px;
+                font-size: 12px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border-radius: 3px;
+                border: 1px solid palette(mid);
+            }
+            QCheckBox::indicator:checked {
+                background: palette(highlight);
+                border-color: palette(highlight);
+            }
+        """)
 
         self.appimage_path: str | None = appimage_path
         self.dest_dir: str | None = None
@@ -108,7 +135,7 @@ class InstallWizard(QWizard):
         self.worker: ExtractionWorker | None = None
         self._extraction_started = False
         self._progress_timer = QTimer(self)
-        self._progress_timer.setInterval(300)
+        self._progress_timer.setInterval(150)
         self._progress_timer.timeout.connect(self._on_progress_tick)
         self._progress_tick = 0
         self._progress_real = -1
@@ -124,6 +151,7 @@ class InstallWizard(QWizard):
         self._scan_result = None
         self._integration_page_id = -1
         self._progress_page_id = -1
+        self._download_worker = None
 
         self._build_pages()
         self._configure_buttons()
@@ -132,7 +160,6 @@ class InstallWizard(QWizard):
             self._select_file(appimage_path)
 
         self.currentIdChanged.connect(self._on_page_changed)
-        self.destroyed.connect(self._cleanup_signals)
 
     def _build_pages(self):
         self.setWindowTitle("Install AppImage")
@@ -180,9 +207,13 @@ class InstallWizard(QWizard):
         self._scan_page_id = scan_page_id
 
         p3 = QWizardPage()
-        p3.setTitle("Integration Options")
-        p3.setSubTitle("Choose how to integrate this AppImage.")
+        p3.setTitle("Integration & Isolation")
+        p3.setSubTitle("Configure desktop integration and process isolation options.")
         l3 = QVBoxLayout(p3)
+        l3.setSpacing(6)
+
+        sec_title = QLabel("<b>Desktop Integration</b>")
+        l3.addWidget(sec_title)
 
         self.cb_desktop_file = QCheckBox("Create desktop entry (show in application menu)")
         self.cb_desktop_file.setChecked(get_settings().get("create_desktop", True))
@@ -200,7 +231,11 @@ class InstallWizard(QWizard):
         )
         l3.addWidget(self.cb_desktop_shortcut)
 
-        self.cb_portable_home = QCheckBox("Create portable home folder")
+        l3.addSpacing(8)
+        sep2_title = QLabel("<b>Data Isolation</b>")
+        l3.addWidget(sep2_title)
+
+        self.cb_portable_home = QCheckBox("Portable home folder (.home)")
         self.cb_portable_home.setChecked(get_settings().get("portable_home", False))
         self.cb_portable_home.setToolTip(
             "Creates a .home folder next to the app directory where the app\n"
@@ -208,13 +243,24 @@ class InstallWizard(QWizard):
         )
         l3.addWidget(self.cb_portable_home)
 
-        self.cb_portable_config = QCheckBox("Create portable config folder")
+        self.cb_portable_config = QCheckBox("Portable config folder (.config)")
         self.cb_portable_config.setChecked(get_settings().get("portable_config", False))
         self.cb_portable_config.setToolTip(
             "Creates a .config folder next to the app directory where the app\n"
             "stores its configuration, keeping it self-contained and portable."
         )
         l3.addWidget(self.cb_portable_config)
+
+        l3.addSpacing(8)
+        sep3_title = QLabel("<b>Process Hardening</b>")
+        l3.addWidget(sep3_title)
+
+        self.cb_hardening = QCheckBox("Enable memory & process hardening")
+        self.cb_hardening.setChecked(get_settings().get("sandbox_default_enabled", True))
+        self.cb_hardening.setToolTip(
+            "Applies rlimits, memory locking, ptrace disable, and malloc hardening."
+        )
+        l3.addWidget(self.cb_hardening)
 
         l3.addStretch()
         self._integration_page_id = self.addPage(p3)
@@ -231,18 +277,14 @@ class InstallWizard(QWizard):
         self.progress_bar.setValue(0)
         l4.addWidget(self.progress_bar)
 
-        self.btn_toggle_log = QPushButton(get_icon("format-justify-left"), "Show Details")
-        self.btn_toggle_log.setCheckable(True)
-        self.btn_toggle_log.toggled.connect(self._on_toggle_log)
-        l4.addWidget(self.btn_toggle_log)
-
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(200)
         mono_font = QFont()
         mono_font.setFamily("monospace")
         mono_font.setStyleHint(QFont.StyleHint.TypeWriter)
+        mono_font.setPointSize(10)
         self.log_text.setFont(mono_font)
-        self.log_text.setVisible(False)
         l4.addWidget(self.log_text)
         self._progress_page_id = self.addPage(p4)
 
@@ -317,21 +359,10 @@ class InstallWizard(QWizard):
             self._load_appimage_metadata(path)
 
     def _cleanup_signals(self):
+        self._stop_progress_animation()
         if self.worker and self.worker.isRunning():
             self.worker.stop()
             self.worker.wait()
-        try:
-            self.currentIdChanged.disconnect()
-        except (TypeError, RuntimeError):
-            pass
-        if self.worker:
-            try:
-                self.worker.extraction_finished.disconnect()
-                self.worker.extraction_error.disconnect()
-                self.worker.progress_updated.disconnect()
-                self.worker.log_message.disconnect()
-            except (TypeError, RuntimeError):
-                pass
 
     def set_appimage(self, path: str):
         self._select_file(path)
@@ -392,10 +423,20 @@ class InstallWizard(QWizard):
     def _on_page_changed(self, idx):
         if idx == self._scan_page_id:
             self._run_security_scan()
+        elif idx == self._integration_page_id:
+            self._preset_sandbox()
         elif idx == self._progress_page_id:
             self._do_install()
-        if self.currentPage() and self.currentPage().isFinalPage():
+            self.button(QWizard.WizardButton.FinishButton).hide()
+        elif self.currentPage() and self.currentPage().isFinalPage():
             self.button(QWizard.WizardButton.BackButton).hide()
+
+    def _preset_sandbox(self):
+        rec = self._scan_result or {}
+        rec_portable = rec.get("recommends_portable", False)
+        self.cb_portable_home.setChecked(rec_portable or get_settings().get("portable_home", False))
+        self.cb_portable_config.setChecked(rec_portable or get_settings().get("portable_config", False))
+        self.cb_hardening.setChecked(get_settings().get("sandbox_default_enabled", True))
 
     def nextId(self):
         cid = self.currentId()
@@ -414,27 +455,30 @@ class InstallWizard(QWizard):
     def _run_security_scan(self):
         if not self.appimage_path or not os.path.isfile(self.appimage_path):
             self._scan_page.set_scan_result({
-                "risk_level": "low",
                 "warnings": ["No AppImage file available"],
                 "sha256": "", "size_mb": 0,
             })
             return
-        from niruvi.scanner import scan_appimage
+        result = {
+            "risk_level": "safe",
+            "warnings": [],
+            "sha256": "",
+            "size_mb": os.path.getsize(self.appimage_path) / (1024 * 1024),
+        }
         try:
-            result = scan_appimage(self.appimage_path)
+            meta = AppImageMetadata(self.appimage_path)
+            result["sha256"] = meta.sha256
+            result["architecture"] = meta.architecture
+            result["format_check"] = {"valid": True, "fs_type": meta.fs_type, "executable": os.access(self.appimage_path, os.X_OK)}
         except Exception as e:
-            self._scan_page.set_scan_result({
-                "risk_level": "low",
-                "warnings": [f"Scan failed: {e}"],
-                "sha256": "", "size_mb": 0,
-            })
-            return
+            result["warnings"].append(f"Could not parse AppImage: {e}")
         self._scan_result = result
         self._scan_page.set_scan_result(result)
 
     def validateCurrentPage(self):
         if self.currentId() == 0:
             if not self.appimage_path:
+                play_sound("warning")
                 QMessageBox.warning(self, "Error", "No AppImage file selected.")
                 return False
             return True
@@ -508,38 +552,60 @@ class InstallWizard(QWizard):
                 pass
         self._backup_dir = None
 
-    def _validate_installation(self, dest_dir: str) -> bool:
+    def _validate_installation(self, dest_dir: str) -> tuple[bool, list[str]]:
+        warnings: list[str] = []
         apprun = os.path.join(dest_dir, "AppRun")
         if not os.path.isfile(apprun):
-            self.log_text.append("Warning: AppRun not found after extraction.")
-            return False
+            warnings.append("AppRun not found after extraction")
+            return False, warnings
         if not os.access(apprun, os.X_OK):
             self.log_text.append("Setting AppRun executable...")
             try:
                 os.chmod(apprun, 0o755)
             except OSError as e:
-                self.log_text.append(f"Could not set executable: {e}")
-                return False
-        return True
+                warnings.append(f"Could not set executable: {e}")
+                return True, warnings
+
+        from niruvi.health_check import check_app_runnable, check_fuse_available
+        diag = check_app_runnable(os.path.basename(dest_dir), dest_dir)
+        if not diag["healthy"]:
+            for issue in diag["issues"]:
+                warnings.append(f"Diagnostic: {issue}")
+        else:
+            self.log_text.append("Pre-flight diagnostics passed.")
+
+        if not check_fuse_available():
+            warnings.append("FUSE is not available — AppImage may require extraction to run")
+            self.log_text.append("Warning: FUSE not available.")
+
+        if diag.get("warnings"):
+            for w in diag["warnings"][:3]:
+                self.log_text.append(f"Note: {w}")
+
+        return True, warnings
 
     def _do_install(self):
         if self._extraction_started:
             return
         if not self.appimage_path:
+            play_sound("error")
             QMessageBox.critical(self, "Error", "No AppImage file selected.")
             self.reject()
             return
         if not self.dest_dir:
+            play_sound("error")
             QMessageBox.critical(self, "Error", "Destination folder not set.")
             self.reject()
             return
         if not os.path.isfile(self.appimage_path):
+            play_sound("error")
             QMessageBox.critical(self, "Error", f"AppImage file not found:\n{self.appimage_path}")
             self.reject()
             return
         self._extraction_started = True
 
         self.button(QWizard.WizardButton.BackButton).setEnabled(False)
+        self.button(QWizard.WizardButton.BackButton).hide()
         self.button(QWizard.WizardButton.NextButton).setEnabled(False)
 
         self.log_text.clear()
@@ -548,7 +614,7 @@ class InstallWizard(QWizard):
         self.log_text.append(f"Destination: {self.dest_dir}")
         self._start_progress_animation()
 
-        self.worker = ExtractionWorker(self.appimage_path, self.dest_dir, self.app_name, self)
+        self.worker = ExtractionWorker(self.appimage_path, self.dest_dir, self.app_name)
         self.worker.extraction_finished.connect(self._on_extraction_finished)
         self.worker.extraction_error.connect(self._on_extraction_error)
         self.worker.progress_updated.connect(self._on_worker_progress)
@@ -568,14 +634,17 @@ class InstallWizard(QWizard):
         self._stop_progress_animation()
         self._set_real_progress(100)
 
-        valid = self._validate_installation(dest_dir)
+        valid, diag_warnings = self._validate_installation(dest_dir)
         if not valid:
             self.log_text.append("Warning: extracted files may be incomplete.")
+            msg = "The installation may be incomplete (AppRun missing or not executable)."
+            if diag_warnings:
+                msg += "\n\n" + "\n".join(diag_warnings[:5])
+            play_sound("warning")
             reply = QMessageBox.warning(
                 self,
                 "Validation Warning",
-                "The installation may be incomplete (AppRun missing or not executable).\n\n"
-                "Do you want to continue anyway?",
+                msg + "\n\nDo you want to continue anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -583,10 +652,16 @@ class InstallWizard(QWizard):
                 self._cleanup_backup()
                 self.reject()
                 return
+        elif diag_warnings:
+            self.log_text.append("Installation completed with warnings:")
+            for w in diag_warnings:
+                self.log_text.append(f"  • {w}")
 
         self.log_text.append("Installation complete!")
+        play_sound("click")
         self.button(QWizard.WizardButton.NextButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self.button(QWizard.WizardButton.FinishButton).show()
         self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
 
         try:
@@ -667,6 +742,15 @@ class InstallWizard(QWizard):
                 source_sha256 = hashlib.sha256(
                     Path(self.appimage_path).read_bytes()
                 ).hexdigest()
+            from niruvi.settings import get_settings
+            _wiz_settings = get_settings()
+            sandbox_config = {
+                "enabled": self.cb_hardening.isChecked(),
+                "hardening": self.cb_hardening.isChecked(),
+                "portable_home": self.cb_portable_home.isChecked(),
+                "portable_config": self.cb_portable_config.isChecked(),
+                "backend": _wiz_settings.get("sandbox_default_backend", "shield"),
+            }
             registry = InstallationRegistry()
             record = InstallationRecord(
                 name=app_name,
@@ -676,6 +760,7 @@ class InstallWizard(QWizard):
                 desktop_shortcut=shortcut_path or "",
                 source_sha256=source_sha256,
                 architecture=getattr(self, '_architecture', ''),
+                sandbox_config=sandbox_config,
             )
             registry.add(record)
             self.log_text.append("Registered in installation database.")
@@ -690,9 +775,11 @@ class InstallWizard(QWizard):
         if self._icon_pixmap:
             self.success_icon.setPixmap(self._icon_pixmap)
         self.success_label.setText(f"<b>{app_name}</b> was installed successfully.")
+        self.next()
 
     def _on_extraction_error(self, error_msg: str):
         self._stop_progress_animation()
+        play_sound("error")
         self.log_text.append(f"ERROR: {error_msg}")
         if os.path.isdir(self.dest_dir):
             try:
@@ -707,10 +794,6 @@ class InstallWizard(QWizard):
             "The previous version has been restored."
         )
         self.reject()
-
-    def _on_toggle_log(self, checked: bool):
-        self.btn_toggle_log.setText("Hide Details" if checked else "Show Details")
-        self.log_text.setVisible(checked)
 
     def _start_progress_animation(self):
         self._progress_tick = 0
@@ -727,21 +810,25 @@ class InstallWizard(QWizard):
 
     def _simulated_value(self):
         t = self._progress_tick
-        if t < 5:
-            return 5 + t * 3
-        elif t < 20:
-            return 20 + int((t - 5) * 1.5)
-        elif t < 60:
-            return 42 + int((t - 20) * 0.6)
-        elif t < 120:
-            return 66 + int((t - 60) * 0.3)
+        if t < 10:
+            return 5 + t * 2
+        elif t < 40:
+            return 25 + int((t - 10) * 0.8)
+        elif t < 100:
+            return 49 + int((t - 40) * 0.35)
+        elif t < 200:
+            return 70 + int((t - 100) * 0.15)
         else:
-            return min(88 + int((t - 120) * 0.05), 99)
+            return min(90 + int((t - 200) * 0.03), 99)
 
     def _set_real_progress(self, value):
         if value > self._progress_real:
             self._progress_real = value
         self.progress_bar.setValue(min(max(value, self._simulated_value()), 100))
+
+    def done(self, result):
+        self._cleanup_signals()
+        super().done(result)
 
     def accept(self):
         p = self.parent()

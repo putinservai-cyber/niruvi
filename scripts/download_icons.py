@@ -72,6 +72,26 @@ ICON_MAP = {
     "computer": "monitor",
     "clock": "clock",
     "help-faq": "question",
+    "go-home": "house",
+    "utilities-terminal": "terminal",
+    "document-save-as": "file-plus",
+    "emblem-important": "warning-circle",
+    "network-server": "cloud",
+    "image-x-generic": "image",
+    "security-high": "shield-check",
+    "dialog-password": "lock",
+    "video-display": "monitor",
+    "system-search": "magnifying-glass",
+
+    # Device Info icons
+    "identification-card": "identification-card",
+    "hard-drive": "hard-drive",
+    "cpu": "cpu",
+    "code": "code",
+    "database": "database",
+    "tag": "tag",
+    "device-laptop": "laptop",
+    "globe": "globe",
 }
 
 # Additional fallback symlinks (same Phosphor icon, different freedesktop name)
@@ -91,6 +111,7 @@ SYMLINKS = {
     "dialog-information": "info",
     "document-properties": "gear",
     "document-export": "upload",
+    "monitor": "computer",
 }
 
 

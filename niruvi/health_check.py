@@ -1,10 +1,79 @@
 import datetime
-import logging
 import os
+import shutil
+import stat
 import subprocess
 import time
 
 HEALTH_DAYS_THRESHOLD = 60
+
+
+def check_single_appimage_mount(path: str) -> dict:
+    """Check if an AppImage can be mounted (FUSE sanity check)."""
+    result = {"mountable": False, "fuse_available": False, "error": ""}
+    result["fuse_available"] = check_fuse_available()
+    if not result["fuse_available"]:
+        result["error"] = "FUSE is not available on this system"
+        return result
+    if not os.path.isfile(path):
+        result["error"] = "File not found"
+        return result
+    if os.path.getsize(path) < 1024 * 1024:
+        result["error"] = "File too small (< 1 MB)"
+        return result
+    try:
+        st = os.stat(path)
+        if not (st.st_mode & stat.S_IXUSR):
+            result["error"] = "AppImage is not executable"
+            return result
+    except OSError as e:
+        result["error"] = f"Cannot stat: {e}"
+        return result
+    result["mountable"] = True
+    return result
+
+
+def check_app_runnable(app_name: str, app_dir: str) -> dict:
+    """Basic pre-launch check. Returns issues, warnings, info."""
+    issues: list[str] = []
+    warnings: list[str] = []
+    info: dict = {}
+
+    if not app_dir or not os.path.isdir(app_dir):
+        issues.append("App directory does not exist")
+        return {"app_name": app_name, "issues": issues, "warnings": warnings, "info": info, "healthy": False}
+
+    apprun = os.path.join(app_dir, "AppRun")
+    if not os.path.isfile(apprun):
+        issues.append("AppRun not found in app directory")
+    elif not os.access(apprun, os.X_OK):
+        issues.append("AppRun is not executable")
+    else:
+        apprun_size = os.path.getsize(apprun)
+        info["apprun_size"] = apprun_size
+        if apprun_size > 100 * 1024 * 1024:
+            warnings.append(f"AppRun is large ({apprun_size / 1024 / 1024:.0f} MB)")
+
+        try:
+            with open(apprun, "rb") as f:
+                shebang = f.read(256)
+            if shebang.startswith(b"#!"):
+                interpreter_end = shebang.find(b"\n")
+                interpreter_line = shebang[:interpreter_end].decode("utf-8", errors="replace")
+                info["interpreter"] = interpreter_line
+                interpreter_path = interpreter_line[2:].strip().split(" ")[0]
+                if not os.path.isfile(interpreter_path):
+                    issues.append(f"Interpreter not found: {interpreter_path}")
+        except OSError as e:
+            warnings.append(f"Cannot read AppRun: {e}")
+
+    return {
+        "app_name": app_name,
+        "issues": issues,
+        "warnings": warnings,
+        "info": info,
+        "healthy": len(issues) == 0,
+    }
 
 
 def check_app_health(app_name: str, app_dir: str, record) -> dict:
@@ -43,7 +112,7 @@ def check_app_health(app_name: str, app_dir: str, record) -> dict:
             except (ValueError, TypeError):
                 pass
         if not getattr(record, "update_url", ""):
-            warnings.append("No update URL configured")
+            info["no_update_url"] = True
         if getattr(record, "source_sha256", ""):
             info["sha256"] = record.source_sha256[:16]
 
@@ -98,31 +167,33 @@ def check_namespace_available() -> bool:
         return False
 
 
-def get_health_summary(installed_apps: dict, registry) -> dict:
-    total = len(installed_apps)
-    healthy = 0
-    issues = 0
-    warnings = 0
-    results = {}
-    for name, info in installed_apps.items():
-        record = registry.get(name) if registry else None
-        h = check_app_health(name, info.get("path", ""), record)
-        results[name] = h
-        if h["healthy"]:
-            healthy += 1
-        if h["issues"]:
-            issues += 1
-        if h["warnings"]:
-            warnings += 1
-    return {
-        "total": total,
-        "healthy": healthy,
-        "issues": issues,
-        "warnings": warnings,
-        "results": results,
-        "fuse_available": check_fuse_available(),
-        "namespace_available": check_namespace_available(),
-    }
+def check_system_compatibility() -> dict:
+    issues = []
+    info = {}
+    info["os"] = f"{os.uname().sysname} {os.uname().release}"
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("PRETTY_NAME="):
+                    info["distro"] = line.split("=", 1)[1].strip().strip('"')
+                    break
+    except Exception:
+        info["distro"] = "unknown"
+    info["kernel"] = os.uname().version
+    info["python"] = __import__("platform").python_version()
+    try:
+        r = subprocess.run(["rpm", "-q", "glibc", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
+        if r.returncode == 0:
+            info["glibc"] = r.stdout.strip()
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
+        if r.returncode == 0:
+            info["mesa"] = r.stdout.strip()
+    except Exception:
+        pass
+    return {"issues": issues, "info": info, "healthy": len(issues) == 0}
 
 
 def format_health_icon(h: dict) -> str:

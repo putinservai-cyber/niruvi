@@ -671,7 +671,7 @@ _extract_appimage() {
     (
         cd "$tmpdir" || exit 1
         if [ -n "$SELF" ] && [ -f "$SELF" ]; then
-            "$SELF" --appimage-extract 2>/dev/null || "$APPIMAGE_DIR/AppRun" --appimage-extract 2>/dev/null || true
+            "$SELF" --appimage-extract 2>/dev/null || true
         fi
     )
 
@@ -695,6 +695,13 @@ _extract_appimage() {
     rm -rf "$tmpdir"
     chmod +x "$dest/AppRun" 2>/dev/null || true
     echo "installed" > "$dest/.installed"
+
+    # Restore real application launcher (self-installing mode only — no-op if absent)
+    local backup="$dest/.niruvi-install/apprun-backup.sh"
+    if [ -f "$backup" ]; then
+        cp "$backup" "$dest/AppRun"
+        chmod +x "$dest/AppRun"
+    fi
 }
 
 # ── Desktop integration ──

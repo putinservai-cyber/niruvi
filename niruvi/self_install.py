@@ -157,6 +157,11 @@ def run_self_install():
                 sys.exit(0)
             except Exception as e:
                 progress.close()
+                try:
+                    from niruvi.sound_manager import play as play_sound
+                    play_sound("error")
+                except ImportError:
+                    pass
                 QMessageBox.critical(
                     None,
                     "Installation Failed",

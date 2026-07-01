@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 
 GITHUB_API = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
+GITHUB_API_ALL = "https://api.github.com/repos/{owner}/{repo}/releases?per_page=5"
 GITLAB_API = "https://gitlab.com/api/v4/projects/{project_id}/releases/permalink/latest"
 
 
@@ -88,12 +89,36 @@ def resolve_github(url: str, channel: str = "stable", timeout: int = 15) -> Upda
     if not repo:
         return None
     owner, repo_name = repo
-    api_url = GITHUB_API.format(owner=owner, repo=repo_name)
-    try:
-        data = _fetch_json(api_url, timeout)
-    except Exception as e:
-        logging.debug("GitHub API error for %s: %s", url, e)
-        return None
+
+    if channel in ("beta", "nightly"):
+        # Fetch recent releases to find pre-release
+        api_url = GITHUB_API_ALL.format(owner=owner, repo=repo_name)
+        try:
+            data_list = _fetch_json(api_url, timeout)
+            if not isinstance(data_list, list):
+                return None
+            # Find pre-release or draft
+            for release in data_list:
+                if channel == "nightly":
+                    if release.get("prerelease") or release.get("draft"):
+                        data = release
+                        break
+                elif channel == "beta" and release.get("prerelease"):
+                    data = release
+                    break
+            else:
+                # Fall back to latest stable
+                return resolve_github(url, "stable", timeout)
+        except Exception as e:
+            logging.debug("GitHub API error for %s: %s", url, e)
+            return None
+    else:
+        api_url = GITHUB_API.format(owner=owner, repo=repo_name)
+        try:
+            data = _fetch_json(api_url, timeout)
+        except Exception as e:
+            logging.debug("GitHub API error for %s: %s", url, e)
+            return None
 
     tag = data.get("tag_name", "")
     version = tag.lstrip("vV")
@@ -118,10 +143,27 @@ def resolve_github(url: str, channel: str = "stable", timeout: int = 15) -> Upda
     if not best_asset:
         return None
 
+    # Try to extract SHA256 from asset metadata
+    asset_sha256 = None
+    for asset in assets:
+        aname = asset.get("name", "").lower()
+        if best_asset["name"].lower().replace(".appimage", "") in aname and aname.endswith(".sha256"):
+            try:
+                sha_url = asset["browser_download_url"]
+                req = urllib.request.Request(sha_url, headers={"Accept": "text/plain"})
+                resp = urllib.request.urlopen(req, timeout=timeout)
+                content = resp.read().decode("utf-8").strip()
+                # Format: "sha256  filename" or "sha256 *filename"
+                sha_part = content.split()[0] if content else ""
+                if len(sha_part) == 64:
+                    asset_sha256 = sha_part
+            except Exception:
+                pass
+
     return UpdateInfo(
         version=version,
         download_url=best_asset["browser_download_url"],
-        sha256=None,
+        sha256=asset_sha256,
         changelog=changelog,
         source_type="github",
         release_date=release_date,

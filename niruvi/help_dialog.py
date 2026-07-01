@@ -851,9 +851,8 @@ A drop zone appears &mdash; release to start installation.</p>
 <li>Click <b>Install</b> &mdash; the AppImage is extracted under <code>~/Applications/APPNAME/</code>.</li>
 </ol>
 
-<h3>Security scan</h3>
-<p>Every AppImage is scanned before installation. If the scanner detects high-risk patterns,
-installation is blocked. Medium-risk files show a warning that you can override.</p>
+<h3>AppImage validation</h3>
+<p>Every AppImage is validated before installation to ensure it has a valid format and proper metadata.</p>
 
 <h3>Already installed?</h3>
 <p>If an app is already installed, you are offered options to <b>Re-integrate</b> or <b>Remove</b> the existing installation first.</p>"""
@@ -1140,16 +1139,16 @@ system doesn't support tray notifications, a standard dialog is shown instead.</
 
     @staticmethod
     def _page_security():
-        return """<h2>Security Scanner</h2>
+        return """<h2>AppImage Validation</h2>
 
-<p>Niruvi includes a built-in security scanner that examines AppImage files before
-installation. It looks for suspicious patterns commonly associated with malware.</p>
+<p>Niruvi validates each AppImage before installation to verify the format,
+architecture compatibility, and metadata integrity.</p>
 
-<h3>Scan levels</h3>
+<h3>What is checked</h3>
 <ul>
-<li><b>High risk</b> &mdash; Dangerous patterns detected. Installation is blocked unless you explicitly acknowledge the warning.</li>
-<li><b>Medium risk</b> &mdash; Suspicious patterns found. You can choose to proceed or cancel.</li>
-<li><b>Low / None</b> &mdash; No issues. Installation proceeds normally.</li>
+<li><b>Format</b> &mdash; Verifies the AppImage uses a valid Type 1 or Type 2 format.</li>
+<li><b>Architecture</b> &mdash; Confirms the binary architecture matches your system.</li>
+<li><b>Metadata</b> &mdash; Reads embedded desktop file and icon data for proper integration.</li>
 </ul>
 
 <h3>What is checked</h3>

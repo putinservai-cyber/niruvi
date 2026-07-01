@@ -14,6 +14,7 @@ from niruvi.build_page import BuildWorker
 from niruvi.settings import get_settings
 from niruvi.report_dialog import ErrorReportDialog, BuildSummaryDialog
 from niruvi.utils import get_icon
+from niruvi.sound_manager import play as play_sound
 
 
 _SECTION_STYLE = """
@@ -452,6 +453,7 @@ class BuildDialog(QDialog):
         # Validate source
         error = self._validate_source()
         if error:
+            play_sound("error")
             dlg = ErrorReportDialog(
                 self,
                 title="Cannot Start Build",
@@ -559,6 +561,7 @@ class BuildDialog(QDialog):
         self.build_btn.setEnabled(True)
         self.button_box.setEnabled(True)
         import traceback
+        play_sound("error")
         suggestions = ErrorReportDialog.suggest_for_build_error(msg)
         dlg = ErrorReportDialog(
             self,

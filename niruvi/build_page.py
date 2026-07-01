@@ -478,6 +478,15 @@ class BuildWorker(QThread):
                                     break
 
                 if self.self_installing:
+                    self.log.emit("Saving real app launcher before bootstrap...")
+                    backup_dir = os.path.join(appdir, ".niruvi-install")
+                    os.makedirs(backup_dir, exist_ok=True)
+                    apprun_path = os.path.join(appdir, "AppRun")
+                    if not os.path.exists(apprun_path):
+                        exec_path = f'/usr/bin/{exec_name}'
+                        _create_apprun(appdir, exec_path)
+                    shutil.copy2(apprun_path, os.path.join(backup_dir, "apprun-backup.sh"))
+
                     self.log.emit("Injecting self-installer bootstrap...")
                     from niruvi.builder_bootstrap import inject_bootstrap
                     inject_bootstrap(

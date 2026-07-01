@@ -12,7 +12,7 @@ dependencies = [
     "PyQt6>=6.5",
 ]
 
-["requests>=2.28"]
+[project.optional-dependencies]
 all = ["requests>=2.28"]
 
 [project.scripts]

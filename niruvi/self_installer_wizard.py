@@ -30,7 +30,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QIcon
 
 def _theme_icon(name):
-    return QIcon.fromTheme(name, QIcon())
+    icon = QIcon.fromTheme(name)
+    if not icon.isNull():
+        return icon
+    return QIcon()
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = SCRIPT_DIR / "config.json"
@@ -173,6 +176,14 @@ class InstallWorker(QThread):
             self.progress.emit(75)
 
             Path(marker_file(self.dest)).write_text("")
+
+            # Restore real application launcher (override self-installer AppRun)
+            backup = os.path.join(self.dest, ".niruvi-install", "apprun-backup.sh")
+            if os.path.isfile(backup):
+                shutil.copy2(backup, os.path.join(self.dest, "AppRun"))
+                os.chmod(os.path.join(self.dest, "AppRun"), 0o755)
+                self.log.emit("Restored real application launcher")
+
             version = self.config.get("app_version", "1.0.0")
             meta = {"version": version, "install_date": str(int(os.path.getctime(self.self_appimage)))}
             with open(meta_file(self.dest), "w") as f:
@@ -213,7 +224,19 @@ class InstallWorker(QThread):
         if desktop_path:
             desktop_dir = os.path.expanduser("~/.local/share/applications")
             os.makedirs(desktop_dir, exist_ok=True)
-            shutil.copy2(desktop_path, os.path.join(desktop_dir, f"{app_name}.desktop"))
+            dest_desktop = os.path.join(desktop_dir, f"{app_name}.desktop")
+            # Fix Exec line to point to the installed AppRun
+            with open(desktop_path) as f:
+                desktop_content = f.read()
+            lines = desktop_content.splitlines(keepends=True)
+            fixed = []
+            for line in lines:
+                if line.startswith("Exec="):
+                    fixed.append(f"Exec={os.path.join(self.dest, 'AppRun')} %F\n")
+                else:
+                    fixed.append(line)
+            with open(dest_desktop, "w") as f:
+                f.writelines(fixed)
             self.log.emit(f"Desktop entry: {app_name}.desktop")
 
         icon_name = None
@@ -236,10 +259,16 @@ class InstallWorker(QThread):
                     break
 
         uninstall_desktop = os.path.expanduser(f"~/.local/share/applications/{app_name}.uninstall.desktop")
+        local_uninstall = os.path.join(self.dest, ".niruvi-uninstall.sh")
+        shipped = os.path.join(self.dest, ".niruvi-install", "uninstall.sh")
+        if os.path.isfile(shipped):
+            shutil.copy2(shipped, local_uninstall)
+            os.chmod(local_uninstall, 0o755)
+        uninstall_exec = local_uninstall if os.path.isfile(local_uninstall) else shutil.which("xdg-open") or "true"
         uninstall_content = (
             "[Desktop Entry]\n"
             f"Name=Uninstall {app_name}\n"
-            f"Exec={self.self_appimage} --uninstall\n"
+            f"Exec={uninstall_exec}\n"
             "Icon=edit-delete\n"
             "Type=Application\n"
             "Categories=Utility;\n"
@@ -593,7 +622,6 @@ class SelfInstallWizard(QWizard):
         self.self_appimage = self_appimage
         self.mode = mode
         self._worker = None
-        self._finish_launch = False
         self._finish_appimage = None
 
         self.setWindowTitle(f"Install {config['app_name']}")
@@ -706,10 +734,14 @@ class SelfInstallWizard(QWizard):
     def _on_install_finished(self, dest):
         self._progress_page.setComplete(True)
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
-        self._finish_launch = self._finish_page.shouldLaunch()
         self._finish_appimage = os.path.join(dest, "AppRun")
 
     def _on_worker_error(self, msg):
+        try:
+            from niruvi.sound_manager import play as play_sound
+            play_sound("error")
+        except ImportError:
+            pass
         QMessageBox.critical(self, "Error", msg)
         self.reject()
 
@@ -718,11 +750,12 @@ class SelfInstallWizard(QWizard):
             self.startInstall()
 
     def accept(self):
-        if self._finish_launch and self._finish_appimage and os.path.isfile(self._finish_appimage):
-            try:
-                subprocess.Popen([self._finish_appimage], start_new_session=True)
-            except Exception:
-                pass
+        if self._finish_appimage and os.path.isfile(self._finish_appimage):
+            if self._finish_page and self._finish_page.shouldLaunch():
+                try:
+                    subprocess.Popen([self._finish_appimage], start_new_session=True)
+                except Exception:
+                    pass
         super().accept()
 
     def _on_uninstall_page_changed(self, idx):

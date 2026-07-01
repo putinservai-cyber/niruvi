@@ -1,25 +1,35 @@
 import datetime
-import hashlib
-import json
 import os
 import shutil
 import tempfile
-import urllib.request
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, QEventLoop, pyqtSignal
 from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QFrame, QSizePolicy, QScrollArea,
+    QCheckBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QFrame, QSizePolicy,
     QPushButton, QTreeWidget, QTreeWidgetItem,
     QLineEdit, QProgressDialog, QMessageBox, QFileDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
-    QGroupBox, QWidget,
+    QGroupBox, QWidget, QListWidget, QStackedWidget, QListWidgetItem,
 )
 
 from niruvi._version import __app_name__
 from niruvi.utils import get_icon
+
+
+_DETAILS_ICONS: dict[str, str] = {
+    "Name": "tag",
+    "Path": "folder-open",
+    "Size": "hard-drive",
+    "Installed": "clock",
+    "Architecture": "cpu",
+    "SHA256": "identification-card",
+    "Type": "package-x-generic",
+    "Desktop Entry": "document-properties",
+    "Shortcut": "user-desktop",
+}
 from niruvi.toggle_switch import ToggleSwitch
 from niruvi.installation_registry import InstallationRegistry
 from niruvi.update_sources import (
@@ -27,8 +37,32 @@ from niruvi.update_sources import (
     detect_source_type, parse_github_repo, parse_gitlab_project,
 )
 from niruvi.self_update import compare_versions
+from niruvi.sandbox import ShieldConfig, SandboxBackend
+from niruvi.sandbox import check_firejail_available, check_bwrap_available
+from niruvi.sound_manager import play as play_sound
 
-_SECTION_STYLE = """
+_SIDEBAR_STYLE = """
+QListWidget {
+    border: none;
+    background: palette(window);
+    outline: none;
+    padding: 4px 0;
+}
+QListWidget::item {
+    padding: 8px 16px;
+    border-radius: 6px;
+    margin: 1px 4px;
+}
+QListWidget::item:selected {
+    background: palette(highlight);
+    color: palette(highlighted-text);
+}
+QListWidget::item:hover:!selected {
+    background: palette(midlight);
+}
+"""
+
+_TAB_PAGE_STYLE = """
 QGroupBox {
     font-weight: bold;
     border: 1px solid palette(mid);
@@ -72,7 +106,7 @@ def _format_date(timestamp: float) -> str:
 
 
 class UpdateCheckWorker(QThread):
-    finished = pyqtSignal(bool, str, str, str)
+    update_checked = pyqtSignal(bool, str, str, str)
     error = pyqtSignal(str)
 
     def __init__(self, update_url: str, current_version: str, parent=None):
@@ -87,7 +121,7 @@ class UpdateCheckWorker(QThread):
                 self.error.emit("Could not resolve update source")
                 return
             available = compare_versions(info.version, 'gt', self.current_version)
-            self.finished.emit(available, info.version, info.download_url, info.changelog or "")
+            self.update_checked.emit(available, info.version, info.download_url, info.changelog or "")
         except Exception as e:
             self.error.emit(str(e))
 
@@ -137,32 +171,32 @@ class FileTreeWidget(QTreeWidget):
             pass
 
 
+_TABS = [
+    ("Details", "tag"),
+    ("Customization", "preferences-system"),
+    ("Isolation", "computer"),
+    ("Updates", "emblem-downloads"),
+    ("Files", "folder-open"),
+]
+
+
 class AppInfoDialog(QDialog):
     def __init__(self, app_name: str, app_info: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"{app_name} — App Info")
-        self.setMinimumSize(640, 580)
-        self.resize(760, 680)
+        self.setMinimumSize(620, 540)
+        self.resize(700, 600)
         self.setModal(True)
         self._app_name = app_name
         self._info = app_info
         self._update_worker = None
+        
         self._init_ui()
 
     def _init_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(20, 20, 20, 0)
-        layout.setSpacing(12)
 
         registry = InstallationRegistry()
         record = registry.get(self._app_name)
@@ -173,7 +207,7 @@ class AppInfoDialog(QDialog):
         header_card.setObjectName("card")
         header_card.setStyleSheet(_CARD_STYLE)
         header_layout = QHBoxLayout(header_card)
-        header_layout.setContentsMargins(16, 16, 16, 16)
+        header_layout.setContentsMargins(16, 12, 16, 12)
         header_layout.setSpacing(16)
 
         icon_label = QLabel()
@@ -181,18 +215,18 @@ class AppInfoDialog(QDialog):
         if icon_path and os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             if not pixmap.isNull():
-                icon_label.setPixmap(pixmap.scaled(56, 56, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                icon_label.setPixmap(pixmap.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
-            icon_label.setPixmap(get_icon("package-x-generic", "application-x-archive").pixmap(56, 56))
-        icon_label.setFixedSize(56, 56)
+            icon_label.setPixmap(get_icon("package-x-generic", "application-x-archive").pixmap(48, 48))
+        icon_label.setFixedSize(48, 48)
         header_layout.addWidget(icon_label)
 
         info_col = QVBoxLayout()
-        info_col.setSpacing(4)
+        info_col.setSpacing(2)
         display_name = self._info.get("display_name", self._app_name)
         title = QLabel(display_name)
         tf = title.font()
-        tf.setPointSize(18)
+        tf.setPointSize(16)
         tf.setBold(True)
         title.setFont(tf)
         info_col.addWidget(title)
@@ -203,19 +237,59 @@ class AppInfoDialog(QDialog):
         info_col.addWidget(sub)
 
         header_layout.addLayout(info_col, 1)
-        layout.addWidget(header_card)
+        root.addWidget(header_card)
 
-        # ── Details Section ──
+        # ── Sidebar + Content ──
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+
+        self.sidebar = QListWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setStyleSheet(_SIDEBAR_STYLE)
+        self.sidebar.setFixedWidth(160)
+        self.sidebar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        self.stack = QStackedWidget()
+
+        pages = []
+        for i, (label, icon_name) in enumerate(_TABS):
+            item = QListWidgetItem(get_icon(icon_name), label)
+            self.sidebar.addItem(item)
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(16, 12, 16, 12)
+            page_layout.setSpacing(8)
+            self.stack.addWidget(page)
+            pages.append((page, page_layout))
+
+        body.addWidget(self.sidebar)
+        body.addWidget(self.stack, 1)
+        root.addLayout(body, 1)
+
+        # ── Tab Pages ──
+
+        # --- Tab 0: Details ---
+        details_layout = pages[0][1]
         details_group = QGroupBox("Details")
-        details_group.setStyleSheet(_SECTION_STYLE)
+        details_group.setStyleSheet(_TAB_PAGE_STYLE)
         details_grid = QVBoxLayout(details_group)
         details_grid.setSpacing(6)
 
         def add_field(label, value):
             row = QHBoxLayout()
             row.setSpacing(8)
+            icon_name = _DETAILS_ICONS.get(label, "dialog-information")
+            icon_lbl = QLabel()
+            icon = get_icon(icon_name)
+            if icon and not icon.isNull():
+                pixmap = icon.pixmap(16, 16)
+                icon_lbl.setPixmap(pixmap)
+            icon_lbl.setFixedSize(20, 20)
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            row.addWidget(icon_lbl)
             lbl = QLabel(label)
-            lbl.setFixedWidth(120)
+            lbl.setFixedWidth(100)
             lbl.setStyleSheet("font-weight: bold; color: palette(disabled-text); font-size: 12px;")
             val = QLabel(str(value))
             val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -253,11 +327,13 @@ class AppInfoDialog(QDialog):
         if shortcut:
             add_field("Shortcut", shortcut)
 
-        layout.addWidget(details_group)
+        details_grid.addStretch()
+        details_layout.addWidget(details_group)
 
-        # ── Customization Section ──
+        # --- Tab 1: Customization ---
+        cust_layout = pages[1][1]
         cust_group = QGroupBox("Customization")
-        cust_group.setStyleSheet(_SECTION_STYLE)
+        cust_group.setStyleSheet(_TAB_PAGE_STYLE)
         cust_grid = QVBoxLayout(cust_group)
         cust_grid.setSpacing(8)
 
@@ -339,11 +415,76 @@ class AppInfoDialog(QDialog):
         env_btn_row.addStretch()
         cust_grid.addLayout(env_btn_row)
 
-        layout.addWidget(cust_group)
+        cust_reset_row = QHBoxLayout()
+        self.btn_reset_defaults = QPushButton(get_icon("document-revert"), "Reset to Defaults")
+        self.btn_reset_defaults.setToolTip("Reset all customization, updates, and isolation settings to defaults for this app")
+        self.btn_reset_defaults.clicked.connect(self._reset_app_defaults)
+        cust_reset_row.addWidget(self.btn_reset_defaults)
+        cust_reset_row.addStretch()
+        cust_grid.addLayout(cust_reset_row)
 
-        # ── Updates Section ──
+        cust_layout.addWidget(cust_group)
+
+        # --- Tab 2: Process Isolation ---
+        shield_layout = pages[2][1]
+        shield_group = QGroupBox("Process Isolation")
+        shield_group.setStyleSheet(_TAB_PAGE_STYLE)
+        shield_grid = QVBoxLayout(shield_group)
+        shield_grid.setSpacing(6)
+
+        self.sb_enabled_cb = QCheckBox("Enable process hardening")
+        self.sb_enabled_cb.setToolTip(
+            "Applies rlimits, memory locking, ptrace disable, and malloc hardening."
+        )
+        shield_grid.addWidget(self.sb_enabled_cb)
+
+        self.cb_portable_home = QCheckBox("Portable .home folder")
+        self.cb_portable_home.setToolTip(
+            "Redirects $HOME to a .home folder next to the app, keeping user data self-contained."
+        )
+        shield_grid.addWidget(self.cb_portable_home)
+
+        self.cb_portable_config = QCheckBox("Portable .config folder")
+        self.cb_portable_config.setToolTip(
+            "Redirects $XDG_CONFIG_HOME to a .config folder next to the app, keeping config self-contained."
+        )
+        shield_grid.addWidget(self.cb_portable_config)
+
+        backend_row = QHBoxLayout()
+        backend_row.addWidget(QLabel("Backend:"))
+        self.backend_combo = QComboBox()
+        self.backend_combo.addItem("Niruvi Shield", SandboxBackend.SHIELD)
+        fj_info = check_firejail_available()
+        if fj_info.get("available"):
+            self.backend_combo.addItem("Firejail", SandboxBackend.FIREJAIL)
+        bw_info = check_bwrap_available()
+        if bw_info.get("available"):
+            self.backend_combo.addItem("Bubblewrap", SandboxBackend.BUBBLEWRAP)
+        backend_row.addWidget(self.backend_combo)
+        backend_row.addStretch()
+        shield_grid.addLayout(backend_row)
+
+        sb_status = QLabel("Process hardening + portable isolation")
+        sb_status.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        shield_grid.addWidget(sb_status)
+
+        sb_btn_row = QHBoxLayout()
+        self.btn_save_sandbox = QPushButton(get_icon("document-save"), "Save")
+        self.btn_save_sandbox.clicked.connect(self._save_shield_config)
+        sb_btn_row.addWidget(self.btn_save_sandbox)
+        self.btn_reset_sandbox = QPushButton(get_icon("document-revert"), "Reset to Defaults")
+        self.btn_reset_sandbox.clicked.connect(self._reset_shield_defaults)
+        sb_btn_row.addWidget(self.btn_reset_sandbox)
+        sb_btn_row.addStretch()
+        shield_grid.addLayout(sb_btn_row)
+
+        shield_layout.addWidget(shield_group)
+        self._load_shield_ui()
+
+        # --- Tab 3: Updates ---
+        update_layout = pages[3][1]
         update_group = QGroupBox("Updates")
-        update_group.setStyleSheet(_SECTION_STYLE)
+        update_group.setStyleSheet(_TAB_PAGE_STYLE)
         update_grid = QVBoxLayout(update_group)
         update_grid.setSpacing(8)
 
@@ -409,24 +550,34 @@ class AppInfoDialog(QDialog):
         settings_row.addStretch()
         update_grid.addLayout(settings_row)
 
-        layout.addWidget(update_group)
+        revert_row = QHBoxLayout()
+        self.btn_revert = QPushButton("Revert to Previous Version")
+        self.btn_revert.setIcon(get_icon("document-revert"))
+        prev_dir = app_dir + ".prev"
+        self.btn_revert.setEnabled(os.path.isdir(prev_dir))
+        self.btn_revert.clicked.connect(self._revert_version)
+        revert_row.addWidget(self.btn_revert)
+        revert_row.addStretch()
+        update_grid.addLayout(revert_row)
 
-        # ── Files Section ──
+        update_layout.addWidget(update_group)
+
+        # --- Tab 4: Files ---
+        files_layout = pages[4][1]
         files_group = QGroupBox("Files")
-        files_group.setStyleSheet(_SECTION_STYLE)
-        files_layout = QVBoxLayout(files_group)
+        files_group.setStyleSheet(_TAB_PAGE_STYLE)
+        files_inner = QVBoxLayout(files_group)
         if os.path.isdir(app_dir):
             tree = FileTreeWidget(app_dir)
             tree.setMinimumHeight(120)
-            files_layout.addWidget(tree, 1)
+            files_inner.addWidget(tree, 1)
         else:
-            files_layout.addWidget(QLabel("App directory not found."))
-        layout.addWidget(files_group)
+            files_inner.addWidget(QLabel("App directory not found."))
+        files_layout.addWidget(files_group)
 
-        layout.addStretch()
-        scroll.setWidget(content)
-        root.addWidget(scroll, 1)
-
+        # Connect sidebar selection
+        self.sidebar.currentRowChanged.connect(self._on_tab_changed)
+        self.sidebar.setCurrentRow(0)
         # ── Bottom Action Bar ──
         action_bar = QFrame()
         action_bar.setFrameShape(QFrame.Shape.NoFrame)
@@ -443,7 +594,7 @@ class AppInfoDialog(QDialog):
             action_layout.addWidget(self.btn_run)
 
             self.btn_uninstall = QPushButton(get_icon("edit-delete"), "Uninstall")
-            self.btn_uninstall.setStyleSheet("QPushButton { padding: 8px 18px; color: #c44; }")
+            self.btn_uninstall.setStyleSheet("QPushButton { padding: 8px 18px; }")
             self.btn_uninstall.clicked.connect(lambda: self._uninstall_app())
             action_layout.addWidget(self.btn_uninstall)
 
@@ -455,6 +606,9 @@ class AppInfoDialog(QDialog):
         action_layout.addWidget(close_btn)
 
         root.addWidget(action_bar)
+
+    def _on_tab_changed(self, index: int):
+        self.stack.setCurrentIndex(index)
 
     def _save_display_name(self):
         override = self.display_name_edit.text().strip()
@@ -481,6 +635,7 @@ class AppInfoDialog(QDialog):
             self._update_icon_preview()
             self._status(f"Custom icon set for {self._app_name}")
         except OSError as e:
+            play_sound("error")
             QMessageBox.critical(self, "Error", f"Could not set custom icon:\n{e}")
 
     def _clear_custom_icon(self):
@@ -599,6 +754,38 @@ class AppInfoDialog(QDialog):
         record.auto_update = enabled
         InstallationRegistry().add(record)
 
+    def _revert_version(self):
+        """Revert to the .prev version via manager."""
+        app_name = self._app_name
+        if not app_name:
+            return
+        prev_dir = self._info.get("path", "") + ".prev"
+        if not os.path.isdir(prev_dir):
+            QMessageBox.information(self, "No Backup", "No previous version found to revert to.")
+            self.btn_revert.setEnabled(False)
+            return
+        reply = QMessageBox.question(
+            self, "Revert Version",
+            f"Revert {app_name} to the version in {prev_dir}?\n"
+            "The current version will be removed.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            app_dir = self._info["path"]
+            temp_dir = app_dir + ".tmp_revert"
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            os.rename(app_dir, temp_dir)
+            os.rename(prev_dir, app_dir)
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            self.btn_revert.setEnabled(os.path.isdir(app_dir + ".prev"))
+            QMessageBox.information(self, "Reverted", f"{app_name} has been reverted to the previous version.")
+        except OSError as e:
+            play_sound("error")
+            QMessageBox.critical(self, "Revert Failed", str(e))
+
     def _check_for_updates(self):
         url = self.update_url_edit.text().strip()
         if not url:
@@ -612,7 +799,7 @@ class AppInfoDialog(QDialog):
         self.btn_check_update.setText("Checking...")
         normalized = normalize_update_url(url)
         self._update_worker = UpdateCheckWorker(normalized, current_version)
-        self._update_worker.finished.connect(self._on_update_check_done)
+        self._update_worker.update_checked.connect(self._on_update_check_done)
         self._update_worker.error.connect(self._on_update_check_error)
         self._update_worker.start()
 
@@ -633,55 +820,120 @@ class AppInfoDialog(QDialog):
     def _on_update_check_error(self, error_msg: str):
         self.btn_check_update.setEnabled(True)
         self.btn_check_update.setText("Check for Updates")
+        play_sound("warning")
         QMessageBox.warning(self, "Update Check Failed", f"Could not check for updates:\n{error_msg}")
 
     def _download_and_update(self, download_url: str, latest_version: str):
+        from niruvi.worker import DownloadWorker, extract_appimage_sync
+        dest_dir = self._info.get("path", "")
+        fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
+        os.close(fd)
+
         progress = QProgressDialog(f"Downloading {self._app_name} update...", "Cancel", 0, 100, self)
         progress.setWindowTitle("Downloading Update")
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setAutoClose(True)
         progress.setValue(0)
-        temp_path = None
-        dest_dir = self._info.get("path", "")
+
+        worker = DownloadWorker(download_url, temp_path, "", self)
+        worker.progress_updated.connect(progress.setValue)
+        loop = QEventLoop()
+        error_msg = [None]
+
+        def on_finished(_p):
+            loop.quit()
+
+        def on_error(e):
+            error_msg[0] = e
+            loop.quit()
+
+        worker.finished.connect(on_finished)
+        worker.error.connect(on_error)
+        worker.start()
+        progress.canceled.connect(worker.cancel)
+        loop.exec()
+        progress.close()
+
+        if error_msg[0]:
+            play_sound("error")
+            Path(temp_path).unlink(missing_ok=True)
+            QMessageBox.critical(self, "Download Failed", str(error_msg[0]))
+            return
+
+        if progress.wasCanceled():
+            Path(temp_path).unlink(missing_ok=True)
+            return
+
+        backup_dir = dest_dir + ".backup"
+        if os.path.exists(dest_dir):
+            shutil.copytree(dest_dir, backup_dir, dirs_exist_ok=True)
         try:
-            fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
-            os.close(fd)
-            resp = urllib.request.urlopen(download_url, timeout=120)
-            total = int(resp.headers.get("Content-Length", 0))
-            chunk_size = 8192
-            downloaded = 0
-            with open(temp_path, "wb") as f:
-                while True:
-                    if progress.wasCanceled():
-                        Path(temp_path).unlink(missing_ok=True)
-                        return
-                    chunk = resp.read(chunk_size)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total > 0:
-                        progress.setValue(int((downloaded / total) * 100))
-            progress.close()
-            backup_dir = dest_dir + ".backup"
-            if os.path.exists(dest_dir):
-                shutil.copytree(dest_dir, backup_dir, dirs_exist_ok=True)
-            from niruvi.worker import extract_appimage_sync
             extract_appimage_sync(temp_path, dest_dir)
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir, ignore_errors=True)
-            from niruvi.desktop_utils import get_version
-            version = get_version(dest_dir) or latest_version
-            registry = InstallationRegistry()
-            record = registry.get(self._app_name)
-            if record:
-                record.version = version
-                registry.add(record)
-            QMessageBox.information(self, "Update Complete", f"{self._app_name} has been updated to version {version}.")
-            self._status(f"Updated {self._app_name} to version {version}")
         except Exception as e:
-            progress.close()
-            QMessageBox.critical(self, "Update Failed", f"Failed to update:\n{e}")
+            if os.path.isdir(backup_dir):
+                shutil.rmtree(dest_dir, ignore_errors=True)
+                os.replace(backup_dir, dest_dir)
+            Path(temp_path).unlink(missing_ok=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Update Failed", f"Failed to extract update:\n{e}")
+            return
+        Path(temp_path).unlink(missing_ok=True)
+        if os.path.isdir(backup_dir):
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        from niruvi.desktop_utils import get_version
+        version = get_version(dest_dir) or latest_version
+        registry = InstallationRegistry()
+        record = registry.get(self._app_name)
+        if record:
+            record.version = version
+            registry.add(record)
+        QMessageBox.information(self, "Update Complete", f"{self._app_name} has been updated to version {version}.")
+        self._status(f"Updated {self._app_name} to version {version}")
+
+    def _load_shield_ui(self):
+        from niruvi.settings import _settings
+        record = self._get_or_create_record()
+        sc = record.sandbox_config or {}
+        default_enabled = _settings.get("sandbox_default_enabled", True)
+        default_backend_str = _settings.get("sandbox_default_backend", "shield")
+        default_backend = {"shield": SandboxBackend.SHIELD, "firejail": SandboxBackend.FIREJAIL, "bwrap": SandboxBackend.BUBBLEWRAP}.get(default_backend_str, SandboxBackend.SHIELD)
+        self.sb_enabled_cb.setChecked(sc.get("enabled", default_enabled))
+        self.cb_portable_home.setChecked(sc.get("portable_home", False))
+        self.cb_portable_config.setChecked(sc.get("portable_config", False))
+        backend = sc.get("backend", default_backend)
+        for i in range(self.backend_combo.count()):
+            if self.backend_combo.itemData(i) == backend:
+                self.backend_combo.setCurrentIndex(i)
+                break
+
+    def _save_shield_config(self):
+        record = self._get_or_create_record()
+        sc = {
+            "enabled": self.sb_enabled_cb.isChecked(),
+            "hardening": self.sb_enabled_cb.isChecked(),
+            "portable_home": self.cb_portable_home.isChecked(),
+            "portable_config": self.cb_portable_config.isChecked(),
+            "backend": self.backend_combo.currentData(),
+        }
+        if sc.get("portable_home"):
+            Path(os.path.join(record.path, ".home")).mkdir(exist_ok=True)
+        if sc.get("portable_config"):
+            Path(os.path.join(record.path, ".config")).mkdir(exist_ok=True)
+        record.sandbox_config = sc
+        InstallationRegistry().add(record)
+        self._load_shield_ui()
+        self._status(f"Shield config saved for {self._app_name}")
+
+    def _reset_shield_defaults(self):
+        sc = ShieldConfig(enabled=True)
+        record = self._get_or_create_record()
+        new_config = sc.to_dict()
+        new_config["portable_home"] = self.cb_portable_home.isChecked()
+        new_config["portable_config"] = self.cb_portable_config.isChecked()
+        record.sandbox_config = new_config
+        InstallationRegistry().add(record)
+        self._load_shield_ui()
+        self._status(f"Shield reset to defaults for {self._app_name}")
 
     def _run_app(self):
         parent = self.parent()
@@ -693,6 +945,38 @@ class AppInfoDialog(QDialog):
         parent = self.parent()
         if parent and hasattr(parent, "_uninstall_app"):
             parent._uninstall_app(self._app_name)
+
+    def _reset_app_defaults(self):
+        reply = QMessageBox.question(
+            self, "Reset to Defaults",
+            f"Reset all settings for {self._app_name} to defaults?\n\n"
+            "This will clear custom display name, icon, run arguments, "
+            "environment variables, update URL/channel, and isolation settings.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        record = self._get_or_create_record()
+        record.display_name_override = ""
+        record.run_args = ""
+        record.env_vars = {}
+        record.custom_icon_path = ""
+        record.update_url = ""
+        record.update_channel = "stable"
+        record.auto_update = False
+        record.sandbox_config = {"enabled": True, "hardening": True, "portable_home": False, "portable_config": False, "backend": SandboxBackend.SHIELD}
+        InstallationRegistry().add(record)
+        self.display_name_edit.clear()
+        self.run_args_edit.clear()
+        self.env_table.setRowCount(0)
+        self.update_url_edit.clear()
+        self.channel_combo.setCurrentIndex(0)
+        self.auto_update_toggle.setChecked(False)
+        self._update_icon_preview()
+        self._load_shield_ui()
+        self._update_source_type_label()
+        self._info["custom_icon_path"] = ""
+        self._status(f"All settings reset to defaults for {self._app_name}")
 
     def _status(self, msg: str):
         parent = self.parent()
