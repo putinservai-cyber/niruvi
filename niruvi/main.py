@@ -13,13 +13,22 @@ def _fix_qt_platform_path():
 
     The AppImage runtime may set QT_QPA_PLATFORM_PLUGIN_PATH to an empty
     or non-existent path, causing QApplication creation to fail with
-    "Could not find the Qt platform plugin". We fix this by pointing it
-    at the system's Qt6 plugin directory.
+    "Could not find the Qt platform plugin". We fix this by:
+
+    1. Cleaning LD_LIBRARY_PATH so bundled Qt5 libs don't shadow system Qt6
+    2. Pointing QT_QPA_PLATFORM_PLUGIN_PATH at the system Qt6 plugin dir
     """
+    old = os.environ.get("LD_LIBRARY_PATH", "")
+    if old:
+        cleaned = [p for p in old.split(":") if p and not p.startswith("/tmp/.mount_")]
+        if cleaned:
+            os.environ["LD_LIBRARY_PATH"] = ":".join(cleaned)
+        else:
+            os.environ.pop("LD_LIBRARY_PATH", None)
+
     cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
     if cur and os.path.isdir(cur):
         return
-    # Try the Fedora/RHEL path first, then common paths
     candidates = [
         "/usr/lib64/qt6/plugins",
         "/usr/lib/x86_64-linux-gnu/qt6/plugins",
@@ -33,7 +42,6 @@ def _fix_qt_platform_path():
         ):
             os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
             return
-    # Nothing found — let Qt search defaults
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
 
 from niruvi.settings import load_settings, get_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR

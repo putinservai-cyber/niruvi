@@ -35,9 +35,24 @@ def _fix_qt_platform_path():
 
     The AppImage runtime may set QT_QPA_PLATFORM_PLUGIN_PATH to an empty
     or non-existent path, causing QApplication creation to fail with
-    "Could not find the Qt platform plugin". We fix this by pointing it
-    at the system's Qt6 plugin directory.
+    "Could not find the Qt platform plugin". We fix this by:
+
+    1. Cleaning LD_LIBRARY_PATH so bundled Qt5 libs don't shadow system Qt6
+    2. Pointing QT_QPA_PLATFORM_PLUGIN_PATH at the system Qt6 plugin dir
     """
+    # Remove AppImage bundle paths from LD_LIBRARY_PATH so system
+    # PyQt6 finds system Qt6 libraries, not bundled Qt5 ones
+    old = os.environ.get("LD_LIBRARY_PATH", "")
+    if old:
+        cleaned = []
+        for p in old.split(":"):
+            if not p or not p.startswith("/tmp/.mount_"):
+                cleaned.append(p)
+        if cleaned:
+            os.environ["LD_LIBRARY_PATH"] = ":".join(cleaned)
+        else:
+            os.environ.pop("LD_LIBRARY_PATH", None)
+
     cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
     if cur and os.path.isdir(cur):
         return

@@ -292,10 +292,11 @@ def _create_apprun(appdir: str, exec_path: str) -> str:
 
 
 def _create_desktop(appdir: str, name: str, exec_name: str = None, icon_name: str = None) -> str:
+    bare_exec = os.path.basename(exec_name) if exec_name else name
     content = (
         '[Desktop Entry]\n'
         f'Name={name}\n'
-        f'Exec={exec_name or name}\n'
+        f'Exec={bare_exec}\n'
         f'Icon={icon_name or name}\n'
         'Type=Application\n'
         'Categories=Utility;\n'

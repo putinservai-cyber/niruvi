@@ -20,6 +20,13 @@ from PyQt6.QtCore import Qt
 
 def _fix_qt_platform_path():
     """Ensure Qt can find its platform plugins when running from an AppImage."""
+    old = os.environ.get("LD_LIBRARY_PATH", "")
+    if old:
+        cleaned = [p for p in old.split(":") if p and not p.startswith("/tmp/.mount_")]
+        if cleaned:
+            os.environ["LD_LIBRARY_PATH"] = ":".join(cleaned)
+        else:
+            os.environ.pop("LD_LIBRARY_PATH", None)
     cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
     if cur and os.path.isdir(cur):
         return

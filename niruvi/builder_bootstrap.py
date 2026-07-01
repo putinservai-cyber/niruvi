@@ -183,6 +183,12 @@ MARKER="$INSTALL_DIR/.installed"
 META="$INSTALL_DIR/.appimage-manager.json"
 WIZARD="$HERE/.niruvi-install/self_install_wizard.py"
 
+# Save original LD_LIBRARY_PATH for installed app launch
+_SAVED_LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
+
+# Remove bundle lib paths so system python3/PyQt6 finds system Qt6
+unset LD_LIBRARY_PATH
+
 # Fix empty QT_QPA_PLATFORM_PLUGIN_PATH set by AppImage runtime
 if [ -z "$QT_QPA_PLATFORM_PLUGIN_PATH" ] || [ ! -d "$QT_QPA_PLATFORM_PLUGIN_PATH" ]; then
     unset QT_QPA_PLATFORM_PLUGIN_PATH
@@ -325,6 +331,7 @@ fi
 
 # ── Launch installed or run installer ──
 if [ -f "$MARKER" ] && [ -f "$INSTALL_DIR/AppRun" ]; then
+    export LD_LIBRARY_PATH="$_SAVED_LD_LIBRARY_PATH"
     exec "$INSTALL_DIR/AppRun" "$@"
 fi
 
