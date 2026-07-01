@@ -17,6 +17,27 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+
+def _fix_qt_platform_path():
+    """Ensure Qt can find its platform plugins when running from an AppImage."""
+    cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
+    if cur and os.path.isdir(cur):
+        return
+    candidates = [
+        "/usr/lib64/qt6/plugins",
+        "/usr/lib/x86_64-linux-gnu/qt6/plugins",
+        "/usr/lib64/qt6/plugins/platforms/..",
+    ]
+    for p in candidates:
+        platforms = os.path.join(p, "platforms")
+        if os.path.isdir(platforms) and any(
+            f.startswith("libq") for f in os.listdir(platforms)
+            if f.endswith(".so")
+        ):
+            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
+            return
+    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+
 from niruvi.desktop_utils import (
     create_desktop_entry, install_icon_to_theme, refresh_desktop_database,
 )
@@ -111,6 +132,7 @@ def run_self_install():
             main()
             return
 
+        _fix_qt_platform_path()
         app = QApplication(sys.argv)
         app.setApplicationName(__app_name__)
         app.setApplicationVersion(__version__)

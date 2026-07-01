@@ -7,6 +7,35 @@ from urllib.parse import urlparse, unquote
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
+
+def _fix_qt_platform_path():
+    """Ensure Qt can find its platform plugins when running from an AppImage.
+
+    The AppImage runtime may set QT_QPA_PLATFORM_PLUGIN_PATH to an empty
+    or non-existent path, causing QApplication creation to fail with
+    "Could not find the Qt platform plugin". We fix this by pointing it
+    at the system's Qt6 plugin directory.
+    """
+    cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
+    if cur and os.path.isdir(cur):
+        return
+    # Try the Fedora/RHEL path first, then common paths
+    candidates = [
+        "/usr/lib64/qt6/plugins",
+        "/usr/lib/x86_64-linux-gnu/qt6/plugins",
+        "/usr/lib64/qt6/plugins/platforms/..",
+    ]
+    for p in candidates:
+        platforms = os.path.join(p, "platforms")
+        if os.path.isdir(platforms) and any(
+            f.startswith("libq") for f in os.listdir(platforms)
+            if f.endswith(".so")
+        ):
+            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
+            return
+    # Nothing found — let Qt search defaults
+    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+
 from niruvi.settings import load_settings, get_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR
 from niruvi.manager import AppManager, get_appimage_metadata
 from niruvi.wizard import InstallWizard
@@ -283,6 +312,7 @@ def main():
         if p.is_file() and p.suffix.lower() == ".appimage":
             file_to_process = str(p)
 
+    _fix_qt_platform_path()
     app = QApplication(sys.argv)
     from niruvi.utils import _init_icon_theme
     _init_icon_theme()
