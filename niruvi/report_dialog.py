@@ -325,7 +325,7 @@ class BuildSummaryDialog(QDialog):
                  validation_warnings=None):
         super().__init__(parent)
         self.setWindowTitle("Build Summary")
-        self.setMinimumSize(520, 400)
+        self.setMinimumSize(480, 320)
         self._appimage_path = appimage_path
         self._file_size = file_size
         self._is_elf = is_elf
@@ -335,81 +335,110 @@ class BuildSummaryDialog(QDialog):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
         # Header
         header = QHBoxLayout()
         icon_label = QLabel()
         icon = get_icon("emblem-default", "dialog-ok-apply", "emblem-ok")
         if not icon.isNull():
-            icon_label.setPixmap(icon.pixmap(48, 48))
+            icon_label.setPixmap(icon.pixmap(32, 32))
         header.addWidget(icon_label)
-        header.addWidget(QLabel("<h2>Build Complete</h2>"))
+        header.addWidget(QLabel("<b>Build Complete</b>"))
         header.addStretch()
         layout.addLayout(header)
 
         # Path
-        layout.addWidget(QLabel(f"<b>Location:</b> {self._appimage_path}"))
+        name = os.path.basename(self._appimage_path)
+        layout.addWidget(QLabel(
+            f"<span style='font-size:10pt'>{name}</span>"
+        ))
 
-        # Details panel
-        details_group = QWidget()
-        details_group.setStyleSheet(
-            "QWidget { background: palette(base); border: 1px solid palette(mid); "
-            "border-radius: 6px; padding: 8px; }"
+        # Details (compact row)
+        icon_ok = get_icon("emblem-ok", "dialog-ok-apply")
+        icon_warn = get_icon("emblem-warning", "dialog-warning")
+        icon_err = get_icon("emblem-important", "dialog-error")
+
+        details_w = QWidget()
+        details_w.setStyleSheet(
+            "QWidget{background:palette(base);border:1px solid palette(mid);"
+            "border-radius:4px;padding:6px}"
         )
-        details_layout = QVBoxLayout(details_group)
-        details_layout.setSpacing(4)
-        details_layout.addWidget(QLabel(f"<b>Size:</b> {self._format_size(self._file_size)}"))
-        details_layout.addWidget(QLabel(f"<b>Type:</b> {'ELF 64-bit executable' if self._is_elf else 'Unknown'}"))
-        details_layout.addWidget(QLabel(f"<b>Executable:</b> {'Yes' if self._is_executable else 'No - run: chmod +x'}"))
-        if not self._is_executable:
-            details_layout.addWidget(QLabel(
-                "<span style='color: #cc6600;'>⚠ The AppImage is not executable. "
-                "Run <code>chmod +x</code> on it before use.</span>"
-            ))
-        layout.addWidget(details_group)
+        dl = QVBoxLayout(details_w)
+        dl.setSpacing(2)
+
+        def _row(icol, text):
+            r = QHBoxLayout()
+            r.setContentsMargins(0, 0, 0, 0)
+            il = QLabel()
+            if icol and not icol.isNull():
+                il.setPixmap(icol.pixmap(16, 16))
+            il.setFixedWidth(20)
+            r.addWidget(il)
+            r.addWidget(QLabel(text), 1)
+            dl.addLayout(r)
+
+        stat, col = "Valid ELF executable", "#4a9e4a"
+        if not self._is_elf:
+            stat, col = "Not a valid ELF binary", "#cc4400"
+        elif not self._is_executable:
+            stat, col = "Not executable (run chmod +x)", "#cc6600"
+        _row(icon_ok if self._is_elf and self._is_executable else icon_warn,
+             f"<span style='color:{col}'>{stat}</span>")
+        _row(None, f"Size: {self._format_size(self._file_size)}")
+
+        layout.addWidget(details_w)
 
         # Warnings
         if self._validation_warnings:
-            warn_label = QLabel("<b>Validation warnings:</b>")
-            warn_label.setStyleSheet("color: #cc6600;")
-            layout.addWidget(warn_label)
+            warn_w = QWidget()
+            warn_w.setStyleSheet(
+                "QWidget{background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:6px}"
+            )
+            wl = QVBoxLayout(warn_w)
+            wl.setSpacing(2)
             for w in self._validation_warnings:
-                wl = QLabel(f"  ⚠ {w}")
-                wl.setWordWrap(True)
-                wl.setStyleSheet("color: #cc6600;")
-                layout.addWidget(wl)
+                r = QHBoxLayout()
+                r.setContentsMargins(0, 0, 0, 0)
+                il = QLabel()
+                if not icon_warn.isNull():
+                    il.setPixmap(icon_warn.pixmap(16, 16))
+                il.setFixedWidth(20)
+                r.addWidget(il)
+                lbl = QLabel(w)
+                lbl.setWordWrap(True)
+                lbl.setStyleSheet("color:#795548")
+                r.addWidget(lbl, 1)
+                wl.addLayout(r)
+            layout.addWidget(warn_w)
 
-        # Success message
-        success_label = QLabel(
-            "<span style='color: #4a9e4a; font-size: 11pt;'>"
-            "✓ Your AppImage was built successfully and is ready to use!</span>"
+        # Tips (compact)
+        tips_w = QWidget()
+        tips_w.setStyleSheet(
+            "QWidget{background:palette(window);border:1px solid palette(mid);"
+            "border-radius:4px;padding:6px}"
         )
-        layout.addWidget(success_label)
+        tl = QVBoxLayout(tips_w)
+        tl.setSpacing(2)
 
-        # Usage tips
-        tips_group = QWidget()
-        tips_group.setStyleSheet(
-            "QWidget { background: palette(window); border: 1px solid palette(mid); "
-            "border-radius: 6px; padding: 8px; margin-top: 4px; }"
-        )
-        tips_layout = QVBoxLayout(tips_group)
-        tips_layout.setSpacing(4)
-        tips_layout.addWidget(QLabel("<b>💡 Quick tips:</b>"))
-        tips_layout.addWidget(QLabel(
-            "  • Run it: <code>./" + os.path.basename(self._appimage_path) + "</code>"
-        ))
-        tips_layout.addWidget(QLabel(
-            "  • Make it executable once: <code>chmod +x " + os.path.basename(self._appimage_path) + "</code>"
-        ))
-        tips_layout.addWidget(QLabel(
-            "  • Move it anywhere — AppImages are fully portable."
-        ))
-        if self._is_elf:
-            tips_layout.addWidget(QLabel(
-                "  ✓ Valid ELF binary — the AppImage was packaged correctly."
-            ))
-        layout.addWidget(tips_group)
+        def _tip(icol, text):
+            r = QHBoxLayout()
+            r.setContentsMargins(0, 0, 0, 0)
+            il = QLabel()
+            if icol and not icol.isNull():
+                il.setPixmap(icol.pixmap(16, 16))
+            il.setFixedWidth(20)
+            r.addWidget(il)
+            r.addWidget(QLabel(text), 1)
+            tl.addLayout(r)
+
+        _tip(icon_ok, "AppImage built successfully and ready to distribute")
+        if self._is_elf and self._is_executable:
+            _tip(get_icon("media-playback-start"), f"Run: ./{name}")
+        else:
+            _tip(get_icon("dialog-information"), f"Run: chmod +x {name} && ./{name}")
+        _tip(get_icon("folder-open"), f"Located at: {self._appimage_path}")
+        layout.addWidget(tips_w)
 
         layout.addStretch()
 
@@ -417,7 +446,7 @@ class BuildSummaryDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         close_btn = QPushButton(get_icon("dialog-close"), "Done")
-        close_btn.setStyleSheet("QPushButton { padding: 6px 20px; }")
+        close_btn.setStyleSheet("QPushButton{padding:6px 20px}")
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)

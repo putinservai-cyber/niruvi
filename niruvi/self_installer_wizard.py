@@ -29,6 +29,33 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIcon
 
+
+def _fix_qt_platform_path():
+    """Ensure Qt can find its platform plugins when running from an AppImage.
+
+    The AppImage runtime may set QT_QPA_PLATFORM_PLUGIN_PATH to an empty
+    or non-existent path, causing QApplication creation to fail with
+    "Could not find the Qt platform plugin". We fix this by pointing it
+    at the system's Qt6 plugin directory.
+    """
+    cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
+    if cur and os.path.isdir(cur):
+        return
+    candidates = [
+        "/usr/lib64/qt6/plugins",
+        "/usr/lib/x86_64-linux-gnu/qt6/plugins",
+        "/usr/lib64/qt6/plugins/platforms/..",
+    ]
+    for p in candidates:
+        platforms = os.path.join(p, "platforms")
+        if os.path.isdir(platforms) and any(
+            f.startswith("libq") for f in os.listdir(platforms)
+            if f.endswith(".so")
+        ):
+            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
+            return
+    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+
 def _theme_icon(name):
     icon = QIcon.fromTheme(name)
     if not icon.isNull():
@@ -847,6 +874,7 @@ def main():
         w.run()
         return
 
+    _fix_qt_platform_path()
     app = QApplication(sys.argv)
     wizard = SelfInstallWizard(config, self_appimage, mode)
     if mode == "update":

@@ -183,6 +183,11 @@ MARKER="$INSTALL_DIR/.installed"
 META="$INSTALL_DIR/.appimage-manager.json"
 WIZARD="$HERE/.niruvi-install/self_install_wizard.py"
 
+# Fix empty QT_QPA_PLATFORM_PLUGIN_PATH set by AppImage runtime
+if [ -z "$QT_QPA_PLATFORM_PLUGIN_PATH" ] || [ ! -d "$QT_QPA_PLATFORM_PLUGIN_PATH" ]; then
+    unset QT_QPA_PLATFORM_PLUGIN_PATH
+fi
+
 _pyqt6_available() {{
     python3 -c "from PyQt6.QtWidgets import QApplication" 2>/dev/null
 }}
