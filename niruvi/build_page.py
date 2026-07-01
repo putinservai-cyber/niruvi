@@ -116,9 +116,15 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
 
 
 def _flatten_appdir(appdir: str):
-    SKIP = frozenset({'usr', 'opt', 'etc', 'lib', 'bin', 'sbin'})
+    """Move application files to the AppDir root, preserving usr/ structure.
+
+    Only flattens directories that contain a .desktop file but avoids flattening
+    if a proper Linux filesystem structure (usr/bin, usr/lib, etc.) already exists
+    in the candidate, since that structure is needed for post-install operation.
+    """
+    HAS_USR_STRUCTURE = frozenset({'usr', 'opt', 'etc', 'lib64', 'lib'})
+    SKIP = frozenset({'usr', 'opt', 'etc', 'lib', 'lib64', 'bin', 'sbin'})
     entries = [e for e in os.listdir(appdir) if not e.startswith('.')]
-    # Try each entry as a candidate for flattening
     for name in list(entries):
         if name in SKIP:
             continue
@@ -127,6 +133,10 @@ def _flatten_appdir(appdir: str):
             continue
         has_desktop = any(f.endswith('.desktop') for _, _, files in os.walk(candidate) for f in files)
         if not has_desktop:
+            continue
+        # Check if candidate already has a proper usr/ structure — if so, don't flatten
+        subdirs = set(os.listdir(candidate))
+        if subdirs & HAS_USR_STRUCTURE:
             continue
         for item in os.listdir(candidate):
             src = os.path.join(candidate, item)
@@ -239,11 +249,38 @@ def _create_apprun(appdir: str, exec_path: str) -> str:
         '#!/bin/bash',
         'HERE=$(dirname "$(readlink -f "$0")")',
         '',
+        '# ── Environment ──',
         'export PATH="${HERE}/usr/bin:${HERE}/usr/sbin:${HERE}/bin:${HERE}/sbin:$PATH"',
         'export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"',
-        'export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${HERE}/usr/lib/aarch64-linux-gnu:${HERE}/lib:${HERE}/lib/x86_64-linux-gnu:${HERE}/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH"',
+        '',
+        '# ── Library path (AppImage dirs first, then system) ──',
+        'LIB="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${HERE}/usr/lib/aarch64-linux-gnu"',
+        'LIB="${LIB}:${HERE}/lib:${HERE}/lib/x86_64-linux-gnu:${HERE}/lib/aarch64-linux-gnu"',
+        'export LD_LIBRARY_PATH="${LIB}:$LD_LIBRARY_PATH"',
+        '',
+        '# ── Python ──',
         'export PYTHONPATH="${HERE}/usr/lib/python3/dist-packages:${HERE}/usr/lib/python3/site-packages:$PYTHONPATH"',
+        '',
+        '# ── Qt plugins ──',
         'export QT_PLUGIN_PATH="${HERE}/usr/lib/qt6/plugins:${HERE}/usr/lib/qt5/plugins:${HERE}/usr/lib/x86_64-linux-gnu/qt6/plugins:${HERE}/usr/lib/aarch64-linux-gnu/qt6/plugins:$QT_PLUGIN_PATH"',
+        '',
+        '# ── Gtk modules ──',
+        'export GIO_EXTRA_MODULES="${HERE}/usr/lib/x86_64-linux-gnu/gio/modules:${HERE}/usr/lib/gio/modules:$GIO_EXTRA_MODULES"',
+        'export GTK_PATH="${HERE}/usr/lib/x86_64-linux-gnu/gtk-3.0:${HERE}/usr/lib/gtk-3.0:$GTK_PATH"',
+        'export GTK_IM_MODULE_FILE="${HERE}/usr/lib/x86_64-linux-gnu/gtk-3.0/immodules.cache"',
+        '',
+        '# ── Fix Qt platform plugins ──',
+        'if [ -z "$QT_QPA_PLATFORM_PLUGIN_PATH" ] || [ ! -d "$QT_QPA_PLATFORM_PLUGIN_PATH" ]; then',
+        '    for _d in "${HERE}/usr/lib/qt6/plugins/platforms" "${HERE}/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms" "${HERE}/usr/lib/aarch64-linux-gnu/qt6/plugins/platforms"; do',
+        '        if [ -d "$_d" ] && ls "$_d"/libq*.so &>/dev/null 2>&1; then',
+        '            export QT_QPA_PLATFORM_PLUGIN_PATH="${_d%/platforms}"',
+        '            break',
+        '        fi',
+        '    done',
+        'fi',
+        '',
+        '# ── Locale ──',
+        'export LOCALEDIR="${HERE}/usr/share/locale"',
         '',
         f'exec "$HERE/{exec_rel}" "$@"',
     ]

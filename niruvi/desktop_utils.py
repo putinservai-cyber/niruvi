@@ -357,4 +357,56 @@ def parse_desktop_file(file_path: str) -> dict:
         return {}
 
 
+_MIME_TYPES = ("application/x-appimage", "application/vnd.appimage", "application/x-iso9660-appimage")
+
+
+def register_mime_handler(app_name: str, desktop_name: str | None = None) -> bool:
+    """Register an application as the default handler for AppImage MIME types.
+
+    Uses xdg-mime and also writes directly to mimeapps.list for robustness
+    across desktop environments.
+    """
+    desk = desktop_name or app_name
+    desktop_file = f"{desk}.desktop"
+    local_apps = os.path.expanduser("~/.local/share/applications")
+    desktop_path = os.path.join(local_apps, desktop_file)
+    if not os.path.isfile(desktop_path):
+        return False
+
+    any_success = False
+    for mt in _MIME_TYPES:
+        try:
+            subprocess.run(
+                ["xdg-mime", "default", desktop_file, mt],
+                capture_output=True, timeout=10,
+            )
+            any_success = True
+        except Exception:
+            pass
+
+    mimeapps = os.path.expanduser("~/.config/mimeapps.list")
+    try:
+        os.makedirs(os.path.dirname(mimeapps), exist_ok=True)
+        existing = ""
+        if os.path.isfile(mimeapps):
+            with open(mimeapps) as f:
+                existing = f.read()
+        added = []
+        for mt in _MIME_TYPES:
+            if f"{mt}={desktop_file}" not in existing:
+                added.append(f"{mt}={desktop_file}")
+        if added:
+            with open(mimeapps, "a") as f:
+                if existing and not existing.endswith("\n"):
+                    f.write("\n")
+                f.write("\n[Default Applications]\n")
+                for line in added:
+                    f.write(line + "\n")
+            any_success = True
+    except OSError:
+        pass
+
+    return any_success
+
+
 

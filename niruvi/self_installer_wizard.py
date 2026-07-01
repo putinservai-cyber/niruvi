@@ -206,10 +206,23 @@ class InstallWorker(QThread):
 
             # Restore real application launcher (override self-installer AppRun)
             backup = os.path.join(self.dest, ".niruvi-install", "apprun-backup.sh")
+            apprun_path = os.path.join(self.dest, "AppRun")
             if os.path.isfile(backup):
-                shutil.copy2(backup, os.path.join(self.dest, "AppRun"))
-                os.chmod(os.path.join(self.dest, "AppRun"), 0o755)
+                shutil.copy2(backup, apprun_path)
+                os.chmod(apprun_path, 0o755)
                 self.log.emit("Restored real application launcher")
+                # Validate restored AppRun
+                import re as _re
+                try:
+                    with open(apprun_path) as _f:
+                        _content = _f.read()
+                    _m = _re.search(r'exec\s+"?\$HERE/([^"\s]+)', _content)
+                    if _m:
+                        _target = os.path.join(self.dest, _m.group(1))
+                        if not os.path.exists(_target):
+                            self.log.emit(f"Warning: AppRun target not found: {_target}")
+                except Exception:
+                    pass
 
             version = self.config.get("app_version", "1.0.0")
             meta = {"version": version, "install_date": str(int(os.path.getctime(self.self_appimage)))}
@@ -625,15 +638,38 @@ class FinishPage(QWizardPage):
         self.setFinalPage(True)
         self.setTitle("Installation Complete")
         msg = config.get("finish_message", "")
+        self._dest = ""
         layout = QVBoxLayout(self)
-        self.label = QLabel(f"<h2>Installation Complete</h2><p>{msg or 'The application was installed successfully.'}</p>")
+        self.label = QLabel(f"<h3>Installation Complete</h3><p>{msg or 'The application was installed successfully.'}</p>")
         self.label.setWordWrap(True)
-        layout.addStretch(1)
         layout.addWidget(self.label)
+
+        self._path_label = QLabel()
+        self._path_label.setWordWrap(True)
+        self._path_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        layout.addWidget(self._path_label)
+
         self.launch_cb = QCheckBox("Launch application now")
         self.launch_cb.setChecked(config.get("enable_launch_at_finish", True))
         layout.addWidget(self.launch_cb)
+
+        self._open_folder_btn = QPushButton(_theme_icon("folder-open"), "Open Install Folder")
+        self._open_folder_btn.clicked.connect(self._on_open_folder)
+        self._open_folder_btn.setVisible(False)
+        layout.addWidget(self._open_folder_btn)
+
         layout.addStretch(1)
+
+    def setDest(self, path: str):
+        self._dest = path
+        self._path_label.setText(f"Installed to: {path}")
+        self._open_folder_btn.setVisible(bool(path))
+
+    def _on_open_folder(self):
+        if self._dest:
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtGui import QDesktopServices
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self._dest))
 
     def shouldLaunch(self):
         return self.launch_cb.isChecked()
@@ -762,6 +798,7 @@ class SelfInstallWizard(QWizard):
         self._progress_page.setComplete(True)
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self._finish_appimage = os.path.join(dest, "AppRun")
+        self._finish_page.setDest(dest)
 
     def _on_worker_error(self, msg):
         try:
@@ -780,7 +817,20 @@ class SelfInstallWizard(QWizard):
         if self._finish_appimage and os.path.isfile(self._finish_appimage):
             if self._finish_page and self._finish_page.shouldLaunch():
                 try:
-                    subprocess.Popen([self._finish_appimage], start_new_session=True)
+                    proc = subprocess.Popen(
+                        [self._finish_appimage],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                    import time
+                    time.sleep(1)
+                    if proc.poll() is not None and proc.returncode != 0:
+                        QMessageBox.warning(
+                            self, "Launch Issue",
+                            "The application was installed but could not be launched. "
+                            "You can open the install folder and run it manually.",
+                        )
                 except Exception:
                     pass
         super().accept()
@@ -863,6 +913,14 @@ def main():
             self_appimage = os.readlink("/proc/self/exe")
         except Exception:
             self_appimage = sys.argv[0]
+    # Validate AppImage path
+    self_appimage = os.path.realpath(self_appimage)
+    if not os.path.isfile(self_appimage):
+        print("Error: could not determine the AppImage path.", file=sys.stderr)
+        sys.exit(1)
+    if ".." in self_appimage.split(os.sep):
+        print("Error: AppImage path contains invalid components.", file=sys.stderr)
+        sys.exit(1)
 
     if mode == "check_updates":
         from PyQt6.QtCore import QCoreApplication

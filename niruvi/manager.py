@@ -1177,12 +1177,32 @@ class AppManager(QMainWindow):
         self._temp_launch_dirs.clear()
 
     def _uninstall_app(self, app_name: str):
-        app_info = self.installed_apps[app_name]
-        app_dir = app_info["path"]
-        if not os.path.isdir(app_dir):
+        app_info = self.installed_apps.get(app_name)
+        if not app_info:
+            return
+        app_dir = app_info.get("path", "")
+        if not app_dir or not os.path.isdir(app_dir):
             expected = os.path.join(get_settings()["install_dir"], app_name)
             if os.path.isdir(expected):
                 app_dir = expected
+            else:
+                QMessageBox.warning(self, "Cannot Uninstall", f"The install directory for {app_name} was not found.")
+                return
+
+        # Safety: refuse to remove system directories
+        SAFE_PREFIXES = (
+            os.path.expanduser("~/Applications"),
+            os.path.expanduser("~/.local"),
+        )
+        real = os.path.realpath(app_dir)
+        if not any(real.startswith(p) for p in SAFE_PREFIXES):
+            play_sound("error")
+            QMessageBox.critical(
+                self, "Security Error",
+                f"Refusing to uninstall: the path '{real}' is not in a managed directory.\n\n"
+                f"Uninstall is only allowed for paths under ~/Applications or ~/.local.",
+            )
+            return
 
         wizard = UninstallWizard(app_name, app_dir, self)
         if wizard.exec() == QDialog.DialogCode.Accepted:

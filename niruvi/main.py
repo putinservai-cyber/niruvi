@@ -171,8 +171,12 @@ def cli_install(path_str: str):
 
 def _resolve_path(raw: str) -> str:
     if raw.startswith("file://"):
-        return unquote(urlparse(raw).path)
-    return raw
+        raw = unquote(urlparse(raw).path)
+    resolved = os.path.realpath(raw)
+    # Reject path traversal outside the filesystem
+    if ".." in raw.split(os.sep):
+        raise ValueError(f"Path contains '..' traversal: {raw}")
+    return resolved
 
 
 def main():
@@ -183,7 +187,8 @@ def main():
         prog="Niruvi",
         description="Niruvi — Universal Linux AppImage Manager",
     )
-    parser.add_argument("file", nargs="?", help="AppImage file to install")
+    parser.add_argument("file", nargs="?", help="AppImage file to open/manage")
+    parser.add_argument("--open", metavar="PATH", help="Open an AppImage file in the manager (for file association handlers)")
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--install", metavar="PATH", help="Install an AppImage (silent, no GUI)")
     parser.add_argument("--uninstall", metavar="APP", help="Uninstall an installed app")
@@ -203,7 +208,11 @@ def main():
     load_settings()
 
     if args.install:
-        raw = _resolve_path(args.install)
+        try:
+            raw = _resolve_path(args.install)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
         if not os.path.exists(raw):
             print(f"Error: file not found: {raw}", file=sys.stderr)
             sys.exit(1)
@@ -294,7 +303,11 @@ def main():
         sys.exit(0)
 
     if args.is_installed:
-        raw = _resolve_path(args.is_installed)
+        try:
+            raw = _resolve_path(args.is_installed)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
         registry = InstallationRegistry()
         record = registry.lookup_by_path(raw) or registry.lookup_by_name(Path(raw).stem)
         if record:
@@ -306,11 +319,18 @@ def main():
 
     # --- GUI path ---
     file_to_process = None
-    if args.file:
-        raw = _resolve_path(args.file)
-        p = Path(raw)
-        if p.is_file() and p.suffix.lower() == ".appimage":
-            file_to_process = str(p)
+    src = args.open or args.file
+    if src:
+        try:
+            raw = _resolve_path(src)
+        except ValueError:
+            pass
+        else:
+            p = Path(raw)
+            if p.is_file() and p.suffix.lower() in (".appimage", ".AppImage"):
+                file_to_process = str(p)
+            elif p.is_file():
+                file_to_process = str(p)
 
     _fix_qt_platform_path()
     app = QApplication(sys.argv)

@@ -40,6 +40,7 @@ def _fix_qt_platform_path():
 
 from niruvi.desktop_utils import (
     create_desktop_entry, install_icon_to_theme, refresh_desktop_database,
+    register_mime_handler,
 )
 from niruvi._version import __app_name__, __version__
 
@@ -114,6 +115,7 @@ def _create_self_desktop_entry():
             install_icon_to_theme(icon_path, __app_name__)
             break
     desktop_file = create_desktop_entry(INSTALL_DIR, __app_name__)
+    register_mime_handler(__app_name__)
     refresh_desktop_database()
     return desktop_file
 
@@ -174,9 +176,23 @@ def run_self_install():
                     f"It will now launch from the installed location.",
                 )
 
-                p = subprocess.Popen([os.path.join(INSTALL_DIR, "AppRun")])
-                _DETACHED.append(p)
-                sys.exit(0)
+                p = subprocess.Popen(
+                    [os.path.join(INSTALL_DIR, "AppRun")],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                import time
+                time.sleep(1.5)
+                if p.poll() is not None and p.returncode != 0:
+                    # Installed launch failed — show AppManager from here
+                    progress.close()
+                    QMessageBox.warning(
+                        None, "Launch Issue",
+                        "Niruvi was installed but the launched instance exited "
+                        "unexpectedly. The portable instance will open instead.",
+                    )
+                else:
+                    _DETACHED.append(p)
+                    sys.exit(0)
             except Exception as e:
                 progress.close()
                 try:
