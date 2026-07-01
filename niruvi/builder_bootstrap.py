@@ -345,7 +345,7 @@ def _build_config_to_bash(config: dict) -> str:
     rollback = "true" if config.get("enable_rollback", True) else "false"
     silent = "true" if config.get("enable_silent", True) else "false"
 
-    has_license = str(config.get("license_content") is not None).lower()
+    has_license = str(config.get("license_content") == "embedded").lower()
     has_pre = str(config.get("pre_install_content") is not None).lower()
     has_post = str(config.get("post_install_content") is not None).lower()
     has_components = str(bool(config.get("components"))).lower()
@@ -782,6 +782,88 @@ _refresh_desktop_db() {
         command -v "$kde" &>/dev/null && "$kde" 2>/dev/null || true
     done
 }
+
+# ── Niruvi registry registration (Windows EXE-style) ──
+_register_in_niruvi() {
+    local app_name="$1" install_dir="$2" version="$3" desktop_file update_url sha256
+    [ -z "$app_name" ] && return 0
+    desktop_file="$HOME/.local/share/applications/$app_name.desktop"
+    [ ! -f "$desktop_file" ] && desktop_file=""
+    local data_dir="${NIRUVI_DATA_DIR:-$HOME/.config/niruvi}"
+    mkdir -p "$data_dir"
+    local reg="$data_dir/registry.json"
+    [ -f "$reg" ] && EXISTING=$(python3 -c "
+import json
+try:
+    with open('$reg') as _f:
+        _d = json.load(_f)
+except: _d = []
+_d = [r for r in _d if r.get('name') != '$app_name']
+with open('$reg.tmp', 'w') as _f:
+    json.dump(_d, _f, indent=2)
+" 2>/dev/null || true) || true
+    python3 -c "
+import json, os, hashlib, datetime
+sha256 = ''
+self_path = os.environ.get('APPIMAGE', '')
+if self_path and os.path.isfile(self_path):
+    sha256 = hashlib.sha256(open(self_path, 'rb').read(65536)).hexdigest()
+reg_path = '$reg'
+existing = []
+if os.path.isfile(reg_path):
+    try:
+        with open(reg_path) as f:
+            existing = json.load(f)
+    except: pass
+existing = [r for r in existing if r.get('name') != '$app_name']
+existing.append({
+    'name': '$app_name',
+    'path': '$install_dir',
+    'version': '${version:-}',
+    'install_date': datetime.datetime.now().isoformat(),
+    'install_type': 'self-install',
+    'source_sha256': sha256,
+    'desktop_file': '$desktop_file',
+    'desktop_shortcut': '$desktop_file',
+    'update_url': '${UPDATE_URL:-}',
+    'architecture': '',
+    'display_name_override': '${BRAND_NAME:-}',
+    'custom_icon_path': '',
+    'env_vars': {},
+    'run_args': '',
+    'auto_update': false,
+    'update_channel': 'stable',
+    'sandbox_config': {},
+})
+tmp = reg_path + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(existing, f, indent=2)
+os.replace(tmp, reg_path)
+print('Registered in Niruvi: $app_name -> $install_dir')
+" 2>/dev/null || echo "Note: could not register in Niruvi"
+}
+
+_unregister_from_niruvi() {
+    local app_name="$1"
+    [ -z "$app_name" ] && return 0
+    local data_dir="${NIRUVI_DATA_DIR:-$HOME/.config/niruvi}"
+    local reg="$data_dir/registry.json"
+    [ ! -f "$reg" ] && return 0
+    python3 -c "
+import json, os
+with open('$reg') as f:
+    d = json.load(f)
+before = len(d)
+d = [r for r in d if r.get('name') != '$app_name']
+if len(d) == before:
+    exit(0)
+tmp = '$reg.tmp'
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2)
+os.replace(tmp, '$reg')
+print('Unregistered $app_name from Niruvi')
+" 2>/dev/null || true
+}
 '''
 
 
@@ -853,113 +935,15 @@ _install_uninstall_entry "$INSTALL_DIR"
 _refresh_desktop_db
 
 # ═══════════════════════════════════════════
+#  Niruvi registry (Windows EXE-style)
+# ═══════════════════════════════════════════
+_register_in_niruvi "$APP_NAME" "$INSTALL_DIR" "$APP_VERSION"
+
+# ═══════════════════════════════════════════
 #  Done
 # ═══════════════════════════════════════════
 _msg "Installation Complete" \\
 "$APP_NAME has been installed to: $INSTALL_DIR\n\nYou can launch it from your application menu." \\
-"info"
-
-if _ask_run "Run $APP_NAME?" "Launch $APP_NAME now?"; then
-    "$INSTALL_DIR/AppRun" &
-fi
-
-exit 0
-'''
-
-
-def _macos_install_body() -> str:
-    return '''
-# ═══════════════════════════════════════════
-#  Step 1: Welcome
-# ═══════════════════════════════════════════
-_msg "Welcome to $BRAND_NAME" \\
-"[Step 1/5] Welcome
-
-This installer will guide you through installing
-$BRAND_NAME on your system.
-
-Version: $APP_VERSION
-Type: Self-Installing AppImage
-
-Click OK to continue." \\
-"info"
-
-# ═══════════════════════════════════════════
-#  Step 2: License + Components
-# ═══════════════════════════════════════════
-if ! _handle_license; then
-    _msg "License Declined" "You must accept the license agreement to install." "error"
-    exit 1
-fi
-
-if ! _handle_components; then
-    _msg "Cancelled" "No components selected." "error"
-    exit 1
-fi
-
-# ═══════════════════════════════════════════
-#  Step 3: Destination
-# ═══════════════════════════════════════════
-DEFAULT_DIR="$(_default_install_dir)"
-INSTALL_DIR="$(_choose_dir "[Step 3/5] Choose Install Location" "$DEFAULT_DIR")"
-if [ -z "$INSTALL_DIR" ]; then
-    _msg "Installation Cancelled" "Installation cancelled." "error"
-    exit 1
-fi
-
-# ═══════════════════════════════════════════
-#  Step 4: Confirm, Extract, Install
-# ═══════════════════════════════════════════
-if [ -f "$INSTALL_DIR/.installed" ]; then
-    if ! _confirm "[Step 4/5] Already Installed" \\
-"$APP_NAME is already installed in:
-$INSTALL_DIR
-
-Overwrite existing installation?"; then
-        exit 1
-    fi
-    rm -rf "$INSTALL_DIR"
-fi
-
-if ! _confirm "[Step 4/5] Ready to Install" \\
-"$APP_NAME will be installed to:
-  $INSTALL_DIR
-
-Disk space required: approximately 500 MB
-
-Proceed with installation?"; then
-    exit 1
-fi
-
-_rollback_init "$INSTALL_DIR"
-trap "_rollback_restore $INSTALL_DIR" EXIT
-_run_pre_install
-
-_msg "Installing" "Extracting $APP_NAME to: $INSTALL_DIR" "info"
-_extract_appimage "$INSTALL_DIR"
-_save_metadata "$INSTALL_DIR"
-_save_component_selection "$INSTALL_DIR"
-_run_post_install
-
-_msg "Installing" "Setting up desktop integration..." "info"
-_install_desktop_entries "$INSTALL_DIR"
-_install_uninstall_entry "$INSTALL_DIR"
-_refresh_desktop_db
-
-# ═══════════════════════════════════════════
-#  Step 5: Summary
-# ═══════════════════════════════════════════
-_msg "Installation Complete" \\
-"[Step 5/5] Summary
-
-$APP_NAME has been installed successfully.
-
-  Location:  $INSTALL_DIR
-  Launcher:  Desktop Menu
-  Uninstall: Desktop Menu \\u2192 Uninstall $APP_NAME
-  Version:   $APP_VERSION
-
-You can launch $APP_NAME from your application menu." \\
 "info"
 
 if _ask_run "Run $APP_NAME?" "Launch $APP_NAME now?"; then
@@ -1069,6 +1053,7 @@ echo "Setting up desktop entries..."
 _install_desktop_entries "$INSTALL_DIR"
 _install_uninstall_entry "$INSTALL_DIR"
 _refresh_desktop_db
+_register_in_niruvi "$APP_NAME" "$INSTALL_DIR" "$APP_VERSION"
 
 echo ""
 echo "========================================"
@@ -1089,7 +1074,6 @@ def _get_install_body(style: str) -> str:
     """Lazy resolver for install body functions to avoid forward-reference issues."""
     bodies = {
         "wizard": _wizard_install_body,
-        "macos": _macos_install_body,
         "minimal": _minimal_install_body,
         "installbuilder": _installbuilder_install_body,
     }
@@ -1178,6 +1162,28 @@ _msg() {{
     fi
 }}
 
+_unregister_from_niruvi() {{
+    local app_name="$1"
+    [ -z "$app_name" ] && return 0
+    local data_dir="${{NIRUVI_DATA_DIR:-$HOME/.config/niruvi}}"
+    local reg="$data_dir/registry.json"
+    [ ! -f "$reg" ] && return 0
+    python3 -c "
+import json, os
+with open('$reg') as f:
+    d = json.load(f)
+before = len(d)
+d = [r for r in d if r.get('name') != '$app_name']
+if len(d) == before:
+    exit(0)
+tmp = '$reg.tmp'
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2)
+os.replace(tmp, '$reg')
+print('Unregistered $app_name from Niruvi')
+" 2>/dev/null || true
+}}
+
 # ── Page: Welcome (unattended skips to confirm) ──
 if [ "$UNATTENDED" != "true" ]; then
     _msg "Uninstall $APP_NAME" \\
@@ -1246,6 +1252,9 @@ fi
 
 REMOVED_ITEMS=0
 
+# ── Unregister from Niruvi registry ──
+_unregister_from_niruvi "$APP_NAME"
+
 # ── Page: Finish ──
 _msg "Uninstalled" "$APP_NAME has been completely removed." "info"
 exit 0
@@ -1256,8 +1265,6 @@ def _updater_script(app_name: str, app_version: str = "", updater_url: str = "")
     """Generate update.sh — GUI updater that checks a JSON endpoint, downloads, and installs."""
     safe_name = _sanitize_bash_string(app_name, "app_name")
     safe_ver = _sanitize_bash_string(app_version, "app_version")
-    if not updater_url:
-        updater_url = "https://example.com/updates/update.json"
     return f'''#!/bin/bash
 set -e
 
@@ -1662,6 +1669,7 @@ _page_progress() {
     _install_desktop_entries "$INSTALL_DIR"
     _install_uninstall_entry "$INSTALL_DIR"
     _refresh_desktop_db
+    _register_in_niruvi "$APP_NAME" "$INSTALL_DIR" "$APP_VERSION"
     return 0
 }
 
@@ -1761,7 +1769,6 @@ exit 0
 
 _INSTALLER_STYLES = {
     "wizard": "wizard",
-    "macos": "macos",
     "minimal": "minimal",
     "installbuilder": "installbuilder",
     "qt6": "qt6",

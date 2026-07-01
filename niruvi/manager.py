@@ -176,6 +176,7 @@ class AppManager(QMainWindow):
         ensure_hooks_dir()
         install_button_filter()
         self._init_ui()
+        self._scanning = False
         self.scan_installed()
         self._start_background_updater()
 
@@ -461,6 +462,11 @@ class AppManager(QMainWindow):
         }
 
     def scan_installed(self):
+        if getattr(self, '_scanning', False):
+            return
+        self._scanning = True
+        self.btn_refresh.setEnabled(False)
+        QApplication.processEvents()
         self.installed_apps.clear()
         self.installed_list.clear()
         install_dir = get_settings().get("install_dir", DEFAULT_INSTALL_DIR)
@@ -545,6 +551,8 @@ class AppManager(QMainWindow):
         self.drop_hint.setVisible(False)
         self.empty_widget.setVisible(not has_apps)
         self._status_bar.showMessage(f"Found {count} installed app{'s' if count != 1 else ''}" if has_apps else "Ready — no AppImages installed yet")
+        self._scanning = False
+        self.btn_refresh.setEnabled(True)
 
     def _filter_apps(self, text: str):
         for i in range(self.installed_list.count()):

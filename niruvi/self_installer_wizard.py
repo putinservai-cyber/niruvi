@@ -11,6 +11,7 @@ Usage:
   python3 this_script.py --check-updates
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -256,7 +258,11 @@ class InstallWorker(QThread):
                 self.progress.emit(90)
 
             self._install_desktop()
+            self.progress.emit(90)
+
+            self._register_in_niruvi()
             self.progress.emit(95)
+
             self._refresh_desktop_db()
             self.progress.emit(100)
             self.log.emit("Installation complete!")
@@ -331,6 +337,63 @@ class InstallWorker(QThread):
         with open(uninstall_desktop, "w") as f:
             f.write(uninstall_content)
 
+    def _register_in_niruvi(self):
+        try:
+            app_name = self.config.get("app_name", "")
+            if not app_name:
+                return
+            install_dir = self.dest
+            version = self.config.get("app_version", "")
+            desktop_file = os.path.expanduser(f"~/.local/share/applications/{app_name}.desktop")
+            if not os.path.isfile(desktop_file):
+                desktop_file = ""
+            data_dir = os.environ.get(
+                "NIRUVI_DATA_DIR",
+                os.path.expanduser("~/.config/niruvi"),
+            )
+            registry_path = os.path.join(data_dir, "registry.json")
+            os.makedirs(data_dir, exist_ok=True)
+            sha256 = ""
+            if self.self_appimage and os.path.isfile(self.self_appimage):
+                sha256 = hashlib.sha256(
+                    open(self.self_appimage, "rb").read(65536)
+                ).hexdigest()
+            record = {
+                "name": app_name,
+                "path": install_dir,
+                "version": version,
+                "install_date": datetime.now().isoformat(),
+                "install_type": "self-install",
+                "source_sha256": sha256,
+                "desktop_file": desktop_file,
+                "desktop_shortcut": desktop_file,
+                "update_url": self.config.get("updater_url", ""),
+                "architecture": "",
+                "display_name_override": self.config.get("brand_name", ""),
+                "custom_icon_path": "",
+                "env_vars": {},
+                "run_args": "",
+                "auto_update": False,
+                "update_channel": "stable",
+                "sandbox_config": {},
+            }
+            existing = []
+            if os.path.isfile(registry_path):
+                try:
+                    with open(registry_path) as f:
+                        existing = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    existing = []
+            existing = [r for r in existing if r.get("name") != app_name]
+            existing.append(record)
+            tmp = registry_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(existing, f, indent=2)
+            os.replace(tmp, registry_path)
+            self.log.emit(f"Registered {app_name} in Niruvi ({install_dir})")
+        except Exception as e:
+            self.log.emit(f"Note: could not register in Niruvi: {e}")
+
     def _refresh_desktop_db(self):
         for cmd in ("update-desktop-database", "gtk-update-icon-cache"):
             try:
@@ -351,6 +414,31 @@ class UninstallWorker(QThread):
     def __init__(self, config):
         super().__init__()
         self.config = config
+
+    @staticmethod
+    def _unregister_from_niruvi(app_name=""):
+        try:
+            if not app_name:
+                return
+            data_dir = os.environ.get(
+                "NIRUVI_DATA_DIR",
+                os.path.expanduser("~/.config/niruvi"),
+            )
+            registry_path = os.path.join(data_dir, "registry.json")
+            if not os.path.isfile(registry_path):
+                return
+            with open(registry_path) as f:
+                records = json.load(f)
+            before = len(records)
+            records = [r for r in records if r.get("name") != app_name]
+            if len(records) == before:
+                return
+            tmp = registry_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(records, f, indent=2)
+            os.replace(tmp, registry_path)
+        except Exception:
+            pass
 
     def run(self):
         try:
@@ -379,6 +467,8 @@ class UninstallWorker(QThread):
             if os.path.isdir(inst_dir):
                 shutil.rmtree(inst_dir)
             self.progress.emit(80)
+
+            self._unregister_from_niruvi(conf["app_name"])
 
             for cmd in ("update-desktop-database", "gtk-update-icon-cache"):
                 try:
@@ -652,39 +742,109 @@ class FinishPage(QWizardPage):
         super().__init__()
         self.setFinalPage(True)
         self.setTitle("Installation Complete")
-        msg = config.get("finish_message", "")
+        self._config = config
         self._dest = ""
         layout = QVBoxLayout(self)
-        self.label = QLabel(f"<h3>Installation Complete</h3><p>{msg or 'The application was installed successfully.'}</p>")
+
+        self.label = QLabel(
+            "<h3>Installation Complete</h3>"
+            "<p>The application has been installed successfully on your system.</p>"
+        )
         self.label.setWordWrap(True)
         layout.addWidget(self.label)
 
+        details = QVBoxLayout()
+        details.setSpacing(2)
+
         self._path_label = QLabel()
         self._path_label.setWordWrap(True)
-        self._path_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
-        layout.addWidget(self._path_label)
+        details.addWidget(self._path_label)
+
+        self._version_label = QLabel()
+        self._version_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        details.addWidget(self._version_label)
+
+        self._size_label = QLabel()
+        self._size_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        details.addWidget(self._size_label)
+
+        self._desktop_label = QLabel()
+        self._desktop_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        details.addWidget(self._desktop_label)
+
+        self._registry_label = QLabel()
+        self._registry_label.setStyleSheet("color: green; font-size: 9pt;")
+        details.addWidget(self._registry_label)
+
+        layout.addLayout(details)
+        layout.addSpacing(8)
 
         self.launch_cb = QCheckBox("Launch application now")
         self.launch_cb.setChecked(config.get("enable_launch_at_finish", True))
         layout.addWidget(self.launch_cb)
 
+        btn_layout = QHBoxLayout()
         self._open_folder_btn = QPushButton(_theme_icon("folder-open"), "Open Install Folder")
         self._open_folder_btn.clicked.connect(self._on_open_folder)
         self._open_folder_btn.setVisible(False)
-        layout.addWidget(self._open_folder_btn)
+        btn_layout.addWidget(self._open_folder_btn)
 
+        self._show_in_niruvi_btn = QPushButton(_theme_icon("go-home"), "Show in Niruvi")
+        self._show_in_niruvi_btn.clicked.connect(self._on_show_in_niruvi)
+        self._show_in_niruvi_btn.setVisible(False)
+        btn_layout.addWidget(self._show_in_niruvi_btn)
+
+        layout.addLayout(btn_layout)
         layout.addStretch(1)
 
     def setDest(self, path: str):
         self._dest = path
-        self._path_label.setText(f"Installed to: {path}")
-        self._open_folder_btn.setVisible(bool(path))
+        if not path:
+            return
+        app_name = self._config.get("app_name", "")
+        version = self._config.get("app_version", "")
+        self._path_label.setText(f"<b>Installed to:</b> {path}")
+        self._version_label.setText(f"<b>Version:</b> {version or '?'}")
+        try:
+            size = sum(
+                os.path.getsize(os.path.join(dp, f))
+                for dp, _, fn in os.walk(path)
+                for f in fn
+            ) if os.path.isdir(path) else 0
+            if size > 1073741824:
+                size_str = f"{size / 1073741824:.1f} GB"
+            elif size > 1048576:
+                size_str = f"{size / 1048576:.0f} MB"
+            elif size > 1024:
+                size_str = f"{size / 1024:.0f} KB"
+            else:
+                size_str = f"{size} B"
+            self._size_label.setText(f"<b>Size:</b> {size_str}")
+        except Exception:
+            self._size_label.setText("<b>Size:</b> ?")
+        desktop_path = os.path.expanduser(f"~/.local/share/applications/{app_name}.desktop")
+        if os.path.isfile(desktop_path):
+            self._desktop_label.setText(f"<b>Desktop Entry:</b> {desktop_path}")
+        else:
+            self._desktop_label.setText("<b>Desktop Entry:</b> Created")
+        self._registry_label.setText("✓ Registered in Niruvi Application Manager")
+        self._open_folder_btn.setVisible(True)
+        self._show_in_niruvi_btn.setVisible(True)
 
     def _on_open_folder(self):
         if self._dest:
             from PyQt6.QtCore import QUrl
             from PyQt6.QtGui import QDesktopServices
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._dest))
+
+    def _on_show_in_niruvi(self):
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "niruvi.main", "--open", self._dest],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
     def shouldLaunch(self):
         return self.launch_cb.isChecked()

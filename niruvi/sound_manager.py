@@ -37,7 +37,7 @@ _player: str | None = None
 _initialized = False
 _sound_filter: QObject | None = None
 _last_play_time: float = 0.0
-_PLAY_DEBOUNCE_MS: float = 0.15
+_PLAY_DEBOUNCE_MS: float = 0.3
 
 
 def _find_audio_dir() -> str:
