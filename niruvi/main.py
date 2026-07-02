@@ -44,15 +44,15 @@ def _fix_qt_platform_path():
             return
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
 
-from niruvi.settings import load_settings, get_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR
-from niruvi.manager import AppManager, get_appimage_metadata
-from niruvi.wizard import InstallWizard
-from niruvi.installation_registry import InstallationRegistry, InstallationRecord
-from niruvi.desktop_utils import (
+from niruvi.ui.settings import load_settings, get_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR
+from niruvi.ui.manager import AppManager, get_appimage_metadata
+from niruvi.ui.wizard import InstallWizard
+from niruvi.desktop.installation_registry import InstallationRegistry, InstallationRecord
+from niruvi.desktop.desktop_utils import (
     get_version, create_desktop_entry, find_desktop_for_app,
     find_desktop_shortcut, refresh_desktop_database,
 )
-from niruvi.worker import extract_appimage_sync
+from niruvi.core.worker import extract_appimage_sync
 from niruvi._version import __version__
 from niruvi.utils import get_icon
 
@@ -269,8 +269,8 @@ def main():
             print("No apps with update URLs configured.")
             sys.exit(0)
         print(f"Checking {len(apps)} app(s) for updates...")
-        from niruvi.update_sources import resolve_update_source
-        from niruvi.self_update import compare_versions
+        from niruvi.app.update_sources import resolve_update_source
+        from niruvi.app.self_update import compare_versions
         updates = []
         for name, url, ver in apps:
             try:
@@ -297,8 +297,8 @@ def main():
         if not record.update_url:
             print(f"No update URL configured for '{args.update_check}'.")
             sys.exit(0)
-        from niruvi.update_sources import resolve_update_source
-        from niruvi.self_update import compare_versions
+        from niruvi.app.update_sources import resolve_update_source
+        from niruvi.app.self_update import compare_versions
         try:
             info = resolve_update_source(record.update_url, record.version)
             if info and info.version and compare_versions(info.version, 'gt', record.version):
@@ -391,7 +391,7 @@ def main():
     window.show()
     ret = app.exec()
     window.close()
-    from niruvi.sound_manager import uninstall_button_filter
+    from niruvi.utils.sound_manager import uninstall_button_filter
     uninstall_button_filter()
     for _ in range(3):
         import gc as _gc
