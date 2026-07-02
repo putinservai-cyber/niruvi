@@ -1,3 +1,4 @@
+import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -538,9 +539,57 @@ class BuildDialog(QDialog):
         file_size = os.path.getsize(out_path) if os.path.isfile(out_path) else 0
         is_elf = False
         is_exec = os.access(out_path, os.X_OK)
+        architecture = ""
+        sha256 = ""
+        app_type = ""
+        file_count = 0
+        bundle_size = 0
         try:
             with open(out_path, 'rb') as f:
-                is_elf = f.read(4) == b'\x7fELF'
+                header = f.read(20)
+                is_elf = header[:4] == b'\x7fELF'
+                if is_elf and len(header) >= 20:
+                    ei_class = header[4]
+                    ei_data = header[5]
+                    e_machine_bytes = header[18:20]
+                    arch_map = {0: "None", 3: "i386", 62: "x86_64",
+                                40: "ARM", 183: "AArch64", 20: "PowerPC",
+                                21: "PowerPC64", 43: "SPARC"}
+                    if ei_class == 1:
+                        arch = "32-bit "
+                    elif ei_class == 2:
+                        arch = "64-bit "
+                    else:
+                        arch = ""
+                    if ei_data == 1:
+                        arch += "LE"
+                    elif ei_data == 2:
+                        arch += "BE"
+                    import struct
+                    e_machine = struct.unpack('<H' if ei_data == 1 else '>H', e_machine_bytes)[0]
+                    arch_name = arch_map.get(e_machine, f"machine={e_machine}")
+                    architecture = f"{arch} {arch_name}"
+                    # Detect AppImage type
+                    if len(header) >= 12:
+                        f.seek(8)
+                        type_check = f.read(4)
+                        if type_check[:2] == b'AI':
+                            app_type = "Type 2"
+                        else:
+                            app_type = "Type 1"
+                # SHA256
+                f.seek(0)
+                sha256 = hashlib.sha256(f.read()).hexdigest()
+        except Exception:
+            pass
+
+        # Count files in extracted squashfs if available
+        try:
+            import subprocess as _sp
+            result = _sp.run(["du", "-sb", out_path], capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                size_str = result.stdout.split()[0]
+                bundle_size = int(size_str)
         except Exception:
             pass
 
@@ -551,6 +600,11 @@ class BuildDialog(QDialog):
             is_elf=is_elf,
             is_executable=is_exec,
             validation_warnings=warnings,
+            architecture=architecture,
+            sha256=sha256,
+            app_type=app_type,
+            file_count=file_count,
+            bundle_size=bundle_size,
         )
         summary.exec()
         self.accept()

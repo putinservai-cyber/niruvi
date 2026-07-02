@@ -175,8 +175,8 @@ class AppManager(QMainWindow):
         from niruvi.hooks import ensure_hooks_dir
         ensure_hooks_dir()
         install_button_filter()
+        self._is_scanning = False
         self._init_ui()
-        self._scanning = False
         self.scan_installed()
         self._start_background_updater()
 
@@ -409,6 +409,8 @@ class AppManager(QMainWindow):
         text = label + (f"  (v{version_str})" if version_str else "")
         list_item = QListWidgetItem(text)
         list_item.setData(Qt.ItemDataRole.UserRole, key)
+        install_path_text = f"  [Installed to: {app_dir}]"
+        list_item.setData(Qt.ItemDataRole.UserRole + 1, app_dir)
         tooltip = (
             f"Path: {app_dir}\n"
             f"Version: {version_str or 'unknown'}\n"
@@ -462,10 +464,11 @@ class AppManager(QMainWindow):
         }
 
     def scan_installed(self):
-        if getattr(self, '_scanning', False):
+        if self._is_scanning:
             return
-        self._scanning = True
+        self._is_scanning = True
         self.btn_refresh.setEnabled(False)
+        self._status_bar.showMessage("Scanning installed apps...")
         QApplication.processEvents()
         self.installed_apps.clear()
         self.installed_list.clear()
@@ -551,8 +554,8 @@ class AppManager(QMainWindow):
         self.drop_hint.setVisible(False)
         self.empty_widget.setVisible(not has_apps)
         self._status_bar.showMessage(f"Found {count} installed app{'s' if count != 1 else ''}" if has_apps else "Ready — no AppImages installed yet")
-        self._scanning = False
         self.btn_refresh.setEnabled(True)
+        self._is_scanning = False
 
     def _filter_apps(self, text: str):
         for i in range(self.installed_list.count()):

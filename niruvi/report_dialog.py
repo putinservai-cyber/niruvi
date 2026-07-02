@@ -322,20 +322,26 @@ class BuildSummaryDialog(QDialog):
 
     def __init__(self, parent=None, appimage_path="",
                  file_size=0, is_elf=False, is_executable=False,
-                 validation_warnings=None):
+                 validation_warnings=None, architecture="",
+                 sha256="", app_type="", file_count=0, bundle_size=0):
         super().__init__(parent)
         self.setWindowTitle("Build Summary")
-        self.setMinimumSize(480, 320)
+        self.setMinimumSize(500, 380)
         self._appimage_path = appimage_path
         self._file_size = file_size
         self._is_elf = is_elf
         self._is_executable = is_executable
         self._validation_warnings = validation_warnings or []
+        self._architecture = architecture
+        self._sha256 = sha256
+        self._app_type = app_type
+        self._file_count = file_count
+        self._bundle_size = bundle_size
         self._init_ui()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
         # Header
         header = QHBoxLayout()
@@ -354,10 +360,8 @@ class BuildSummaryDialog(QDialog):
             f"<span style='font-size:10pt'>{name}</span>"
         ))
 
-        # Details (compact row)
         icon_ok = get_icon("emblem-ok", "dialog-ok-apply")
         icon_warn = get_icon("emblem-warning", "dialog-warning")
-        icon_err = get_icon("emblem-important", "dialog-error")
 
         details_w = QWidget()
         details_w.setStyleSheet(
@@ -365,15 +369,15 @@ class BuildSummaryDialog(QDialog):
             "border-radius:4px;padding:6px}"
         )
         dl = QVBoxLayout(details_w)
-        dl.setSpacing(2)
+        dl.setSpacing(1)
 
         def _row(icol, text):
             r = QHBoxLayout()
             r.setContentsMargins(0, 0, 0, 0)
             il = QLabel()
             if icol and not icol.isNull():
-                il.setPixmap(icol.pixmap(16, 16))
-            il.setFixedWidth(20)
+                il.setPixmap(icol.pixmap(14, 14))
+            il.setFixedWidth(18)
             r.addWidget(il)
             r.addWidget(QLabel(text), 1)
             dl.addLayout(r)
@@ -386,6 +390,17 @@ class BuildSummaryDialog(QDialog):
         _row(icon_ok if self._is_elf and self._is_executable else icon_warn,
              f"<span style='color:{col}'>{stat}</span>")
         _row(None, f"Size: {self._format_size(self._file_size)}")
+        if self._architecture:
+            _row(None, f"Architecture: {self._architecture}")
+        if self._app_type:
+            _row(None, f"AppImage type: {self._app_type}")
+        if self._sha256:
+            short = self._sha256[:16]
+            _row(None, f"SHA256: {short}...")
+        if self._file_count:
+            _row(None, f"Files bundled: {self._file_count}")
+        if self._bundle_size:
+            _row(None, f"Bundle content: {self._format_size(self._bundle_size)}")
 
         layout.addWidget(details_w)
 
