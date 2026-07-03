@@ -61,7 +61,7 @@ class ChangelogPage(QWizardPage):
         self.current_ver_label.setFont(f)
         info_col.addWidget(self.current_ver_label)
         self.new_ver_label = QLabel("New Version: --")
-        self.new_ver_label.setStyleSheet("color: #4a9eff;")
+        self.new_ver_label.setStyleSheet("color: palette(link);")
         self.new_ver_label.setFont(f)
         info_col.addWidget(self.new_ver_label)
         info_row.addLayout(info_col, 1)

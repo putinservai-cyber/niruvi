@@ -358,7 +358,6 @@ def main():
 
     _fix_qt_platform_path()
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
     from niruvi.utils import _init_icon_theme
 
     _init_icon_theme()
