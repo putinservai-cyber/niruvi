@@ -45,8 +45,8 @@ def _light_palette() -> QPalette:
     p.setColor(QPalette.ColorRole.Midlight, QColor(243, 244, 246))
     p.setColor(QPalette.ColorRole.Light, QColor(249, 250, 251))
     p.setColor(QPalette.ColorRole.Shadow, QColor(156, 163, 175))
-    p.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.Text, QColor(156, 163, 175))
-    p.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.ButtonText, QColor(156, 163, 175))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(156, 163, 175))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(156, 163, 175))
     return p
 
 
@@ -74,8 +74,8 @@ def _dark_palette() -> QPalette:
     p.setColor(QPalette.ColorRole.Midlight, QColor(68, 71, 78))
     p.setColor(QPalette.ColorRole.Light, QColor(75, 78, 85))
     p.setColor(QPalette.ColorRole.Shadow, QColor(0, 0, 0))
-    p.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.Text, QColor(107, 114, 128))
-    p.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.ButtonText, QColor(107, 114, 128))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(107, 114, 128))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(107, 114, 128))
     return p
 
 
