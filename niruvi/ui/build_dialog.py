@@ -436,7 +436,7 @@ class BuildDialog(QDialog):
                 sig_path = sign_appimage(out_path, self._sign_key)
                 self.log_text.append(f"Signed: {sig_path}")
             except Exception as e:
-                self.log_text.append(f"<span style='color:orange;'>Signing failed: {e}</span>")
+                self.log_text.append(f"<span style='color:palette(bright-text);'>Signing failed: {e}</span>")
 
         # Post-build verification
         _is_valid, warnings = self._verify_appimage(out_path)

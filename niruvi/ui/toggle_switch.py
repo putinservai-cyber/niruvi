@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, Qt, pyqtProperty, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtGui import QPainter, QPalette, QPen
 from PyQt6.QtWidgets import QWidget
 
 
@@ -52,12 +52,16 @@ class ToggleSwitch(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        pal = self.palette()
         w, h = self.width(), self.height()
         track_h = h * 0.625
         track_y = (h - track_h) / 2
         radius = track_h / 2
 
-        track_color = QColor(76, 175, 80) if self._checked else QColor(180, 180, 180)
+        if self._checked:
+            track_color = pal.color(QPalette.ColorRole.Highlight)
+        else:
+            track_color = pal.color(QPalette.ColorRole.Dark)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(track_color)
         painter.drawRoundedRect(
@@ -69,8 +73,9 @@ class ToggleSwitch(QWidget):
         track_start = (w - w * 0.85) / 2
         track_end = (w + w * 0.85) / 2
         handle_x = track_start + margin + self._handle_pos * (track_end - track_start - handle_size - margin * 2)
-        painter.setBrush(QColor(255, 255, 255))
-        painter.setPen(QPen(QColor(200, 200, 200), 1))
+        handle_color = pal.color(QPalette.ColorRole.Light)
+        painter.setBrush(handle_color)
+        painter.setPen(QPen(pal.color(QPalette.ColorRole.Mid), 1))
         painter.drawEllipse(int(handle_x), int(margin), int(handle_size), int(handle_size))
 
         painter.end()

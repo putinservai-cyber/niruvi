@@ -359,11 +359,10 @@ class ProgressPage(QWizardPage):
                 border: 1px solid palette(mid);
                 border-radius: 6px;
                 text-align: center;
-                background: palette(window);
+                background: palette(base);
             }
             QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #4a9eff, stop:1 #6cb4ff);
+                background: palette(highlight);
                 border-radius: 5px;
             }
         """)
@@ -458,11 +457,10 @@ class InstallWizard(QWizard):
                 border-radius: 6px;
                 text-align: center;
                 height: 22px;
-                background: palette(window);
+                background: palette(base);
             }
             QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #4a9eff, stop:1 #6cb4ff);
+                background: palette(highlight);
                 border-radius: 5px;
             }
             QPushButton {

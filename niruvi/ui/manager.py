@@ -1574,19 +1574,11 @@ class AppManager(QMainWindow):
         has_real_issues = bool(health["issues"]) or bool(runnable["issues"])
 
         pal = self.palette()
-        is_dark = pal.window().color().lightness() < 128
-        if is_dark:
-            error_bg = "#3d1a1a"
-            error_border = "#993333"
-            warn_bg = "#3d3500"
-            warn_border = "#997a00"
-            ok_color = "#66cc66"
-        else:
-            error_bg = "#fdd"
-            error_border = "#f99"
-            warn_bg = "#fff3cd"
-            warn_border = "#ffc107"
-            ok_color = "green"
+        error_bg = pal.color(QPalette.ColorRole.Base).name()
+        error_border = pal.color(QPalette.ColorRole.Dark).name()
+        warn_bg = pal.color(QPalette.ColorRole.AlternateBase).name()
+        warn_border = pal.color(QPalette.ColorRole.Mid).name()
+        ok_color = pal.color(QPalette.ColorRole.BrightText).name()
         disabled_hex = pal.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
         mid_hex = pal.mid().color().name()
 
@@ -1608,14 +1600,18 @@ class AppManager(QMainWindow):
             layout.addWidget(icon_lbl)
 
         if health["issues"]:
-            lbl = QLabel("<b style='color:red;'>Issues:</b><br>" + "<br>".join(f"• {i}" for i in health["issues"]))
+            lbl = QLabel(
+                "<b style='color:palette(bright-text);'>Issues:</b><br>"
+                + "<br>".join(f"• {i}" for i in health["issues"])
+            )
             lbl.setWordWrap(True)
             lbl.setStyleSheet(f"background:{error_bg};border:1px solid {error_border};border-radius:4px;padding:8px;")
             layout.addWidget(lbl)
 
         if runnable["issues"]:
             lbl = QLabel(
-                "<b style='color:red;'>Pre-launch issues:</b><br>" + "<br>".join(f"• {i}" for i in runnable["issues"])
+                "<b style='color:palette(bright-text);'>Pre-launch issues:</b><br>"
+                + "<br>".join(f"• {i}" for i in runnable["issues"])
             )
             lbl.setWordWrap(True)
             lbl.setStyleSheet(f"background:{error_bg};border:1px solid {error_border};border-radius:4px;padding:8px;")

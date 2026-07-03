@@ -182,7 +182,7 @@ def _build_info_row(icon_name: str, key: str, value: str) -> QWidget:
     row = QWidget()
     row.setStyleSheet("""
         QWidget:hover {
-            background-color: rgba(128, 128, 128, 0.08);
+            background-color: palette(midlight);
             border-radius: 4px;
         }
     """)
@@ -274,7 +274,7 @@ class DeviceInfoDialog(QDialog):
         compat = check_system_compatibility()
         if not compat["healthy"] or compat.get("has_warnings"):
             note = QLabel(
-                "<p style='color:#cc7700;font-size:0.9em;'>"
+                "<p style='color:palette(link);font-size:0.9em;'>"
                 "Some apps may be incompatible with your system "
                 "(new kernel, glibc, or graphics drivers). "
                 "If an app fails to run, check the launch error dialog "

@@ -391,11 +391,11 @@ class BuildSummaryDialog(QDialog):
             r.addWidget(QLabel(text), 1)
             dl.addLayout(r)
 
-        stat, col = "Valid ELF executable", "#4a9e4a"
+        stat, col = "Valid ELF executable", "palette(bright-text)"
         if not self._is_elf:
-            stat, col = "Not a valid ELF binary", "#cc4400"
+            stat, col = "Not a valid ELF binary", "palette(bright-text)"
         elif not self._is_executable:
-            stat, col = "Not executable (run chmod +x)", "#cc6600"
+            stat, col = "Not executable (run chmod +x)", "palette(link)"
         _row(icon_ok if self._is_elf and self._is_executable else icon_warn, f"<span style='color:{col}'>{stat}</span>")
         _row(None, f"Size: {self._format_size(self._file_size)}")
         if self._architecture:
@@ -415,7 +415,9 @@ class BuildSummaryDialog(QDialog):
         # Warnings
         if self._validation_warnings:
             warn_w = QWidget()
-            warn_w.setStyleSheet("QWidget{background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:6px}")
+            warn_w.setStyleSheet(
+                "QWidget{background:palette(base);border:1px solid palette(mid);border-radius:4px;padding:6px}"
+            )
             wl = QVBoxLayout(warn_w)
             wl.setSpacing(2)
             for w in self._validation_warnings:
@@ -428,7 +430,7 @@ class BuildSummaryDialog(QDialog):
                 r.addWidget(il)
                 lbl = QLabel(w)
                 lbl.setWordWrap(True)
-                lbl.setStyleSheet("color:#795548")
+                lbl.setStyleSheet("color:palette(bright-text)")
                 r.addWidget(lbl, 1)
                 wl.addLayout(r)
             layout.addWidget(warn_w)
