@@ -213,11 +213,12 @@ class SettingsPage(QWidget):
 
         avail = self._detect_sandbox_status()
         if avail:
-            status_label = QLabel(f"<span style='color:green;'>Available: {avail}</span>")
+            status_label = QLabel(f"Available: {avail}")
+            status_label.setStyleSheet("color: palette(bright-text); font-size: 11px;")
         else:
-            status_label = QLabel("<span style='color:orange;'>Process hardening not available</span>")
+            status_label = QLabel("Process hardening not available")
+            status_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         status_label.setWordWrap(True)
-        status_label.setStyleSheet("font-size: 11px;")
         shield_layout.addWidget(status_label)
 
         backend_row = QHBoxLayout()
@@ -359,9 +360,9 @@ class SettingsPage(QWidget):
         theme_row.addStretch()
         theme_layout.addLayout(theme_row)
 
-        theme_desc = QLabel("Changes take effect immediately after applying settings.")
+        theme_desc = QLabel("Detects your desktop environment's light or dark theme automatically.")
         theme_desc.setWordWrap(True)
-        theme_desc.setStyleSheet("font-size: 11px; color: palette(disabled-text);")
+        theme_desc.setStyleSheet("font-size: 11px; color: palette(placeholderText);")
         theme_layout.addWidget(theme_desc)
 
         layout.addWidget(theme_group)
@@ -393,8 +394,8 @@ class SettingsPage(QWidget):
 
         layout.addWidget(audio_group)
 
-        help_label = QLabel('<a href="#">Changes take effect on the next install or build.</a>')
-        help_label.setStyleSheet("color: palette(disabled-text);")
+        help_label = QLabel("Theme changes apply immediately. Other changes apply on the next install or build.")
+        help_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         help_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(help_label)
 
@@ -438,13 +439,13 @@ class SettingsPage(QWidget):
         from niruvi.desktop.thumbnailer import check_thumbnailer_installed
 
         if check_thumbnailer_installed():
-            self.tn_status_label.setText("<span style='color:green;'>✓ Thumbnailer is installed</span>")
+            self.tn_status_label.setText("Thumbnailer is installed")
+            self.tn_status_label.setStyleSheet("color: palette(bright-text);")
             self.btn_install_tn.setEnabled(False)
             self.btn_remove_tn.setEnabled(True)
         else:
-            self.tn_status_label.setText(
-                "<span style='color:gray;'>Not installed — AppImages won't show icons in file managers</span>"
-            )
+            self.tn_status_label.setText("Not installed — AppImages won't show icons in file managers")
+            self.tn_status_label.setStyleSheet("color: palette(placeholderText);")
             self.btn_install_tn.setEnabled(True)
             self.btn_remove_tn.setEnabled(False)
 
@@ -502,7 +503,6 @@ class SettingsPage(QWidget):
         mode_map = {"auto": ThemeMode.AUTO, "light": ThemeMode.LIGHT, "dark": ThemeMode.DARK}
         mode = mode_map.get(self.theme_combo.currentData(), ThemeMode.AUTO)
         get_theme_engine().mode = mode
-        get_theme_engine().apply()
 
     def _has_changes(self) -> bool:
         return (

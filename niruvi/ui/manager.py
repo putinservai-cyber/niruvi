@@ -197,7 +197,6 @@ class AppManager(QMainWindow):
         mode_map = {"auto": ThemeMode.AUTO, "light": ThemeMode.LIGHT, "dark": ThemeMode.DARK}
         saved_mode = _settings.get("theme_mode", "auto")
         get_theme_engine().mode = mode_map.get(saved_mode, ThemeMode.AUTO)
-        get_theme_engine().apply()
         self._is_scanning = False
         self._init_ui()
         self.scan_installed()
