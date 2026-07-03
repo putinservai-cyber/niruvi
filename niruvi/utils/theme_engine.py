@@ -21,6 +21,14 @@ class ThemeMode(Enum):
     AUTO = auto()
 
 
+# ── Semantic colors (always visible on both light and dark backgrounds) ──
+
+COLOR_SUCCESS = "#16a34a"
+COLOR_ERROR = "#dc2626"
+COLOR_WARNING = "#d97706"
+COLOR_INFO = "#2563eb"
+
+
 # ── Light palette (modern blue-accent) ───────────────────────────────────
 
 
@@ -39,7 +47,7 @@ def _light_palette() -> QPalette:
     p.setColor(QPalette.ColorRole.ToolTipText, QColor(25, 25, 25))
     p.setColor(QPalette.ColorRole.Link, QColor(59, 130, 246))
     p.setColor(QPalette.ColorRole.PlaceholderText, QColor(156, 163, 175))
-    p.setColor(QPalette.ColorRole.BrightText, QColor(22, 163, 74))
+    p.setColor(QPalette.ColorRole.BrightText, QColor(220, 38, 38))
     p.setColor(QPalette.ColorRole.Dark, QColor(209, 213, 219))
     p.setColor(QPalette.ColorRole.Mid, QColor(229, 231, 235))
     p.setColor(QPalette.ColorRole.Midlight, QColor(243, 244, 246))
@@ -101,6 +109,7 @@ QPushButton {
     border: 1px solid #d1d5db;
     border-radius: 6px;
     background: #f9fafb;
+    color: #1f2937;
     min-height: 22px;
 }
 QPushButton:hover {
@@ -114,11 +123,15 @@ QPushButton:focus {
     outline: none;
     border-color: #3b82f6;
 }
+QPushButton:disabled {
+    color: #9ca3af;
+}
 QComboBox {
     padding: 5px 10px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
     background: #ffffff;
+    color: #1f2937;
     min-height: 22px;
 }
 QComboBox:hover {
@@ -133,6 +146,7 @@ QLineEdit {
     border: 1px solid #d1d5db;
     border-radius: 6px;
     background: #ffffff;
+    color: #1f2937;
     selection-background-color: #3b82f6;
 }
 QLineEdit:focus {
@@ -144,12 +158,13 @@ QTreeView, QListView, QTableView {
     background: #ffffff;
     alternate-background-color: #f9fafb;
     outline: none;
+    color: #1f2937;
 }
 QTreeView::item:selected, QListView::item:selected, QTableView::item:selected {
     background: #3b82f6;
-    color: white;
+    color: #ffffff;
 }
-QTreeView::item:hover, QListView::item:hover {
+QTreeView::item:hover, QListView::item:hover, QTableView::item:hover {
     background: #f3f4f6;
 }
 QTreeView::item, QListView::item {
@@ -204,6 +219,7 @@ QProgressBar {
     border-radius: 6px;
     background: #f3f4f6;
     text-align: center;
+    color: #1f2937;
     min-height: 16px;
 }
 QProgressBar::chunk {
@@ -234,6 +250,7 @@ QMenu {
     border: 1px solid #e5e7eb;
     border-radius: 8px;
     padding: 4px;
+    color: #1f2937;
 }
 QMenu::item {
     padding: 6px 24px;
@@ -259,6 +276,7 @@ QToolTip {
 QStatusBar {
     background: #f9fafb;
     border-top: 1px solid #e5e7eb;
+    color: #6b7280;
 }
 QSplitter::handle {
     background: #e5e7eb;
@@ -288,6 +306,14 @@ QRadioButton::indicator:checked {
     background: #3b82f6;
     border-color: #3b82f6;
 }
+QTextEdit, QPlainTextEdit {
+    background: #ffffff;
+    color: #1f2937;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    selection-background-color: #3b82f6;
+    selection-color: #ffffff;
+}
 """
 
 _DARK_QSS = """
@@ -310,8 +336,8 @@ QPushButton {
     border: 1px solid #4b5563;
     border-radius: 6px;
     background: #2d3139;
-    min-height: 22px;
     color: #e5e7eb;
+    min-height: 22px;
 }
 QPushButton:hover {
     background: #384050;
@@ -323,6 +349,9 @@ QPushButton:pressed {
 QPushButton:focus {
     outline: none;
     border-color: #60a5fa;
+}
+QPushButton:disabled {
+    color: #6b7280;
 }
 QComboBox {
     padding: 5px 10px;
@@ -345,6 +374,7 @@ QComboBox QAbstractItemView {
     border: 1px solid #4b5563;
     border-radius: 6px;
     selection-background-color: #3b82f6;
+    selection-color: #ffffff;
 }
 QLineEdit {
     padding: 5px 8px;
@@ -353,6 +383,7 @@ QLineEdit {
     background: #1f2128;
     color: #e5e7eb;
     selection-background-color: #3b82f6;
+    selection-color: #ffffff;
 }
 QLineEdit:focus {
     border-color: #60a5fa;
@@ -367,9 +398,9 @@ QTreeView, QListView, QTableView {
 }
 QTreeView::item:selected, QListView::item:selected, QTableView::item:selected {
     background: #3b82f6;
-    color: white;
+    color: #ffffff;
 }
-QTreeView::item:hover, QListView::item:hover {
+QTreeView::item:hover, QListView::item:hover, QTableView::item:hover {
     background: #2d3139;
 }
 QTreeView::item, QListView::item {
@@ -510,6 +541,14 @@ QRadioButton::indicator {
 QRadioButton::indicator:checked {
     background: #3b82f6;
     border-color: #3b82f6;
+}
+QTextEdit, QPlainTextEdit {
+    background: #1f2128;
+    color: #e5e7eb;
+    border: 1px solid #4b5563;
+    border-radius: 6px;
+    selection-background-color: #3b82f6;
+    selection-color: #ffffff;
 }
 """
 

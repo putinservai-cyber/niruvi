@@ -785,7 +785,7 @@ class FinishPage(QWizardPage):
         details.addWidget(self._desktop_label)
 
         self._registry_label = QLabel()
-        self._registry_label.setStyleSheet("color: palette(highlight); font-size: 9pt;")
+        self._registry_label.setStyleSheet("color: #16a34a; font-size: 9pt;")
         details.addWidget(self._registry_label)
 
         layout.addLayout(details)

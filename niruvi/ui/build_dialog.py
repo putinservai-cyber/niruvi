@@ -28,6 +28,7 @@ from niruvi.ui.report_dialog import BuildSummaryDialog, ErrorReportDialog
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.theme_engine import COLOR_ERROR
 
 _SECTION_STYLE = """
 QGroupBox {{
@@ -436,7 +437,7 @@ class BuildDialog(QDialog):
                 sig_path = sign_appimage(out_path, self._sign_key)
                 self.log_text.append(f"Signed: {sig_path}")
             except Exception as e:
-                self.log_text.append(f"<span style='color:palette(bright-text);'>Signing failed: {e}</span>")
+                self.log_text.append(f"<span style='color:{COLOR_ERROR};'>Signing failed: {e}</span>")
 
         # Post-build verification
         _is_valid, warnings = self._verify_appimage(out_path)

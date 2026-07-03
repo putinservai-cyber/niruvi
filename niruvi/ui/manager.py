@@ -70,7 +70,7 @@ from niruvi.ui.wizard import InstallWizard
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import install_button_filter, install_menu_sound, uninstall_button_filter
 from niruvi.utils.sound_manager import play as play_sound
-from niruvi.utils.theme_engine import ThemeMode, get_theme_engine
+from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, ThemeMode, get_theme_engine
 
 _DETACHED: list[subprocess.Popen] = []
 
@@ -1578,7 +1578,7 @@ class AppManager(QMainWindow):
         error_border = pal.color(QPalette.ColorRole.Dark).name()
         warn_bg = pal.color(QPalette.ColorRole.AlternateBase).name()
         warn_border = pal.color(QPalette.ColorRole.Mid).name()
-        ok_color = pal.color(QPalette.ColorRole.BrightText).name()
+        ok_color = COLOR_SUCCESS
         disabled_hex = pal.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
         mid_hex = pal.mid().color().name()
 
@@ -1601,8 +1601,16 @@ class AppManager(QMainWindow):
 
         if health["issues"]:
             lbl = QLabel(
-                "<b style='color:palette(bright-text);'>Issues:</b><br>"
-                + "<br>".join(f"• {i}" for i in health["issues"])
+                f"<b style='color:{COLOR_ERROR};'>Issues:</b><br>" + "<br>".join(f"• {i}" for i in health["issues"])
+            )
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet(f"background:{error_bg};border:1px solid {error_border};border-radius:4px;padding:8px;")
+            layout.addWidget(lbl)
+
+        if runnable["issues"]:
+            lbl = QLabel(
+                f"<b style='color:{COLOR_ERROR};'>Pre-launch issues:</b><br>"
+                + "<br>".join(f"• {i}" for i in runnable["issues"])
             )
             lbl.setWordWrap(True)
             lbl.setStyleSheet(f"background:{error_bg};border:1px solid {error_border};border-radius:4px;padding:8px;")

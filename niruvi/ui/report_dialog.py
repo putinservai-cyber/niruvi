@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.utils import get_icon
+from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING
 
 
 def _run_capture(cmd: list[str], timeout=10) -> str:
@@ -391,11 +392,11 @@ class BuildSummaryDialog(QDialog):
             r.addWidget(QLabel(text), 1)
             dl.addLayout(r)
 
-        stat, col = "Valid ELF executable", "palette(bright-text)"
+        stat, col = "Valid ELF executable", COLOR_SUCCESS
         if not self._is_elf:
-            stat, col = "Not a valid ELF binary", "palette(bright-text)"
+            stat, col = "Not a valid ELF binary", COLOR_ERROR
         elif not self._is_executable:
-            stat, col = "Not executable (run chmod +x)", "palette(link)"
+            stat, col = "Not executable (run chmod +x)", COLOR_WARNING
         _row(icon_ok if self._is_elf and self._is_executable else icon_warn, f"<span style='color:{col}'>{stat}</span>")
         _row(None, f"Size: {self._format_size(self._file_size)}")
         if self._architecture:
@@ -430,7 +431,7 @@ class BuildSummaryDialog(QDialog):
                 r.addWidget(il)
                 lbl = QLabel(w)
                 lbl.setWordWrap(True)
-                lbl.setStyleSheet("color:palette(bright-text)")
+                lbl.setStyleSheet(f"color:{COLOR_WARNING}")
                 r.addWidget(lbl, 1)
                 wl.addLayout(r)
             layout.addWidget(warn_w)

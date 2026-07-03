@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 
 from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils import get_icon
+from niruvi.utils.theme_engine import COLOR_SUCCESS
 
 DEFAULT_INSTALL_DIR = os.path.expanduser("~/Applications")
 DESKTOP_DIR = os.path.expanduser("~/.local/share/applications")
@@ -214,7 +215,7 @@ class SettingsPage(QWidget):
         avail = self._detect_sandbox_status()
         if avail:
             status_label = QLabel(f"Available: {avail}")
-            status_label.setStyleSheet("color: palette(bright-text); font-size: 11px;")
+            status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-size: 11px;")
         else:
             status_label = QLabel("Process hardening not available")
             status_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
@@ -440,7 +441,7 @@ class SettingsPage(QWidget):
 
         if check_thumbnailer_installed():
             self.tn_status_label.setText("Thumbnailer is installed")
-            self.tn_status_label.setStyleSheet("color: palette(bright-text);")
+            self.tn_status_label.setStyleSheet(f"color: {COLOR_SUCCESS};")
             self.btn_install_tn.setEnabled(False)
             self.btn_remove_tn.setEnabled(True)
         else:
