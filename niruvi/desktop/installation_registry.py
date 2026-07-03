@@ -3,7 +3,6 @@ import logging
 import os
 import tempfile
 from datetime import datetime
-from pathlib import Path
 
 from niruvi.ui.settings import get_data_dir
 

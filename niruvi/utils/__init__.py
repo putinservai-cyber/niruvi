@@ -1,5 +1,4 @@
 import os
-import shutil
 import tempfile
 
 from PyQt6.QtCore import QDir
@@ -126,7 +125,7 @@ def get_icon(*names: str) -> QIcon:
     app = QApplication.instance()
     if app and not hasattr(QIcon, "_niruvi_palette_connected"):
         app.paletteChanged.connect(_on_palette_changed)
-        setattr(QIcon, "_niruvi_palette_connected", True)
+        QIcon._niruvi_palette_connected = True
 
     for name in names:
         svg = _load_svg(name)

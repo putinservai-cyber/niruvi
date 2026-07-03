@@ -10,7 +10,6 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from niruvi.core.scanner import extract_safely
 
-
 _REMOVABLE_PREFIXES = ("mtp:", "gvfs", "/media/", "/run/media/", "/mnt/")
 
 
@@ -40,7 +39,7 @@ def _ensure_local(path: str, log) -> str:
     """
     if not _is_removable_path(path):
         return path
-    log(f"Source is on removable media — copying to local temp first...")
+    log("Source is on removable media — copying to local temp first...")
     local = os.path.join(tempfile.gettempdir(), "niruvi_local_copy", os.path.basename(path))
     os.makedirs(os.path.dirname(local), exist_ok=True)
     shutil.copy2(path, local)
@@ -76,7 +75,7 @@ def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_trac
     )
     if process_tracker is not None:
         process_tracker.append(proc)
-    stdout, stderr = proc.communicate(timeout=300)
+    _stdout, stderr = proc.communicate(timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"Extraction failed: {stderr.strip()}")
     return _find_extracted_dir(extract_dir)
@@ -222,8 +221,7 @@ class DownloadWorker(QThread):
                             self.speed_updated.emit(f"{int(speed)} KB/s")
 
             actual_sha = sha256_hash.hexdigest()
-            if self.expected_sha256:
-                if actual_sha.lower() != self.expected_sha256.lower():
+            if self.expected_sha256 and actual_sha.lower() != self.expected_sha256.lower():
                     self.error.emit(
                         f"SHA256 mismatch\nExpected: {self.expected_sha256}\nActual: {actual_sha}"
                     )

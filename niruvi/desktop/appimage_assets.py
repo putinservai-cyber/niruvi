@@ -1,7 +1,7 @@
 import os
+import shutil
 import subprocess
 import tempfile
-import shutil
 from pathlib import Path
 
 from niruvi.core.scanner import extract_safely

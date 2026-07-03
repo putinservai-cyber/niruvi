@@ -3,15 +3,13 @@
 
 import webbrowser
 
-from PyQt6.QtCore import Qt
-
 from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
-    QHBoxLayout,
-    QFrame,
 )
 
 from niruvi.constants import REPORT_ISSUES_URL

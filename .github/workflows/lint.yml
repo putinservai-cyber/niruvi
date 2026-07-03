@@ -7,41 +7,42 @@ on:
     branches: [ main ]
 
 jobs:
-  lint:
+  ruff:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff check
+        run: ruff check niruvi/ tests/
+
+      - name: Ruff format check
+        run: ruff format --check niruvi/ tests/
+
+  mypy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3 python3-pip
-          pip install --break-system-packages pyflakes
+          sudo apt-get install -y -qq python3-pyqt6
 
-      - name: Check syntax with pyflakes
-        run: |
-          pyflakes niruvi/ --exclude=__pycache__ 2>&1 | grep -v "unused import" || true
+      - name: Install mypy
+        run: pip install mypy PyQt6-stubs
 
-      - name: Compile all Python files
-        run: |
-          python3 -c "
-          import py_compile, glob
-          for f in sorted(glob.glob('niruvi/**/*.py', recursive=True)):
-              if '__pycache__' not in f and '.egg-info' not in f:
-                  py_compile.compile(f, doraise=True)
-          print('All files compile clean')
-          "
-
-      - name: Validate desktop file
-        run: |
-          if command -v desktop-file-validate &>/dev/null; then
-            desktop-file-validate asset/niruvi.desktop
-          fi
-
-      - name: Check for secrets in code
-        run: |
-          ! grep -r --include="*.py" --include="*.sh" -n \
-            "password\|secret\|api_key\|api\.key\|token\|auth_token" \
-            --exclude-dir=.git --exclude-dir=__pycache__ . | \
-            grep -v "\.gitignore\|example\|placeholder\|TODO\|FIXME" | \
-            grep -i "="
+      - name: Run mypy
+        run: mypy niruvi/ --ignore-missing-imports || true

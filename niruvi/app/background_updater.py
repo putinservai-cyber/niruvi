@@ -2,11 +2,10 @@ import logging
 from dataclasses import dataclass
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QApplication
 
-from niruvi.desktop.installation_registry import InstallationRegistry
-from niruvi.app.update_sources import resolve_update_source
 from niruvi.app.self_update import compare_versions
+from niruvi.app.update_sources import resolve_update_source
+from niruvi.desktop.installation_registry import InstallationRegistry
 
 UPDATE_INTERVAL_SETTING = "update_check_interval"
 INTERVAL_OPTIONS = {

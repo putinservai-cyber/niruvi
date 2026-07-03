@@ -23,13 +23,23 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QFileDialog, QProgressBar,
-    QCheckBox, QMessageBox, QTextBrowser, QTextEdit,
+    QApplication,
+    QCheckBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QTextBrowser,
+    QTextEdit,
+    QVBoxLayout,
+    QWizard,
+    QWizardPage,
 )
-from PyQt6.QtGui import QIcon
 
 
 def _fix_qt_platform_path():
@@ -531,9 +541,8 @@ class UpdateWorker(QThread):
             tmp = tempfile.NamedTemporaryFile(suffix=".AppImage", delete=False)
             tmp_path = tmp.name
             tmp.close()
-            with urllib.request.urlopen(download_url, timeout=120) as resp:
-                with open(tmp_path, "wb") as f:
-                    shutil.copyfileobj(resp, f)
+            with urllib.request.urlopen(download_url, timeout=120) as resp, open(tmp_path, "wb") as f:
+                shutil.copyfileobj(resp, f)
             os.chmod(tmp_path, 0o755)
             self.log.emit("Downloaded")
             self.progress.emit(70)
@@ -989,8 +998,7 @@ class SelfInstallWizard(QWizard):
             self.startInstall()
 
     def accept(self):
-        if self._finish_appimage and os.path.isfile(self._finish_appimage):
-            if self._finish_page and self._finish_page.shouldLaunch():
+        if self._finish_appimage and os.path.isfile(self._finish_appimage) and self._finish_page and self._finish_page.shouldLaunch():
                 try:
                     proc = subprocess.Popen(
                         [self._finish_appimage],
@@ -1028,8 +1036,7 @@ class SelfInstallWizard(QWizard):
         page = self.page(idx)
         if page is self._avail_page and self._manifest:
             self._changelog.setText(self._manifest.get("changelog", "No changelog available."))
-        if isinstance(page, ProgressPage):
-            if self._manifest:
+        if isinstance(page, ProgressPage) and self._manifest:
                 self._start_update_download()
 
     def _start_update_check(self):

@@ -4,19 +4,30 @@ import subprocess
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLabel, QLineEdit, QPushButton, QFileDialog,
-    QProgressBar, QTextEdit, QDialogButtonBox,
-    QMessageBox, QGroupBox, QCheckBox, QRadioButton,
-    QWidget, QScrollArea, QFrame, QComboBox,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from niruvi.build.page import BuildWorker
+from niruvi.ui.report_dialog import BuildSummaryDialog, ErrorReportDialog
 from niruvi.ui.settings import get_settings
-from niruvi.ui.report_dialog import ErrorReportDialog, BuildSummaryDialog
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
-
 
 _SECTION_STYLE = """
 QGroupBox {{
@@ -39,13 +50,13 @@ class BuildDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Build AppImage")
-        self.setMinimumSize(640, 620)
+        self.setMinimumSize(520, 400)
         self._worker = None
         self._init_ui()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -53,13 +64,14 @@ class BuildDialog(QDialog):
         content = QWidget()
         scroll.setWidget(content)
         inner = QVBoxLayout(content)
-        inner.setSpacing(8)
+        inner.setSpacing(4)
 
         # ── Source Section ──
         src_group = QGroupBox("Source")
         src_group.setStyleSheet(_SECTION_STYLE)
         src_form = QFormLayout(src_group)
-        src_form.setSpacing(6)
+        src_form.setSpacing(4)
+        src_form.setContentsMargins(8, 12, 8, 8)
 
         src_type_row = QHBoxLayout()
         self.pkg_radio = QRadioButton("Package (DEB/RPM/tar)")
@@ -79,7 +91,7 @@ class BuildDialog(QDialog):
         self.source_edit.setPlaceholderText("Select a DEB, RPM, or tar archive...")
         self.source_edit.setReadOnly(True)
         pkg_row.addWidget(self.source_edit)
-        self.browse_pkg_btn = QPushButton(get_icon("document-open"), "Browse...")
+        self.browse_pkg_btn = QPushButton("Browse...")
         self.browse_pkg_btn.clicked.connect(self._browse_source)
         pkg_row.addWidget(self.browse_pkg_btn)
         src_form.addRow("File:", self._pkg_widget)
@@ -92,26 +104,16 @@ class BuildDialog(QDialog):
         self.folder_edit.setPlaceholderText("Select a local project folder...")
         self.folder_edit.setReadOnly(True)
         folder_row.addWidget(self.folder_edit)
-        self.browse_folder_btn = QPushButton(get_icon("folder-open"), "Browse...")
+        self.browse_folder_btn = QPushButton("Browse...")
         self.browse_folder_btn.clicked.connect(self._browse_folder)
         folder_row.addWidget(self.browse_folder_btn)
         src_form.addRow("Folder:", self._folder_widget)
 
         self.folder_info_label = QLabel()
         self.folder_info_label.setWordWrap(True)
-        self.folder_info_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt; padding-left: 4px;")
+        self.folder_info_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
         self.folder_info_label.setVisible(False)
         src_form.addRow(self.folder_info_label)
-
-        self.folder_hint = QLabel(
-            "The folder contents are copied directly into the AppDir. "
-            "Make sure your project has an executable entry point "
-            "(main.py, app.py, or a compiled binary)."
-        )
-        self.folder_hint.setWordWrap(True)
-        self.folder_hint.setStyleSheet("color: palette(text); font-size: 9pt; padding: 6px 8px; background: palette(window); border: 1px solid palette(mid); border-radius: 4px;")
-        self.folder_hint.setVisible(False)
-        src_form.addRow(self.folder_hint)
 
         name_version_row = QHBoxLayout()
         self.app_name_edit = QLineEdit()
@@ -124,148 +126,53 @@ class BuildDialog(QDialog):
 
         inner.addWidget(src_group)
 
-        # ── Destination Section ──
-        dest_group = QGroupBox("Destination")
-        dest_group.setStyleSheet(_SECTION_STYLE)
-        dest_layout = QVBoxLayout(dest_group)
-        dest_layout.setSpacing(6)
+        # ── Output Section ──
+        out_group = QGroupBox("Output")
+        out_group.setStyleSheet(_SECTION_STYLE)
+        out_layout = QVBoxLayout(out_group)
+        out_layout.setSpacing(4)
+        out_layout.setContentsMargins(8, 12, 8, 8)
 
         out_row = QHBoxLayout()
         default_out = get_settings().get("build_output_dir", os.path.expanduser("~/Applications"))
         self.output_edit = QLineEdit(default_out)
         self.output_edit.setReadOnly(True)
         out_row.addWidget(self.output_edit)
-        out_browse = QPushButton(get_icon("folder-open"), "Browse...")
+        out_browse = QPushButton("Browse...")
         out_browse.clicked.connect(self._browse_output)
         out_row.addWidget(out_browse)
-        dest_layout.addLayout(out_row)
+        out_layout.addLayout(out_row)
 
-        self.copy_to_managed_check = QCheckBox("Copy built AppImage to managed install directory")
+        self.copy_to_managed_check = QCheckBox("Copy to managed install directory")
         self.copy_to_managed_check.setChecked(True)
-        dest_layout.addWidget(self.copy_to_managed_check)
+        out_layout.addWidget(self.copy_to_managed_check)
 
-        inner.addWidget(dest_group)
+        inner.addWidget(out_group)
 
-        # ── Self-Installer Section ──
-        self.self_install_group = QGroupBox("Self-Installing AppImage")
-        self.self_install_group.setStyleSheet(_SECTION_STYLE)
-        si_layout = QVBoxLayout(self.self_install_group)
-        si_layout.setSpacing(4)
+        # ── Signing (compact) ──
+        sign_group = QGroupBox("Code Signing")
+        sign_group.setStyleSheet(_SECTION_STYLE)
+        sign_layout = QVBoxLayout(sign_group)
+        sign_layout.setSpacing(4)
+        sign_layout.setContentsMargins(8, 12, 8, 8)
 
-        self.self_install_check = QCheckBox("Create self-installing AppImage (not standard portable format)")
-        self.self_install_check.toggled.connect(self._on_self_install_toggled)
-        si_layout.addWidget(self.self_install_check)
-
-        self._advanced_widget = QWidget()
-        adv_inner = QVBoxLayout(self._advanced_widget)
-        adv_inner.setContentsMargins(0, 0, 0, 0)
-        adv_inner.setSpacing(6)
-
-        adv_group = QGroupBox("Installer Configuration")
-        adv_group.setStyleSheet(_SECTION_STYLE)
-        adv_form = QFormLayout(adv_group)
-        adv_form.setSpacing(4)
-
-        self.brand_name_edit = QLineEdit()
-        self.brand_name_edit.setPlaceholderText("Same as app name if left empty")
-        adv_form.addRow("Brand name:", self.brand_name_edit)
-
-        lic_row = QHBoxLayout()
-        self.license_edit = QLineEdit()
-        self.license_edit.setPlaceholderText("Optional EULA / license agreement...")
-        self.license_edit.setReadOnly(True)
-        lic_row.addWidget(self.license_edit)
-        lic_browse = QPushButton(get_icon("document-open"), "Browse...")
-        lic_browse.clicked.connect(lambda: self._browse_file(self.license_edit, "License file (*.txt *.md *.rtf)"))
-        lic_row.addWidget(lic_browse)
-        adv_form.addRow("License:", lic_row)
-
-        pre_row = QHBoxLayout()
-        self.pre_script_edit = QLineEdit()
-        self.pre_script_edit.setPlaceholderText("Optional script before installation...")
-        self.pre_script_edit.setReadOnly(True)
-        pre_row.addWidget(self.pre_script_edit)
-        pre_browse = QPushButton(get_icon("document-open"), "Browse...")
-        pre_browse.clicked.connect(lambda: self._browse_file(self.pre_script_edit, "Shell script (*.sh)"))
-        pre_row.addWidget(pre_browse)
-        adv_form.addRow("Pre-install:", pre_row)
-
-        post_row = QHBoxLayout()
-        self.post_script_edit = QLineEdit()
-        self.post_script_edit.setPlaceholderText("Optional script after installation...")
-        self.post_script_edit.setReadOnly(True)
-        post_row.addWidget(self.post_script_edit)
-        post_browse = QPushButton(get_icon("document-open"), "Browse...")
-        post_browse.clicked.connect(lambda: self._browse_file(self.post_script_edit, "Shell script (*.sh)"))
-        post_row.addWidget(post_browse)
-        adv_form.addRow("Post-install:", post_row)
-
-        comp_label = QLabel(
-            "Optional components users can choose during install.\n"
-            "Format: <code>id:Display Name:enabled</code>  e.g. <code>docs:Documentation:true</code>"
-        )
-        comp_label.setWordWrap(True)
-        self.components_edit = QTextEdit()
-        self.components_edit.setPlaceholderText("core:Core Files:true\nplugins:Plugins:false")
-        self.components_edit.setMaximumHeight(80)
-        adv_form.addRow("Components:", comp_label)
-        adv_form.addRow(self.components_edit)
-
-        self.updater_url_edit = QLineEdit()
-        self.updater_url_edit.setPlaceholderText("https://example.com/updates/update.json")
-        adv_form.addRow("Update URL:", self.updater_url_edit)
-
-        msg_row = QHBoxLayout()
-        self.welcome_msg_edit = QTextEdit()
-        self.welcome_msg_edit.setPlaceholderText("Custom welcome message...")
-        self.welcome_msg_edit.setMaximumHeight(60)
-        msg_row.addWidget(self.welcome_msg_edit)
-        self.finish_msg_edit = QTextEdit()
-        self.finish_msg_edit.setPlaceholderText("Custom finish message...")
-        self.finish_msg_edit.setMaximumHeight(60)
-        msg_row.addWidget(self.finish_msg_edit)
-        adv_form.addRow("Welcome / Finish:", msg_row)
-
-        flags_row = QHBoxLayout()
-        self.rollback_check = QCheckBox("Rollback")
-        self.rollback_check.setChecked(True)
-        self.rollback_check.setToolTip("Backup and restore on failure")
-        flags_row.addWidget(self.rollback_check)
-        self.silent_check = QCheckBox("Silent mode")
-        self.silent_check.setChecked(True)
-        self.silent_check.setToolTip("Support --unattended flag")
-        flags_row.addWidget(self.silent_check)
-        self.launch_check = QCheckBox("Launch prompt")
-        self.launch_check.setChecked(True)
-        self.launch_check.setToolTip("Show 'Launch now?' after install")
-        flags_row.addWidget(self.launch_check)
-        flags_row.addStretch()
-        adv_form.addRow("Options:", flags_row)
-
-        signing_row = QHBoxLayout()
+        sign_row = QHBoxLayout()
         self.sign_check = QCheckBox("GPG-sign the AppImage")
         self.sign_check.setToolTip("Create a GPG detached signature for the built AppImage")
         self.sign_check.toggled.connect(self._on_sign_toggled)
-        signing_row.addWidget(self.sign_check)
+        sign_row.addWidget(self.sign_check)
         self.sign_key_combo = QComboBox()
-        self.sign_key_combo.setMinimumWidth(300)
         self.sign_key_combo.setEnabled(False)
-        signing_row.addWidget(self.sign_key_combo)
+        sign_row.addWidget(self.sign_key_combo, 1)
         refresh_keys_btn = QPushButton(get_icon("view-refresh"), "")
         refresh_keys_btn.setToolTip("Refresh available GPG keys")
         refresh_keys_btn.clicked.connect(self._refresh_signing_keys)
-        signing_row.addWidget(refresh_keys_btn)
-        signing_row.addStretch()
-        adv_form.addRow("Signing:", signing_row)
+        sign_row.addWidget(refresh_keys_btn)
+        sign_layout.addLayout(sign_row)
         self._refresh_signing_keys()
 
-        adv_inner.addWidget(adv_group)
-        self._advanced_widget.setVisible(False)
-        si_layout.addWidget(self._advanced_widget)
+        inner.addWidget(sign_group)
 
-        inner.addWidget(self.self_install_group)
-
-        inner.addStretch()
         layout.addWidget(scroll, 1)
 
         # ── Progress and log ──
@@ -278,20 +185,21 @@ class BuildDialog(QDialog):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setVisible(False)
-        layout.addWidget(self.log_text, 1)
+        self.log_text.setFixedHeight(100)
+        layout.addWidget(self.log_text)
 
-        # ── Build button ──
+        # ── Buttons ──
         btn_layout = QHBoxLayout()
-        self.build_btn = QPushButton(get_icon("emblem-system"), "Build AppImage")
+        self.build_btn = QPushButton("Build AppImage")
+        self.build_btn.setIcon(get_icon("emblem-system"))
         self.build_btn.clicked.connect(self._start_build)
-        self.build_btn.setStyleSheet("QPushButton { padding: 8px 24px; font-weight: bold; }")
         btn_layout.addStretch()
         btn_layout.addWidget(self.build_btn)
-        layout.addLayout(btn_layout)
 
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box)
+        self.close_btn = QPushButton("Close")
+        self.close_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
 
     def _on_sign_toggled(self, checked: bool):
         self.sign_key_combo.setEnabled(checked)
@@ -309,44 +217,11 @@ class BuildDialog(QDialog):
         if path:
             edit_widget.setText(path)
 
-    def _parse_components(self) -> list:
-        text = self.components_edit.toPlainText().strip()
-        if not text:
-            return []
-        result = []
-        for line in text.split('\n'):
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            parts = line.split(':', 3)
-            if len(parts) >= 2:
-                cid = parts[0].strip()
-                label = parts[1].strip()
-                default = parts[2].strip().lower() == 'true' if len(parts) > 2 else True
-                desc = parts[3].strip() if len(parts) > 3 else ""
-                result.append({"id": cid, "label": label, "default": default, "description": desc})
-        return result
-
-    def _on_self_install_toggled(self, checked: bool):
-        self._advanced_widget.setVisible(checked)
-        if checked and not getattr(self, '_self_install_warned', False):
-            self._self_install_warned = True
-            QMessageBox.information(
-                self, "Self-Installing AppImage",
-                "Standard AppImages run anywhere without installation.\n\n"
-                "A self-installing AppImage must be installed before first use\n"
-                "and creates files outside the AppImage (desktop entries, app data,\n"
-                "uninstaller).\n\n"
-                "This is the same method Niruvi itself uses, and is suitable for\n"
-                "applications that need desktop integration or a managed install lifecycle."
-            )
-
     def _on_source_type_changed(self):
         is_pkg = self.pkg_radio.isChecked()
         self._pkg_widget.setVisible(is_pkg)
         self._folder_widget.setVisible(not is_pkg)
         self.folder_info_label.setVisible(not is_pkg)
-        self.folder_hint.setVisible(not is_pkg)
 
     def _browse_source(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -382,7 +257,7 @@ class BuildDialog(QDialog):
             has_python = False
             has_executable = False
             has_apprun = False
-            for root, dirs, files in os.walk(folder_path):
+            for root, _dirs, files in os.walk(folder_path):
                 depth = root[len(folder_path):].count(os.sep)
                 max_depth = max(max_depth, depth)
                 for f in files:
@@ -506,7 +381,7 @@ class BuildDialog(QDialog):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.build_btn.setEnabled(False)
-        self.button_box.setEnabled(False)
+        self.close_btn.setEnabled(False)
 
         self.log_text.append("Starting build...")
         self.log_text.append(f"Source: {src}")
@@ -514,24 +389,10 @@ class BuildDialog(QDialog):
         self.log_text.append(f"Mode: {'Project folder' if is_folder else 'Package file'}")
         self.log_text.append("")
 
-        self_installing = self.self_install_check.isChecked()
-
         common_kw = dict(
             app_name=self.app_name_edit.text() or None,
             app_version=self.app_version_edit.text() or None,
-            self_installing=self_installing,
-            installer_style="qt6",
-            brand_name=self.brand_name_edit.text() if self_installing else "",
-            license_file=self.license_edit.text() if self_installing else "",
-            components=self._parse_components() if self_installing and self.components_edit.toPlainText().strip() else None,
-            pre_install_script=self.pre_script_edit.text() if self_installing else "",
-            post_install_script=self.post_script_edit.text() if self_installing else "",
-            enable_rollback=self.rollback_check.isChecked() if self_installing else True,
-            enable_silent=self.silent_check.isChecked() if self_installing else True,
-            updater_url=self.updater_url_edit.text().strip() if self_installing else "",
-            welcome_message=self.welcome_msg_edit.toPlainText().strip() if self_installing else "",
-            finish_message=self.finish_msg_edit.toPlainText().strip() if self_installing else "",
-            enable_launch_at_finish=self.launch_check.isChecked() if self_installing else True,
+            self_installing=False,
             is_folder_source=is_folder,
         )
 
@@ -562,7 +423,7 @@ class BuildDialog(QDialog):
         self.log_text.append(f"\n<b>Build successful: {out_path}</b>")
         self.progress_bar.setValue(100)
         self.build_btn.setEnabled(True)
-        self.button_box.setEnabled(True)
+        self.close_btn.setEnabled(True)
 
         if self.copy_to_managed_check.isChecked():
             self._copy_to_managed(out_path)
@@ -578,7 +439,7 @@ class BuildDialog(QDialog):
                 self.log_text.append(f"<span style='color:orange;'>Signing failed: {e}</span>")
 
         # Post-build verification
-        is_valid, warnings = self._verify_appimage(out_path)
+        _is_valid, warnings = self._verify_appimage(out_path)
 
         # Show summary dialog
         file_size = os.path.getsize(out_path) if os.path.isfile(out_path) else 0
@@ -658,7 +519,7 @@ class BuildDialog(QDialog):
         self.log_text.append(f"\n<b style='color: red;'>ERROR: {msg}</b>")
         self.progress_bar.setValue(0)
         self.build_btn.setEnabled(True)
-        self.button_box.setEnabled(True)
+        self.close_btn.setEnabled(True)
         import traceback
         play_sound("error")
         suggestions = ErrorReportDialog.suggest_for_build_error(msg)

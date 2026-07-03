@@ -3,15 +3,18 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
-from niruvi._version import __app_name__
-from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QTextBrowser,
-    QDialogButtonBox, QWidget, QTabWidget,
-    QListWidget, QListWidgetItem, QSplitter,
+    QDialog,
+    QDialogButtonBox,
+    QListWidget,
+    QListWidgetItem,
+    QSplitter,
+    QTextBrowser,
+    QVBoxLayout,
 )
 
+from niruvi._version import __app_name__
+from niruvi.utils import get_icon
 
 _GPL3_TEXT = """                    GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007

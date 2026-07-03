@@ -19,8 +19,8 @@ import logging
 import os
 import shutil
 import subprocess
-import threading
 import tempfile
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +164,7 @@ def _preexec_harden():
     try:
         with open("/proc/self/oom_score_adj", "w") as f:
             f.write("-500\n")
-    except (OSError, IOError):
+    except OSError:
         pass
 
     _apply_memory_hardening()
@@ -191,12 +191,12 @@ class XdgOpenDaemon:
             self._wrapper_path = os.path.join(wrapper_dir, "xdg-open")
             os.mkfifo(self._fifo_path, 0o600)
             with open(self._wrapper_path, "w") as f:
-                f.write("""#!/bin/sh
+                f.write(f"""#!/bin/sh
 for arg; do
-    printf '%s\\n' "$arg" > "{fifo}"
+    printf '%s\\n' "$arg" > "{self._fifo_path}"
 done
 exit 0
-""".format(fifo=self._fifo_path))
+""")
             os.chmod(self._wrapper_path, 0o755)
             self._running = True
             self._thread = threading.Thread(target=self._listener, daemon=True)
@@ -210,7 +210,7 @@ exit 0
     def _listener(self):
         while self._running:
             try:
-                with open(self._fifo_path, "r") as fifo:
+                with open(self._fifo_path) as fifo:
                     for line in fifo:
                         url = line.strip()
                         if url:

@@ -28,16 +28,43 @@ def list_hooks(app_name: str) -> list[str]:
             continue
         for f in sorted(os.listdir(base)):
             path = os.path.join(base, f)
-            if f.endswith(".hook") and os.path.isfile(path):
-                if f not in seen:
+            if f.endswith(".hook") and os.path.isfile(path) and f not in seen:
                     seen.add(f)
                     hooks.append(path)
     return hooks
 
 
+def _check_hook_secure(hook_path: str) -> bool:
+    try:
+        st = os.stat(hook_path)
+        if st.st_uid != os.getuid():
+            logging.warning("Hook %s is not owned by current user — skipping", hook_path)
+            return False
+        if st.st_mode & stat.S_IWOTH:
+            logging.warning("Hook %s is world-writable — skipping", hook_path)
+            return False
+        if st.st_mode & stat.S_IWGRP:
+            parent_st = os.stat(os.path.dirname(hook_path))
+            if parent_st.st_gid != st.st_gid:
+                logging.warning("Hook %s is group-writable by a different group — skipping", hook_path)
+                return False
+        return True
+    except OSError as e:
+        logging.warning("Cannot stat hook %s: %s — skipping", hook_path, e)
+        return False
+
+
 def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict]:
     results = []
     for hook_path in list_hooks(app_name):
+        if not _check_hook_secure(hook_path):
+            results.append({
+                "hook": hook_path,
+                "returncode": -1,
+                "stdout": "",
+                "stderr": "skipped: insecure permissions or ownership",
+            })
+            continue
         try:
             hook_env = os.environ.copy()
             hook_env["APP_NAME"] = app_name

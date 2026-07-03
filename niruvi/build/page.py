@@ -72,38 +72,54 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
             return True, ""
         elif t == 'rpm':
+            errors = []
+            # Try rpm2cpio → cpio pipe first (no intermediate temp file, less disk space)
+            if shutil.which('rpm2cpio') and shutil.which('cpio'):
+                try:
+                    cpio_result = subprocess.run(
+                        ['rpm2cpio', src], capture_output=True, timeout=120, check=True
+                    )
+                    subprocess.run(
+                        ['cpio', '-idm'], input=cpio_result.stdout,
+                        capture_output=True, timeout=120, cwd=dest, check=True,
+                    )
+                    return True, ""
+                except subprocess.CalledProcessError as e:
+                    err = e.stderr.decode(errors='ignore')[:200].strip()
+                    errors.append(f"rpm2cpio→cpio: {err or 'exit ' + str(e.returncode)}")
+                except Exception as e:
+                    errors.append(f"rpm2cpio→cpio: {e}")
+            # Fallback: rpm2archive → tar (requires temp file)
             if shutil.which('rpm2archive'):
                 tmp = tempfile.NamedTemporaryFile(suffix='.tgz', delete=False)
                 tmp_path = tmp.name
                 tmp.close()
-                ok = False
                 try:
-                    subprocess.run(['rpm2archive', src, '-o', tmp_path],
-                                   capture_output=True, timeout=120, check=True)
-                    subprocess.run(['tar', '-xzf', tmp_path, '-C', dest], timeout=120, check=True)
-                    ok = True
-                except Exception:
-                    pass
+                    subprocess.run(
+                        ['rpm2archive', src, '-o', tmp_path],
+                        capture_output=True, timeout=120, check=True,
+                    )
+                    subprocess.run(
+                        ['tar', '-xzf', tmp_path, '-C', dest],
+                        capture_output=True, timeout=120, check=True,
+                    )
+                    return True, ""
+                except subprocess.CalledProcessError as e:
+                    err = e.stderr.decode(errors='ignore')[:200].strip()
+                    errors.append(f"rpm2archive: {err or 'exit ' + str(e.returncode)}")
+                except Exception as e:
+                    errors.append(f"rpm2archive: {e}")
                 finally:
                     Path(tmp_path).unlink(missing_ok=True)
-                if ok:
-                    return True, ""
-            if shutil.which('rpm2cpio'):
-                cpio = os.path.join(dest, 'rpm.cpio')
-                with open(cpio, 'wb') as f:
-                    subprocess.run(['rpm2cpio', src], stdout=f, stderr=subprocess.PIPE, timeout=120, check=True)
-                if os.path.exists(cpio):
-                    with open(cpio, 'rb') as f:
-                        subprocess.run(['cpio', '-idm'], stdin=f, capture_output=True, timeout=120, cwd=dest)
-                    Path(cpio).unlink(missing_ok=True)
-                    return True, ""
+            if errors:
+                return False, "RPM extraction failed: " + "; ".join(errors)
             missing = []
-            if not shutil.which('rpm2archive'):
-                missing.append('rpm2archive')
             if not shutil.which('rpm2cpio'):
                 missing.append('rpm2cpio')
             if not shutil.which('cpio'):
                 missing.append('cpio')
+            if not shutil.which('rpm2archive'):
+                missing.append('rpm2archive')
             return False, f"Missing tools for RPM extraction: {', '.join(missing)}"
         elif t == 'tar':
             subprocess.run(['tar', '-xf', src, '-C', dest], capture_output=True, timeout=120, check=True)

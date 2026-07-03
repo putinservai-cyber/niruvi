@@ -6,7 +6,6 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-
 GITHUB_API = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 GITHUB_API_ALL = "https://api.github.com/repos/{owner}/{repo}/releases?per_page=5"
 GITLAB_API = "https://gitlab.com/api/v4/projects/{project_id}/releases/permalink/latest"
@@ -40,7 +39,9 @@ def parse_github_repo(url: str) -> tuple[str, str] | None:
 
 
 def parse_gitlab_project(url: str) -> str | None:
-    m = re.match(r'^(?:https?://)?(?:www\.)?gitlab\.com/(.+?)(?:\.git)?(?:\/|$)', url)
+    m = re.match(r'^(?:https?://)?(?:www\.)?gitlab\.com/(.+)\.git\/?$', url)
+    if not m:
+        m = re.match(r'^(?:https?://)?(?:www\.)?gitlab\.com/(.+?)/?$', url)
     if m:
         return m.group(1).rstrip("/")
     return None
@@ -300,9 +301,7 @@ def parse_upd_info(appimage_path: str) -> UpdateInfo | None:
 
 def normalize_update_url(url: str) -> str:
     url = url.strip()
-    if url.startswith("github.com/"):
-        url = "https://" + url
-    elif url.startswith("gitlab.com/"):
+    if url.startswith("github.com/") or url.startswith("gitlab.com/"):
         url = "https://" + url
     if not url.startswith(("http://", "https://")):
         url = "https://" + url

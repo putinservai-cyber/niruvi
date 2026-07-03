@@ -1,7 +1,7 @@
 """Build Wizard — 4-page Windows-style AppImage builder.
 
 Pages: ProjectSetup → Dependencies → BuildConfig → BuildProgress
-Supports project file save/load, template gallery, DwarFS toggle.
+Supports project file save/load and DwarFS toggle.
 """
 
 import json
@@ -10,55 +10,35 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
-    QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QLineEdit, QFileDialog,
-    QProgressBar, QTextEdit, QCheckBox, QComboBox,
-    QRadioButton, QGroupBox, QFormLayout,
-    QMessageBox, QWidget,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+    QWizard,
+    QWizardPage,
 )
 
 from niruvi.build.page import BuildWorker, _flatten_appdir
+from niruvi.ui.report_dialog import BuildSummaryDialog, ErrorReportDialog
 from niruvi.ui.settings import get_settings
-from niruvi.ui.report_dialog import ErrorReportDialog, BuildSummaryDialog
 from niruvi.utils import get_icon
 
-
 PROJECT_FILE_FILTER = "Niruvi Project (*.niruviproject);;JSON (*.json)"
-
-
-TEMPLATES = {
-    "python": {
-        "name": "Python Application",
-        "description": "Python script with optional virtual env",
-        "executable": "main.py",
-        "version": "1.0.0",
-        "icon_hint": "",
-    },
-    "qt": {
-        "name": "Qt Application",
-        "description": "PyQt/PySide application with Qt libraries",
-        "executable": "app.py",
-        "version": "1.0.0",
-        "icon_hint": "",
-    },
-    "cli": {
-        "name": "CLI Tool",
-        "description": "Command-line binary tool",
-        "executable": "app",
-        "version": "1.0.0",
-        "icon_hint": "",
-    },
-    "blank": {
-        "name": "Blank Project",
-        "description": "Start from scratch",
-        "executable": "",
-        "version": "1.0.0",
-        "icon_hint": "",
-    },
-}
 
 
 class ProjectSetupPage(QWizardPage):
@@ -66,18 +46,19 @@ class ProjectSetupPage(QWizardPage):
         super().__init__(parent)
         self.setTitle("Project Setup")
         self.setSubTitle("Select the source and configure basic application info.")
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
 
-        # Template gallery
-        template_group = QGroupBox("Quick Start Template")
-        tform = QFormLayout(template_group)
-        self.template_combo = QComboBox()
-        for tid, tpl in TEMPLATES.items():
-            self.template_combo.addItem(f"{tpl['name']} — {tpl['description']}", tid)
-        self.template_combo.currentIndexChanged.connect(self._apply_template)
-        tform.addRow("Template:", self.template_combo)
-        layout.addWidget(template_group)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setSpacing(10)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+
+        inner = QWidget()
+        scroll.setWidget(inner)
+        layout = QVBoxLayout(inner)
+        layout.setSpacing(10)
 
         # Source type
         src_group = QGroupBox("Source")
@@ -156,24 +137,29 @@ class ProjectSetupPage(QWizardPage):
 
         layout.addWidget(info_group)
 
+        self.source_edit.textChanged.connect(self.completeChanged.emit)
+        self.folder_edit.textChanged.connect(self.completeChanged.emit)
+
         # Drag and drop
         self.setAcceptDrops(True)
 
-    def _apply_template(self, idx: int):
-        tid = self.template_combo.itemData(idx)
-        tpl = TEMPLATES.get(tid)
-        if not tpl:
-            return
-        self.app_name_edit.setText(tpl["name"].replace(" Application", "").replace(" Tool", ""))
-        self.app_version_edit.setText(tpl["version"])
-        self.exec_edit.setText(tpl["executable"])
-        self.icon_edit.clear()
+    def initializePage(self):
+        wiz = self.wizard()
+        b = wiz.button(QWizard.WizardButton.BackButton)
+        if b:
+            b.setVisible(False)
+
+    def isComplete(self):
+        if self.pkg_radio.isChecked():
+            return bool(self.source_edit.text())
+        return bool(self.folder_edit.text())
 
     def _on_source_type_changed(self):
         is_pkg = self.pkg_radio.isChecked()
         self._pkg_widget.setVisible(is_pkg)
         self._folder_widget.setVisible(not is_pkg)
         self.folder_info_label.setVisible(not is_pkg)
+        self.completeChanged.emit()
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
@@ -284,7 +270,7 @@ class DependenciesPage(QWizardPage):
         layout.addWidget(self.status_label)
 
     def _scan(self):
-        wizard: "BuildWizard" = self.wizard()
+        wizard: BuildWizard = self.wizard()
         src = wizard.page(0).get_source_path()
         if not src or not os.path.exists(src):
             self.result_text.setPlainText("No valid source selected yet.")
@@ -298,7 +284,7 @@ class DependenciesPage(QWizardPage):
             else:
                 import tempfile
                 tmpdir = tempfile.mkdtemp(prefix='niruvi-depscan-')
-                from niruvi.build.page import extract_package, detect_package_type
+                from niruvi.build.page import detect_package_type, extract_package
                 pkg_type = detect_package_type(src)
                 if pkg_type == 'unknown':
                     self.result_text.setPlainText(f"Unsupported package type: {Path(src).suffix}")
@@ -381,8 +367,21 @@ class BuildConfigPage(QWizardPage):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("Build Configuration")
-        self.setSubTitle("Configure output, signing, and advanced options.")
-        layout = QVBoxLayout(self)
+        self.setSubTitle("Configure output, signing, and compression options.")
+
+        self.setButtonText(QWizard.WizardButton.NextButton, "Build")
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setSpacing(8)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+
+        inner = QWidget()
+        scroll.setWidget(inner)
+        layout = QVBoxLayout(inner)
         layout.setSpacing(8)
 
         # Output destination
@@ -402,75 +401,6 @@ class BuildConfigPage(QWizardPage):
         self.copy_to_managed_check.setChecked(True)
         dest_form.addRow(self.copy_to_managed_check)
         layout.addWidget(dest_group)
-
-        # Self-installer
-        si_group = QGroupBox("Self-Installing AppImage")
-        si_layout = QVBoxLayout(si_group)
-        self.self_install_check = QCheckBox("Create self-installing AppImage (not standard portable format)")
-        self.self_install_check.toggled.connect(self._on_self_install_toggled)
-        si_layout.addWidget(self.self_install_check)
-
-        self._adv_widget = QWidget()
-        adv_inner = QVBoxLayout(self._adv_widget)
-        adv_inner.setContentsMargins(0, 0, 0, 0)
-        adv_group = QGroupBox("Installer Options")
-        adv_form = QFormLayout(adv_group)
-
-        self.brand_name_edit = QLineEdit()
-        self.brand_name_edit.setPlaceholderText("Same as app name if left empty")
-        adv_form.addRow("Brand name:", self.brand_name_edit)
-
-        lic_row = QHBoxLayout()
-        self.license_edit = QLineEdit()
-        self.license_edit.setPlaceholderText("Optional EULA file...")
-        self.license_edit.setReadOnly(True)
-        lic_row.addWidget(self.license_edit)
-        lic_browse = QPushButton(get_icon("document-open"), "Browse...")
-        lic_browse.clicked.connect(lambda: self._browse_file(self.license_edit, "License (*.txt *.md *.rtf)"))
-        lic_row.addWidget(lic_browse)
-        adv_form.addRow("License:", lic_row)
-
-        pre_row = QHBoxLayout()
-        self.pre_script_edit = QLineEdit()
-        self.pre_script_edit.setPlaceholderText("Optional pre-install script...")
-        self.pre_script_edit.setReadOnly(True)
-        pre_row.addWidget(self.pre_script_edit)
-        pre_browse = QPushButton(get_icon("document-open"), "Browse...")
-        pre_browse.clicked.connect(lambda: self._browse_file(self.pre_script_edit, "Shell (*.sh)"))
-        pre_row.addWidget(pre_browse)
-        adv_form.addRow("Pre-install:", pre_row)
-
-        post_row = QHBoxLayout()
-        self.post_script_edit = QLineEdit()
-        self.post_script_edit.setPlaceholderText("Optional post-install script...")
-        self.post_script_edit.setReadOnly(True)
-        post_row.addWidget(self.post_script_edit)
-        post_browse = QPushButton(get_icon("document-open"), "Browse...")
-        post_browse.clicked.connect(lambda: self._browse_file(self.post_script_edit, "Shell (*.sh)"))
-        post_row.addWidget(post_browse)
-        adv_form.addRow("Post-install:", post_row)
-
-        self.updater_url_edit = QLineEdit()
-        self.updater_url_edit.setPlaceholderText("https://example.com/updates/update.json")
-        adv_form.addRow("Update URL:", self.updater_url_edit)
-
-        flags_row = QHBoxLayout()
-        self.rollback_check = QCheckBox("Rollback")
-        self.rollback_check.setChecked(True)
-        flags_row.addWidget(self.rollback_check)
-        self.silent_check = QCheckBox("Silent mode")
-        self.silent_check.setChecked(True)
-        flags_row.addWidget(self.silent_check)
-        self.launch_check = QCheckBox("Launch prompt")
-        self.launch_check.setChecked(True)
-        flags_row.addWidget(self.launch_check)
-        flags_row.addStretch()
-        adv_form.addRow("Options:", flags_row)
-
-        adv_inner.addWidget(adv_group)
-        self._adv_widget.setVisible(False)
-        si_layout.addWidget(self._adv_widget)
-        layout.addWidget(si_group)
 
         # Signing
         sign_group = QGroupBox("Code Signing")
@@ -501,8 +431,6 @@ class BuildConfigPage(QWizardPage):
         dwarfs_layout.addStretch()
         layout.addWidget(dwarfs_group)
 
-        layout.addStretch()
-
     def _on_sign_toggled(self, checked: bool):
         self.sign_key_combo.setEnabled(checked)
 
@@ -513,9 +441,6 @@ class BuildConfigPage(QWizardPage):
         for key in list_secret_keys():
             label = f"{key.name} <{key.email}>  [{key.fingerprint[:16]}...]"
             self.sign_key_combo.addItem(label, key.fingerprint)
-
-    def _on_self_install_toggled(self, checked: bool):
-        self._adv_widget.setVisible(checked)
 
     def _browse_output(self):
         dir_path = QFileDialog.getExistingDirectory(
@@ -561,6 +486,18 @@ class BuildProgressPage(QWizardPage):
         self._worker = None
         self._out_path = None
 
+    def initializePage(self):
+        wiz = self.wizard()
+        for btn in (
+            QWizard.WizardButton.BackButton,
+            QWizard.WizardButton.NextButton,
+            QWizard.WizardButton.FinishButton,
+            QWizard.WizardButton.CancelButton,
+        ):
+            b = wiz.button(btn)
+            if b:
+                b.setVisible(False)
+
     def _cancel_build(self):
         if self._worker:
             self._worker.stop()
@@ -591,8 +528,6 @@ class BuildProgressPage(QWizardPage):
         output_dir = config.output_edit.text()
         app_name = setup.app_name_edit.text() or None
         app_version = setup.app_version_edit.text() or None
-        exec_path = setup.exec_edit.text() or None
-        self_installing = config.self_install_check.isChecked()
 
         self._sign_key = (
             config.sign_key_combo.currentData()
@@ -606,16 +541,7 @@ class BuildProgressPage(QWizardPage):
             src, output_dir,
             app_name=app_name,
             app_version=app_version,
-            self_installing=self_installing,
-            installer_style="qt6",
-            brand_name=config.brand_name_edit.text() if self_installing else "",
-            license_file=config.license_edit.text() if self_installing else "",
-            pre_install_script=config.pre_script_edit.text() if self_installing else "",
-            post_install_script=config.post_script_edit.text() if self_installing else "",
-            enable_rollback=config.rollback_check.isChecked() if self_installing else True,
-            enable_silent=config.silent_check.isChecked() if self_installing else True,
-            updater_url=config.updater_url_edit.text().strip() if self_installing else "",
-            enable_launch_at_finish=config.launch_check.isChecked() if self_installing else True,
+            self_installing=False,
             is_folder_source=is_folder,
         )
         self._worker.log.connect(self._on_log)
@@ -653,7 +579,7 @@ class BuildProgressPage(QWizardPage):
             except Exception as e:
                 self.log_text.append(f"Signing failed: {e}")
 
-        wizard: "BuildWizard" = self.wizard()
+        wizard: BuildWizard = self.wizard()
         wizard._build_complete(out_path)
 
     def _on_error(self, msg: str):
@@ -663,6 +589,7 @@ class BuildProgressPage(QWizardPage):
         self.setSubTitle("Build failed")
 
         import traceback
+
         from niruvi.utils.sound_manager import play as play_sound
         play_sound("error")
         suggestions = ErrorReportDialog.suggest_for_build_error(msg)
@@ -728,9 +655,8 @@ class BuildWizard(QWizard):
 
     def _build_complete(self, out_path: str):
         import hashlib
-        import subprocess
 
-        is_valid, warnings = self._verify_appimage(out_path)
+        _is_valid, warnings = self._verify_appimage(out_path)
         file_size = os.path.getsize(out_path) if os.path.isfile(out_path) else 0
         is_elf = False
         is_exec = os.access(out_path, os.X_OK)
@@ -782,9 +708,9 @@ class BuildWizard(QWizard):
             return False, ["File not found after build."]
         size = os.path.getsize(path)
         if size < 1024:
-            warnings.append(f"AppImage is very small. It may not be valid.")
+            warnings.append("AppImage is very small. It may not be valid.")
         if size > 4 * 1024 * 1024 * 1024:
-            warnings.append(f"AppImage is very large. Some systems may not run it.")
+            warnings.append("AppImage is very large. Some systems may not run it.")
         is_exec = os.access(path, os.X_OK)
         if not is_exec:
             warnings.append("AppImage is not executable. Users will need: chmod +x")
@@ -819,20 +745,10 @@ class BuildWizard(QWizard):
                 "app_version": setup.app_version_edit.text(),
                 "executable": setup.exec_edit.text(),
                 "icon": setup.icon_edit.text(),
-                "template": setup.template_combo.currentData(),
             },
             "build": {
                 "output_dir": config.output_edit.text(),
                 "copy_to_managed": config.copy_to_managed_check.isChecked(),
-                "self_installing": config.self_install_check.isChecked(),
-                "brand_name": config.brand_name_edit.text(),
-                "license_file": config.license_edit.text(),
-                "pre_install_script": config.pre_script_edit.text(),
-                "post_install_script": config.post_script_edit.text(),
-                "updater_url": config.updater_url_edit.text(),
-                "rollback": config.rollback_check.isChecked(),
-                "silent": config.silent_check.isChecked(),
-                "launch_prompt": config.launch_check.isChecked(),
                 "sign": config.sign_check.isChecked(),
                 "sign_key": config.sign_key_combo.currentData(),
                 "dwarfs": config.dwarfs_check.isChecked(),
@@ -885,23 +801,10 @@ class BuildWizard(QWizard):
         setup.app_version_edit.setText(proj.get("app_version", ""))
         setup.exec_edit.setText(proj.get("executable", ""))
         setup.icon_edit.setText(proj.get("icon", ""))
-        tpl = proj.get("template", "blank")
-        idx = setup.template_combo.findData(tpl)
-        if idx >= 0:
-            setup.template_combo.setCurrentIndex(idx)
 
         # Build config tab
         config.output_edit.setText(build.get("output_dir", os.path.expanduser("~/Applications")))
         config.copy_to_managed_check.setChecked(build.get("copy_to_managed", True))
-        config.self_install_check.setChecked(build.get("self_installing", False))
-        config.brand_name_edit.setText(build.get("brand_name", ""))
-        config.license_edit.setText(build.get("license_file", ""))
-        config.pre_script_edit.setText(build.get("pre_install_script", ""))
-        config.post_script_edit.setText(build.get("post_install_script", ""))
-        config.updater_url_edit.setText(build.get("updater_url", ""))
-        config.rollback_check.setChecked(build.get("rollback", True))
-        config.silent_check.setChecked(build.get("silent", True))
-        config.launch_check.setChecked(build.get("launch_prompt", True))
         config.sign_check.setChecked(build.get("sign", False))
         config.dwarfs_check.setChecked(build.get("dwarfs", False))
         sign_key = build.get("sign_key", "")

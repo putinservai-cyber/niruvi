@@ -4,20 +4,37 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QThread, QEventLoop, pyqtSignal
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtCore import QEventLoop, Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
-    QCheckBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QFrame, QSizePolicy,
-    QPushButton, QTreeWidget, QTreeWidgetItem,
-    QLineEdit, QProgressDialog, QMessageBox, QFileDialog,
-    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
-    QGroupBox, QWidget, QListWidget, QStackedWidget, QListWidgetItem,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from niruvi._version import __app_name__
 from niruvi.utils import get_icon
-
 
 _DETAILS_ICONS: dict[str, str] = {
     "Name": "tag",
@@ -30,15 +47,17 @@ _DETAILS_ICONS: dict[str, str] = {
     "Desktop Entry": "document-properties",
     "Shortcut": "user-desktop",
 }
-from niruvi.ui.toggle_switch import ToggleSwitch
-from niruvi.desktop.installation_registry import InstallationRegistry
-from niruvi.app.update_sources import (
-    resolve_update_source, normalize_update_url,
-    detect_source_type, parse_github_repo, parse_gitlab_project,
-)
 from niruvi.app.self_update import compare_versions
-from niruvi.core.sandbox import ShieldConfig, SandboxBackend
-from niruvi.core.sandbox import check_firejail_available, check_bwrap_available
+from niruvi.app.update_sources import (
+    detect_source_type,
+    normalize_update_url,
+    parse_github_repo,
+    parse_gitlab_project,
+    resolve_update_source,
+)
+from niruvi.core.sandbox import SandboxBackend, ShieldConfig, check_bwrap_available, check_firejail_available
+from niruvi.desktop.installation_registry import InstallationRegistry
+from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils.sound_manager import play as play_sound
 
 _SIDEBAR_STYLE = """
@@ -190,7 +209,7 @@ class AppInfoDialog(QDialog):
         self._app_name = app_name
         self._info = app_info
         self._update_worker = None
-        
+
         self._init_ui()
 
     def _init_ui(self):
@@ -253,15 +272,24 @@ class AppInfoDialog(QDialog):
         self.stack = QStackedWidget()
 
         pages = []
-        for i, (label, icon_name) in enumerate(_TABS):
+        for _i, (label, icon_name) in enumerate(_TABS):
             item = QListWidgetItem(get_icon(icon_name), label)
             self.sidebar.addItem(item)
             page = QWidget()
             page_layout = QVBoxLayout(page)
-            page_layout.setContentsMargins(16, 12, 16, 12)
-            page_layout.setSpacing(8)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.setSpacing(0)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            page_layout.addWidget(scroll)
+            inner = QWidget()
+            scroll.setWidget(inner)
+            il = QVBoxLayout(inner)
+            il.setContentsMargins(16, 12, 16, 12)
+            il.setSpacing(8)
             self.stack.addWidget(page)
-            pages.append((page, page_layout))
+            pages.append((inner, il))
 
         body.addWidget(self.sidebar)
         body.addWidget(self.stack, 1)
@@ -348,7 +376,6 @@ class AppInfoDialog(QDialog):
             self.display_name_edit.setText(record.display_name_override)
         name_row.addWidget(self.display_name_edit, 1)
         self.btn_save_display_name = QPushButton(get_icon("document-save"), "Save")
-        self.btn_save_display_name.setFixedWidth(70)
         self.btn_save_display_name.clicked.connect(self._save_display_name)
         name_row.addWidget(self.btn_save_display_name)
         cust_grid.addLayout(name_row)
@@ -382,7 +409,6 @@ class AppInfoDialog(QDialog):
             self.run_args_edit.setText(record.run_args)
         args_row.addWidget(self.run_args_edit, 1)
         self.btn_save_run_args = QPushButton(get_icon("document-save"), "Save")
-        self.btn_save_run_args.setFixedWidth(70)
         self.btn_save_run_args.clicked.connect(self._save_run_args)
         args_row.addWidget(self.btn_save_run_args)
         cust_grid.addLayout(args_row)
@@ -505,7 +531,6 @@ class AppInfoDialog(QDialog):
             self.update_url_edit.setText(record.update_url)
         url_row.addWidget(self.update_url_edit, 1)
         self.btn_save_url = QPushButton(get_icon("document-save"), "Save")
-        self.btn_save_url.setFixedWidth(70)
         self.btn_save_url.clicked.connect(self._save_update_url)
         url_row.addWidget(self.btn_save_url)
         update_grid.addLayout(url_row)
@@ -551,8 +576,7 @@ class AppInfoDialog(QDialog):
         update_grid.addLayout(settings_row)
 
         revert_row = QHBoxLayout()
-        self.btn_revert = QPushButton("Revert to Previous Version")
-        self.btn_revert.setIcon(get_icon("document-revert"))
+        self.btn_revert = QPushButton(get_icon("document-revert"), "Revert to Previous Version")
         prev_dir = app_dir + ".prev"
         self.btn_revert.setEnabled(os.path.isdir(prev_dir))
         self.btn_revert.clicked.connect(self._revert_version)
@@ -589,19 +613,19 @@ class AppInfoDialog(QDialog):
         is_self = (self._app_name == __app_name__)
         if not is_self:
             self.btn_run = QPushButton(get_icon("media-playback-start"), "Run")
-            self.btn_run.setStyleSheet("QPushButton { padding: 8px 18px; font-weight: bold; }")
+            f = self.btn_run.font()
+            f.setBold(True)
+            self.btn_run.setFont(f)
             self.btn_run.clicked.connect(lambda: self._run_app())
             action_layout.addWidget(self.btn_run)
 
             self.btn_uninstall = QPushButton(get_icon("edit-delete"), "Uninstall")
-            self.btn_uninstall.setStyleSheet("QPushButton { padding: 8px 18px; }")
             self.btn_uninstall.clicked.connect(lambda: self._uninstall_app())
             action_layout.addWidget(self.btn_uninstall)
 
         action_layout.addStretch()
 
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
-        close_btn.setStyleSheet("QPushButton { padding: 8px 18px; }")
         close_btn.clicked.connect(self.accept)
         action_layout.addWidget(close_btn)
 

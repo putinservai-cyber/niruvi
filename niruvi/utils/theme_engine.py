@@ -5,11 +5,10 @@ icon theme initialization, and accent color configuration.
 """
 
 import logging
-import os
 from enum import Enum, auto
 
 from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QPalette, QColor
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
@@ -107,34 +106,18 @@ class ThemeEngine:
             base = self._dark_qss
             if not base:
                 base = (
-                    "QWidget { background-color: #2b2b2b; color: #e0e0e0; }\n"
-                    "QMenuBar { background: #333; color: #e0e0e0; }\n"
                     "QMenuBar::item:selected { background: #4a90d9; }\n"
-                    "QMenu { background: #333; color: #e0e0e0; border: 1px solid #555; }\n"
-                    "QPushButton { background: #444; color: #e0e0e0; border: 1px solid #666; "
-                    "border-radius: 4px; padding: 4px 12px; }\n"
                     "QPushButton:hover { background: #555; }\n"
-                    "QLineEdit { background: #3a3a3a; color: #e0e0e0; "
-                    "border: 1px solid #555; border-radius: 4px; padding: 4px; }\n"
-                    "QListWidget { background: #333; color: #e0e0e0; "
-                    "border: 1px solid #555; border-radius: 4px; }\n"
+                    "QPushButton:pressed { background: #3a3a3a; }\n"
                     "QListWidget::item:selected { background: #4a90d9; }\n"
-                    "QProgressBar { background: #444; border: 1px solid #555; "
-                    "border-radius: 4px; text-align: center; }\n"
                     "QProgressBar::chunk { background: #4a90d9; border-radius: 3px; }\n"
-                    "QGroupBox { border: 1px solid #555; border-radius: 6px; "
-                    "margin-top: 8px; padding-top: 14px; }\n"
                     "QGroupBox::title { color: #4a90d9; }\n"
                     "QScrollBar:vertical { background: #333; width: 10px; }\n"
                     "QScrollBar::handle:vertical { background: #555; border-radius: 5px; }\n"
+                    "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }\n"
                 )
         else:
             base = self._light_qss
-            if not base:
-                base = (
-                    "QGroupBox { border: 1px solid palette(mid); border-radius: 6px; "
-                    "margin-top: 8px; padding-top: 14px; }\n"
-                )
         if self._custom_qss:
             base += "\n" + self._custom_qss
         return base
@@ -145,14 +128,13 @@ class ThemeEngine:
             return
         mode = self._effective_mode()
         stylesheet = self._build_stylesheet(mode)
-        if stylesheet:
-            app.setStyleSheet(stylesheet)
+        app.setStyleSheet(stylesheet)
         palette = self._palette_for_mode(mode)
         if palette:
             app.setPalette(palette)
         self._notify()
 
-    def _palette_for_mode(self, mode: ThemeMode) -> QPalette | None:
+    def _palette_for_mode(self, mode: ThemeMode) -> QPalette:
         if mode == ThemeMode.DARK:
             p = QPalette()
             p.setColor(QPalette.ColorRole.Window, QColor(43, 43, 43))
@@ -168,7 +150,20 @@ class ThemeEngine:
             p.setColor(QPalette.ColorRole.ToolTipText, QColor(224, 224, 224))
             p.setColor(QPalette.ColorRole.Link, QColor(74, 144, 217))
             return p
-        return None
+        p = QPalette()
+        p.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
+        p.setColor(QPalette.ColorRole.WindowText, QColor(30, 30, 30))
+        p.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
+        p.setColor(QPalette.ColorRole.Text, QColor(30, 30, 30))
+        p.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+        p.setColor(QPalette.ColorRole.ButtonText, QColor(30, 30, 30))
+        p.setColor(QPalette.ColorRole.Highlight, QColor(74, 144, 217))
+        p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 255))
+        p.setColor(QPalette.ColorRole.ToolTipText, QColor(30, 30, 30))
+        p.setColor(QPalette.ColorRole.Link, QColor(74, 144, 217))
+        return p
 
 
 _engine: ThemeEngine | None = None

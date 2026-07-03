@@ -4,6 +4,7 @@ Detects when running from an AppImage that hasn't been installed yet,
 prompts the user to install, and handles the extraction + desktop integration.
 """
 
+import logging
 import os
 import shutil
 import subprocess
@@ -12,10 +13,14 @@ import tempfile
 
 _DETACHED: list[subprocess.Popen] = []
 
-from PyQt6.QtWidgets import (
-    QApplication, QMessageBox, QProgressDialog,
-)
+_log = logging.getLogger(__name__)
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMessageBox,
+    QProgressDialog,
+)
 
 
 def _fix_qt_platform_path():
@@ -45,12 +50,43 @@ def _fix_qt_platform_path():
             return
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
 
+
+def _copy_tree_resilient(src: str, dst: str) -> None:
+    """Copy a directory tree, skipping files that cannot be read.
+
+    Unlike shutil.copytree this tolerates broken symlinks and permission
+    errors so that a partial extraction never crashes the installer.
+    """
+    os.makedirs(dst, exist_ok=True)
+    for entry in os.scandir(src):
+        s = entry.path
+        d = os.path.join(dst, entry.name)
+        try:
+            if entry.is_symlink():
+                target = os.readlink(s)
+                if os.path.exists(s):
+                    if os.path.isdir(s):
+                        _copy_tree_resilient(s, d)
+                    else:
+                        shutil.copy2(s, d)
+                else:
+                    # Broken symlink — replicate as-is
+                    os.symlink(target, d)
+            elif entry.is_dir(follow_symlinks=False):
+                _copy_tree_resilient(s, d)
+            elif entry.is_file(follow_symlinks=False):
+                shutil.copy2(s, d)
+        except OSError as exc:
+            _log.warning("Skipping %s: %s", s, exc)
+
+
+from niruvi._version import __app_name__, __version__
 from niruvi.desktop.desktop_utils import (
-    create_desktop_entry, install_icon_to_theme, refresh_desktop_database,
+    create_desktop_entry,
+    install_icon_to_theme,
+    refresh_desktop_database,
     register_mime_handler,
 )
-from niruvi._version import __app_name__, __version__
-
 
 INSTALL_DIR = os.path.expanduser("~/Applications/Niruvi")
 
@@ -90,7 +126,7 @@ def _self_extract(appimage_path, dest_dir):
             stderr=subprocess.PIPE,
             text=True,
         )
-        stdout, stderr = proc.communicate(timeout=300)
+        _stdout, stderr = proc.communicate(timeout=300)
         if proc.returncode != 0:
             raise RuntimeError(f"Extraction failed: {stderr.strip()}")
 
@@ -102,7 +138,7 @@ def _self_extract(appimage_path, dest_dir):
             else:
                 raise RuntimeError("No extracted directory found.")
 
-        shutil.copytree(extracted, dest_dir, dirs_exist_ok=True)
+        _copy_tree_resilient(extracted, dest_dir)
 
     apprun = os.path.join(dest_dir, "AppRun")
     if os.path.isfile(apprun):
@@ -216,7 +252,7 @@ def run_self_install():
 
         # Reuse the existing QApplication — do NOT quit and recreate
         from niruvi.ui.manager import AppManager
-        from niruvi.ui.settings import load_settings, get_data_dir, DEFAULT_INSTALL_DIR, DESKTOP_DIR
+        from niruvi.ui.settings import DEFAULT_INSTALL_DIR, DESKTOP_DIR, get_data_dir, load_settings
 
         os.makedirs(get_data_dir(), exist_ok=True)
         os.makedirs(DEFAULT_INSTALL_DIR, exist_ok=True)

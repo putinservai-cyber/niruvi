@@ -1,21 +1,23 @@
 """Error and problem report dialogs with detailed human-readable explanations."""
 
 import os
-import shutil
 import subprocess
 import sys
-import textwrap
-from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QFont
-from niruvi.utils import get_icon
-
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTextBrowser, QDialogButtonBox,
-    QWidget, QTabWidget, QApplication,
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTabWidget,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
 )
+
+from niruvi.utils import get_icon
 
 
 def _run_capture(cmd: list[str], timeout=10) -> str:
@@ -116,7 +118,7 @@ class ErrorReportDialog(QDialog):
 
         # ── Details ──
         if self._details:
-            details_label = QLabel(f"<b>What happened:</b>")
+            details_label = QLabel("<b>What happened:</b>")
             layout.addWidget(details_label)
             details_text = QTextBrowser()
             details_text.setPlainText(self._details)
@@ -182,7 +184,7 @@ class ErrorReportDialog(QDialog):
             with open("/etc/os-release") as f:
                 for line in f:
                     if line.startswith("PRETTY_NAME="):
-                        lines.append(f"Distro: {line.split('=', 1)[1].strip().strip('\"')}")
+                        lines.append(f"Distro: {line.split('=', 1)[1].strip().strip(chr(34))}")
                         break
         except Exception:
             pass
@@ -192,10 +194,10 @@ class ErrorReportDialog(QDialog):
         lines.append(f"FUSE: {_check_fuse()}")
         lines.append(f"DISPLAY: {os.environ.get('DISPLAY', 'not set')}")
         lines.append(f"XDG_SESSION_TYPE: {os.environ.get('XDG_SESSION_TYPE', 'not set')}")
-        lines.append(f"\n=== Environment ===")
+        lines.append("\n=== Environment ===")
         for key in ("HOME", "USER", "LANG", "PATH"):
             lines.append(f"{key}={os.environ.get(key, 'not set')}")
-        lines.append(f"\n=== Build environment ===")
+        lines.append("\n=== Build environment ===")
         lines.append(f"appimagetool: {_run_capture(['which', 'appimagetool-x86_64.AppImage'])}")
         lines.append(f"ar (deb): {_run_capture(['which', 'ar'])}")
         lines.append(f"rpm2cpio: {_run_capture(['which', 'rpm2cpio'])}")
@@ -294,7 +296,7 @@ def _suggest_for_exception(exc: Exception, exc_type: str, context: str) -> list[
     msg = str(exc).lower()
     suggestions = []
     if isinstance(exc, FileNotFoundError):
-        suggestions.append(f"The file or directory was not found. Double-check the path.")
+        suggestions.append("The file or directory was not found. Double-check the path.")
         suggestions.append("Make sure the file exists and you have permission to access it.")
     elif isinstance(exc, PermissionError):
         suggestions.append("You don't have permission to access this file or directory.")

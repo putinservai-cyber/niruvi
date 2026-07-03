@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QPropertyAnimation, QRect, Qt, pyqtSignal, pyqtProperty, QEasingCurve
+from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, Qt, pyqtProperty, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 

@@ -5,7 +5,6 @@ import shutil
 import subprocess
 
 from PyQt6.QtWidgets import QMessageBox
-from pathlib import Path
 
 from niruvi.ui.settings import DESKTOP_DIR, get_settings
 from niruvi.utils.sound_manager import play as play_sound

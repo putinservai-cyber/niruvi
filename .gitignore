@@ -29,6 +29,9 @@ venv/
 *.pem
 *.crt
 
+# Secrets
+.secrets/
+
 # Logs
 *.log
 

@@ -14,7 +14,6 @@ def build_config_to_bash(config: dict) -> str:
     welcome = sanitize_bash_string(config.get("welcome_message", ""), "welcome")
     finish = sanitize_bash_string(config.get("finish_message", ""), "finish")
     enable_launch = str(config.get("enable_launch_at_finish", True)).lower()
-    updater_url = config.get("updater_url", "")
 
     lines = []
     safe_name = sanitize_bash_string(config["app_name"], "app_name")

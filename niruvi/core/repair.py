@@ -9,9 +9,9 @@ import os
 import shutil
 import stat
 import subprocess
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def repair_registry_entry(app_name: str, app_dir: str, version: str = "",
                            update_url: str = "") -> RepairAction:
     def _do() -> bool:
         try:
-            from niruvi.desktop.installation_registry import InstallationRegistry, InstallationRecord
+            from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
             registry = InstallationRegistry()
             existing = registry.get(app_name)
             record = InstallationRecord(
@@ -162,7 +162,7 @@ def repair_registry_entry(app_name: str, app_dir: str, version: str = "",
 def repair_manifest(app_dir: str) -> RepairAction:
     def _do() -> bool:
         try:
-            from niruvi.core.manifest import default_manifest, MANIFEST_FILENAME
+            from niruvi.core.manifest import MANIFEST_FILENAME, default_manifest
             install_dir = Path(app_dir) / ".niruvi-install"
             install_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = install_dir / MANIFEST_FILENAME

@@ -6,8 +6,8 @@ delta updates of AppImages instead of full binary downloads.
 
 import logging
 import os
-import subprocess
 import shutil
+import subprocess
 
 logger = logging.getLogger(__name__)
 

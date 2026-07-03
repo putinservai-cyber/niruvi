@@ -1,19 +1,29 @@
 import hashlib
 import json
+import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QProcess
-from niruvi.utils.sound_manager import play as play_sound
+from PyQt6.QtCore import QProcess, Qt
 from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QWidget
 
 from niruvi import __version__
+from niruvi.utils.sound_manager import play as play_sound
+
+logger = logging.getLogger(__name__)
 
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/putinservai-cyber/niruvi/main/update.json"
+UPDATE_SIGNATURE_URL = UPDATE_MANIFEST_URL + ".asc"
+
+SIGNING_KEY_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "signing-key.asc",
+)
 
 NIRUVI_APPIMAGE_NAME = "Niruvi-x86_64.AppImage"
 
@@ -109,11 +119,86 @@ def _download_file(url: str, dest: str, progress: QProgressDialog) -> bytes:
     return sha256_hash.digest()
 
 
+def _verify_update_manifest(manifest_json: str) -> bool:
+    """Verify the GPG signature on the update manifest.
+
+    Fetches the detached signature from UPDATE_SIGNATURE_URL and verifies
+    it against the bundled public key (data/signing-key.asc).
+    Returns True if the signature is valid, False otherwise.
+    """
+    if not os.path.isfile(SIGNING_KEY_PATH):
+        logger.warning("No signing key found at %s — skipping manifest verification", SIGNING_KEY_PATH)
+        return True
+
+    if not shutil.which("gpg"):
+        logger.warning("GPG not available — skipping manifest verification")
+        return True
+
+    try:
+        req = urllib.request.Request(UPDATE_SIGNATURE_URL, headers={"Accept": "text/plain"})
+        resp = urllib.request.urlopen(req, timeout=15)
+        sig_data = resp.read().decode("utf-8")
+    except Exception as e:
+        logger.warning("Failed to fetch signature from %s: %s", UPDATE_SIGNATURE_URL, e)
+        return False
+
+    with tempfile.TemporaryDirectory(prefix="niruvi-verify-") as tmpdir:
+        manifest_path = os.path.join(tmpdir, "update.json")
+        sig_path = os.path.join(tmpdir, "update.json.asc")
+        keyring_path = os.path.join(tmpdir, "keyring.gpg")
+
+        with open(manifest_path, "w") as f:
+            f.write(manifest_json)
+        with open(sig_path, "w") as f:
+            f.write(sig_data)
+
+        try:
+            subprocess.run(
+                ["gpg", "--import", "--no-default-keyring", "--keyring", keyring_path,
+                 SIGNING_KEY_PATH],
+                capture_output=True, timeout=15, check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.warning("Failed to import signing key: %s", e.stderr.decode())
+            return False
+
+        try:
+            result = subprocess.run(
+                ["gpg", "--no-default-keyring", "--keyring", keyring_path,
+                 "--verify", sig_path, manifest_path],
+                capture_output=True, timeout=15,
+            )
+            if result.returncode == 0:
+                logger.info("Update manifest GPG signature verified successfully")
+                return True
+            logger.warning(
+                "Update manifest GPG signature INVALID: %s",
+                result.stderr.decode().strip(),
+            )
+            return False
+        except subprocess.TimeoutExpired:
+            logger.warning("GPG verification timed out")
+            return False
+
+
 def check_for_updates(parent: QWidget):
     current_version = __version__
 
     try:
-        manifest = _fetch_json(UPDATE_MANIFEST_URL, 15)
+        raw_json_resp = urllib.request.urlopen(UPDATE_MANIFEST_URL, timeout=15)
+        raw_json = raw_json_resp.read().decode("utf-8")
+        manifest = json.loads(raw_json)
+
+        if not _verify_update_manifest(raw_json):
+            play_sound("warning")
+            QMessageBox.warning(
+                parent, "Update Check Failed",
+                "The update manifest could not be verified. The signature is "
+                "invalid or missing.\n\n"
+                "This may indicate a tampered update server. "
+                "Please try again later or report this issue.",
+            )
+            return
 
         latest_version = manifest.get("version", "").lstrip("v")
         download_url = manifest.get("download_url", "")

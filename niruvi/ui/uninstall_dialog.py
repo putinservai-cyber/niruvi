@@ -12,19 +12,29 @@ import traceback
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
-    QLabel, QProgressBar, QPushButton, QCheckBox,
-    QTextEdit, QMessageBox, QRadioButton, QButtonGroup,
+    QButtonGroup,
+    QCheckBox,
     QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWizard,
+    QWizardPage,
 )
 
 from niruvi.desktop.desktop_utils import (
-    find_desktop_for_app, find_desktop_shortcut,
+    find_desktop_for_app,
+    find_desktop_shortcut,
     refresh_desktop_database,
 )
 from niruvi.desktop.installation_registry import InstallationRegistry
-from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils import get_icon
+from niruvi.utils.sound_manager import play as play_sound
 
 
 def _unmount_if_fuse(path: str):

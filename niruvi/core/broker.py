@@ -27,9 +27,8 @@ Usage:
 import json
 import logging
 import os
-import subprocess
-import threading
 import tempfile
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +146,7 @@ class PermissionDaemon:
     def _listener(self):
         while self._running:
             try:
-                with open(self._fifo_path, "r") as fifo:
+                with open(self._fifo_path) as fifo:
                     for line in fifo:
                         self._handle_request(line.strip())
             except OSError:

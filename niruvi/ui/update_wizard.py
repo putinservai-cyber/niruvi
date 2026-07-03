@@ -4,27 +4,33 @@ Pages: VersionCheck → Changelog → Download → Install → Finish
        + Rollback on failure.
 """
 
-import hashlib
 import os
 import shutil
 import tempfile
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QMessageBox, QProgressBar,
-    QTextEdit, QRadioButton, QButtonGroup,
+    QButtonGroup,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QRadioButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWizard,
+    QWizardPage,
 )
 
+from niruvi.app.update_sources import resolve_update_source
+from niruvi.core.worker import DownloadWorker, extract_appimage_sync
 from niruvi.desktop.desktop_utils import get_version, refresh_desktop_database
 from niruvi.desktop.installation_registry import InstallationRegistry
-from niruvi.utils.sound_manager import play as play_sound
-from niruvi.app.update_sources import resolve_update_source
 from niruvi.utils import get_icon
-from niruvi.core.worker import DownloadWorker, extract_appimage_sync
+from niruvi.utils.sound_manager import play as play_sound
 
 
 class _FormatSize:

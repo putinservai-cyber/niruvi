@@ -9,7 +9,7 @@ from niruvi.installer.scripts import build_install_script, uninstall_script, upd
 def inject_bootstrap(appdir: str, app_name: str, app_version: str = "",
                      exec_name: str = "", installer_style: str = "wizard",
                      brand_name: str = "", license_file: str = "",
-                     components: list = None,
+                     components: list | None = None,
                      pre_install_script: str = "",
                      post_install_script: str = "",
                      enable_rollback: bool = True,

@@ -1,65 +1,76 @@
-import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.request
-
-import logging
-
-from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QListWidget, QListWidgetItem,
-    QMessageBox, QMenu, QFileDialog, QProgressDialog,
-    QDialog, QLabel, QPushButton,
-    QLineEdit, QComboBox, QFrame, QSizePolicy,
-    QApplication, QProgressBar, QGraphicsDropShadowEffect,
-)
-from PyQt6.QtCore import Qt, QSize, QThread, QEventLoop, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QPixmap, QIcon, QDragEnterEvent, QDropEvent, QPalette
 from pathlib import Path
 
-from niruvi._version import __app_name__
-from niruvi.ui.settings import (
-    get_settings,
-    DEFAULT_INSTALL_DIR,
-    SettingsDialog,
+from PyQt6.QtCore import QEventLoop, QSize, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QIcon, QPalette
+from PyQt6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QProgressBar,
+    QProgressDialog,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
-from niruvi.ui.app_info_dialog import AppInfoDialog
-from niruvi.core.worker import ExtractionWorker, _is_removable_path, _ensure_local
+
+from niruvi._version import __app_name__
+from niruvi.app.background_updater import BackgroundUpdater
+from niruvi.app.health_check import check_app_health
+from niruvi.app.self_update import check_for_updates
+from niruvi.app.update_sources import resolve_update_source
+from niruvi.core.hooks import ensure_hooks_dir, run_hooks
+from niruvi.core.repair import repair_full
+from niruvi.core.sandbox import Shield, ShieldConfig
+from niruvi.core.verification import verify_complete
+from niruvi.core.worker import ExtractionWorker, _ensure_local, _is_removable_path
+from niruvi.desktop.appimage_assets import extract_metadata
+from niruvi.desktop.appimage_metadata import AppImageMetadata
 from niruvi.desktop.desktop_utils import (
-    get_version,
     create_desktop_entry,
     create_desktop_shortcut,
     find_desktop_for_app,
     find_desktop_shortcut,
+    get_version,
     parse_desktop_file,
 )
-from niruvi.ui.wizard import InstallWizard
-from niruvi.ui.build_wizard import BuildWizard
-from niruvi.ui.help_dialog import HelpDialog
-from niruvi.ui.device_info import DeviceInfoDialog
-from niruvi.ui.uninstall_dialog import UninstallWizard
-from niruvi.ui.report_page import ReportPage
-from niruvi.utils import get_icon
-from niruvi.core.hooks import run_hooks, ensure_hooks_dir
-from niruvi.core.sandbox import Shield, ShieldConfig
-from niruvi.app.health_check import check_app_health
-from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.desktop.icon_utils import get_pixmap_from_file, to_png_bytes
-from niruvi.desktop.appimage_metadata import AppImageMetadata
-from niruvi.desktop.appimage_assets import extract_metadata
-from niruvi.app.self_update import check_for_updates
-from niruvi.app.background_updater import BackgroundUpdater
-from niruvi.app.update_sources import resolve_update_source
-from niruvi.desktop.installation_registry import InstallationRecord
-from niruvi.ui.settings import _settings
-from niruvi.utils.sound_manager import play as play_sound, install_button_filter, uninstall_button_filter, install_menu_sound
-from niruvi.core.repair import repair_full
-from niruvi.core.verification import verify_complete, VerificationResult
-from niruvi.utils.theme_engine import get_theme_engine, ThemeMode
+from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
+from niruvi.ui.app_info_dialog import AppInfoDialog
+from niruvi.ui.build_wizard import BuildWizard
+from niruvi.ui.device_info import DeviceInfoDialog
+from niruvi.ui.help_dialog import HelpDialog
+from niruvi.ui.report_page import ReportPage
+from niruvi.ui.settings import (
+    DEFAULT_INSTALL_DIR,
+    SettingsDialog,
+    _settings,
+    get_settings,
+)
+from niruvi.ui.uninstall_dialog import UninstallWizard
+from niruvi.ui.wizard import InstallWizard
+from niruvi.utils import get_icon
+from niruvi.utils.sound_manager import install_button_filter, install_menu_sound, uninstall_button_filter
+from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.theme_engine import ThemeMode, get_theme_engine
 
 _DETACHED: list[subprocess.Popen] = []
 
@@ -85,7 +96,7 @@ def _get_system_info_for_dialog() -> str:
         with open("/etc/os-release") as f:
             for line in f:
                 if line.startswith("PRETTY_NAME="):
-                    lines.append(f"<b>OS:</b> {line.split('=', 1)[1].strip().strip('\"')}")
+                    lines.append(f"<b>OS:</b> {line.split('=', 1)[1].strip().strip(chr(34))}")
                     break
     except Exception:
         pass
@@ -175,7 +186,6 @@ class AppManager(QMainWindow):
         self._background_updater.update_found.connect(self._on_background_update_found)
         from niruvi.utils.sound_manager import _init as _init_sound
         _init_sound()
-        from niruvi.core.hooks import ensure_hooks_dir
         ensure_hooks_dir()
         install_button_filter()
         mode_map = {"auto": ThemeMode.AUTO, "light": ThemeMode.LIGHT, "dark": ThemeMode.DARK}
@@ -416,7 +426,6 @@ class AppManager(QMainWindow):
         text = label + (f"  (v{version_str})" if version_str else "")
         list_item = QListWidgetItem(text)
         list_item.setData(Qt.ItemDataRole.UserRole, key)
-        install_path_text = f"  [Installed to: {app_dir}]"
         list_item.setData(Qt.ItemDataRole.UserRole + 1, app_dir)
         tooltip = (
             f"Path: {app_dir}\n"
@@ -447,7 +456,7 @@ class AppManager(QMainWindow):
         if os.path.isdir(app_dir):
             try:
                 install_time = os.path.getctime(app_dir)
-                for root, dirs, files in os.walk(app_dir):
+                for root, _dirs, files in os.walk(app_dir):
                     for f in files:
                         try:
                             app_size += os.path.getsize(os.path.join(root, f))
@@ -498,7 +507,7 @@ class AppManager(QMainWindow):
                     continue
                 real_map[real] = (item, is_link, app_dir)
 
-            for item, is_link, app_dir in real_map.values():
+            for item, _is_link, app_dir in real_map.values():
                 seen.add(item)
                 apprun = os.path.join(app_dir, "AppRun")
                 if not os.path.isfile(apprun) or not os.access(apprun, os.X_OK):
@@ -608,7 +617,7 @@ class AppManager(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             registry = InstallationRegistry()
-            for name, path in to_remove:
+            for name, _path in to_remove:
                 self.installed_apps.pop(name, None)
                 registry.remove(name)
             self._status_bar.showMessage(f"Removed {len(to_remove)} orphaned entr{'y' if len(to_remove) == 1 else 'ies'} from the installed list")
@@ -673,9 +682,7 @@ class AppManager(QMainWindow):
         registry = InstallationRegistry()
         if registry.lookup_by_name(app_name):
             return True
-        if registry.lookup_by_path(path):
-            return True
-        return False
+        return bool(registry.lookup_by_path(path))
 
     def process_appimage(self, path: str):
         if _is_removable_path(path):
@@ -701,7 +708,6 @@ class AppManager(QMainWindow):
         loop.exec()
 
         progress.close()
-        worker = self._metadata_worker
         self._metadata_worker = None
         info = result.get("info", {"Name": Path(path).stem})
         icon_data = result.get("icon_data")
@@ -787,7 +793,8 @@ class AppManager(QMainWindow):
 
     def _batch_install(self, paths: list[str]):
         """Install multiple AppImages sequentially."""
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+
         from niruvi.core.worker import InstallQueueWorker
 
         dlg = QDialog(self)
@@ -955,7 +962,7 @@ class AppManager(QMainWindow):
         layout.addWidget(detail_lbl)
 
         # Run diagnostics inline
-        from niruvi.app.health_check import check_fuse_available, check_app_runnable
+        from niruvi.app.health_check import check_app_runnable, check_fuse_available
         fuse = check_fuse_available()
         diag = check_app_runnable(app_name, app_dir)
 
@@ -1162,9 +1169,9 @@ class AppManager(QMainWindow):
 
     def _try_extract_and_run_temp(self, app_dir: str, app_name: str,
                                     env: dict | None = None, record=None) -> bool:
-        import tempfile
-        import shutil
         import atexit
+        import shutil
+        import tempfile
         tmp = tempfile.mkdtemp(prefix=f"niruvi-{app_name}-")
         try:
             appimage_path = self._find_appimage_in_dir(app_dir)
@@ -1471,7 +1478,6 @@ class AppManager(QMainWindow):
         self.scan_installed()
 
     def _open_app_hooks(self, app_name: str):
-        from niruvi.core.hooks import ensure_hooks_dir
         hooks_dir = ensure_hooks_dir(app_name)
         try:
             p = subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True)
@@ -1495,7 +1501,6 @@ class AppManager(QMainWindow):
         fuse = check_fuse_available()
 
         has_real_issues = bool(health["issues"]) or bool(runnable["issues"])
-        has_info_warnings = bool(health["warnings"]) or bool(runnable["warnings"])
 
         pal = self.palette()
         is_dark = pal.window().color().lightness() < 128
@@ -1706,8 +1711,8 @@ class AppManager(QMainWindow):
     def _zsync_update_app(self, app_name: str, app_dir: str):
         """Update an app using AppImageUpdate (zsync delta update)."""
         from niruvi.desktop.appimageupdate import (
-            find_appimage_in_dir, update_appimage_via_tool,
-            get_update_info_from_appimage,
+            find_appimage_in_dir,
+            update_appimage_via_tool,
         )
 
         appimage_path = find_appimage_in_dir(app_dir)
@@ -1807,7 +1812,7 @@ class AppManager(QMainWindow):
 
     def _on_background_update_found(self, result):
         play_sound("notification")
-        from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
+        from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
         app = QApplication.instance()
         has_tray = app and hasattr(app, "desktop") and QSystemTrayIcon.isSystemTrayAvailable()
         if has_tray:
@@ -1919,7 +1924,7 @@ class AppManager(QMainWindow):
         dlg.exec()
 
     def _show_report_page(self):
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout
         dlg = QDialog(self)
         dlg.setWindowTitle("Report Issue")
         dlg.setMinimumSize(520, 400)

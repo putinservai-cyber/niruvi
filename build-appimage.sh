@@ -73,17 +73,100 @@ find "$APPDIR/usr/lib64/python$PYTHON_VERSION/site-packages/niruvi" -name '__pyc
 
 echo "==> Copying Qt6 shared libraries"
 if [ -n "$QT6_LIB_DIR" ]; then
-    for lib in libQt6Core libQt6Gui libQt6Widgets libQt6DBus; do
+    for lib in libQt6Core libQt6Gui libQt6Widgets libQt6DBus libQt6Network libQt6Svg libQt6Xml; do
         cp -a "$QT6_LIB_DIR/$lib.so"* "$APPDIR/usr/lib64/" 2>/dev/null || true
     done
 else
     echo "Warning: Qt6 libraries not found, trying fallback..."
-    for lib in libQt6Core libQt6Gui libQt6Widgets libQt6DBus; do
+    for lib in libQt6Core libQt6Gui libQt6Widgets libQt6DBus libQt6Network libQt6Svg libQt6Xml; do
         find /usr -name "$lib.so*" -type f,l 2>/dev/null | head -1 | while read -r f; do
             cp -a "$f" "$APPDIR/usr/lib64/" 2>/dev/null || true
         done
     done
 fi
+
+echo "==> Copying Qt6 plugins"
+QT6_PLUGIN_SRC="/usr/lib64/qt6/plugins"
+if [ -d "$QT6_PLUGIN_SRC" ]; then
+    mkdir -p "$APPDIR/usr/lib64/qt6/plugins"
+    for subdir in platforms imageformats styles; do
+        if [ -d "$QT6_PLUGIN_SRC/$subdir" ]; then
+            mkdir -p "$APPDIR/usr/lib64/qt6/plugins/$subdir"
+            cp -a "$QT6_PLUGIN_SRC/$subdir/"*.so "$APPDIR/usr/lib64/qt6/plugins/$subdir/" 2>/dev/null || true
+        fi
+    done
+fi
+
+echo "==> Bundling shared library dependencies"
+_bundle_one_dep() {
+    local dep="$1"
+    local target_dir="$APPDIR/usr/lib64"
+    local basename
+    basename="$(basename "$dep")"
+    # Skip if already present in any known location
+    [ -f "$target_dir/$basename" ] && return 0
+    [ -f "$APPDIR/usr/lib64/qt6/plugins/platforms/$basename" ] && return 0
+    [ -f "$APPDIR/usr/lib64/qt6/plugins/imageformats/$basename" ] && return 0
+    [ -f "$APPDIR/usr/lib64/qt6/plugins/styles/$basename" ] && return 0
+    [ -f "$APPDIR/usr/lib64/qt6/plugins/xcbglintegrations/$basename" ] && return 0
+    [ -f "$APPDIR/usr/lib64/qt6/plugins/wayland-shell-integration/$basename" ] && return 0
+    # Copy the file
+    cp -a "$dep" "$target_dir/" 2>/dev/null || return 1
+    # If it's a symlink, also copy the real target
+    local real
+    real="$(readlink -f "$dep")"
+    if [ "$real" != "$dep" ] && [ -f "$real" ]; then
+        local realbase
+        realbase="$(basename "$real")"
+        if [ ! -f "$target_dir/$realbase" ]; then
+            cp -a "$real" "$target_dir/" 2>/dev/null || true
+        fi
+    fi
+    return 0
+}
+
+_bundle_all_elf() {
+    local count=0
+    # Scan every ELF binary and shared object in the AppDir (Python binary, .so files, plugins)
+    find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) -print0 2>/dev/null | while IFS= read -r -d '' sofile; do
+        ldd "$sofile" 2>/dev/null | grep '=> /' | awk '{print $3}' | while IFS= read -r dep; do
+            _bundle_one_dep "$dep" && count=$((count+1))
+        done
+    done
+    # Also scan the Python binary itself
+    if [ -f "$APPDIR/usr/bin/python3" ]; then
+        ldd "$APPDIR/usr/bin/python3" 2>/dev/null | grep '=> /' | awk '{print $3}' | while IFS= read -r dep; do
+            _bundle_one_dep "$dep"
+        done
+    fi
+}
+
+# Run up to 5 passes to catch all transitive dependencies
+for i in 1 2 3 4 5; do
+    before=$(find "$APPDIR/usr/lib64" -type f -name '*.so*' 2>/dev/null | wc -l)
+    _bundle_all_elf
+    after=$(find "$APPDIR/usr/lib64" -type f -name '*.so*' 2>/dev/null | wc -l)
+    echo "    Pass $i: $before -> $after libs"
+    [ "$after" -eq "$before" ] && break
+done
+
+echo "==> Bundling data files (ICU, XKB, fontconfig, etc.)"
+mkdir -p "$APPDIR/usr/share"
+for dir in /usr/share/X11/xkb /usr/share/fonts /usr/share/fontconfig /usr/share/icons; do
+    [ -d "$dir" ] && cp -r "$dir" "$APPDIR/usr/share/" 2>/dev/null || true
+done
+# ICU data
+for dir in /usr/share/icu /usr/lib64/icu /usr/lib/icu; do
+    if [ -d "$dir" ]; then
+        mkdir -p "$APPDIR/usr/share/icu"
+        cp -r "$dir/"* "$APPDIR/usr/share/icu/" 2>/dev/null || true
+        break
+    fi
+done
+# mimeinfo.cache for MIME type detection
+[ -f /usr/share/applications/mimeinfo.cache ] && \
+    mkdir -p "$APPDIR/usr/share/applications" && \
+    cp /usr/share/applications/mimeinfo.cache "$APPDIR/usr/share/applications/" 2>/dev/null || true
 
 echo "==> Copying AppDir assets"
 cp "$ASSET_DIR/niruvi.desktop" "$APPDIR/"
@@ -95,6 +178,10 @@ fi
 if [ -d "$ASSET_DIR/icons" ]; then
     cp -r "$ASSET_DIR/icons" "$APPDIR/"
 fi
+if [ -d "$ASSET_DIR/audio" ]; then
+    mkdir -p "$APPDIR/asset"
+    cp -r "$ASSET_DIR/audio" "$APPDIR/asset/"
+fi
 if [ -d "$ASSET_DIR/screenshot" ]; then
     cp -r "$ASSET_DIR/screenshot" "$APPDIR/screenshot"
 fi
@@ -105,8 +192,12 @@ cat > "$APPDIR/AppRun" << 'EOF'
 HERE="$(dirname "$(readlink -f "$0")")"
 export PYTHONHOME="$HERE/usr"
 export LD_LIBRARY_PATH="$HERE/usr/lib64:$LD_LIBRARY_PATH"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$HERE/usr/lib64/qt6/plugins"
+export QT_PLUGIN_PATH="$HERE/usr/lib64/qt6/plugins"
+export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export FONTCONFIG_PATH="$HERE/usr/share/fontconfig"
 export NIRUVI_ICON_DIR="$HERE/icons"
-exec "$HERE/usr/bin/python3" -m niruvi.self_install "$@"
+exec "$HERE/usr/bin/python3" -m niruvi.app.self_install "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
 

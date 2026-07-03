@@ -9,8 +9,6 @@ import logging
 import os
 import shutil
 import subprocess
-import tempfile
-from pathlib import Path
 from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
@@ -113,8 +111,8 @@ def sign_file(path: str, key_fingerprint: str | None = None,
         return output_sig
     except FileNotFoundError as e:
         raise SigningError(f"GPG not found: {e}") from e
-    except subprocess.TimeoutExpired:
-        raise SigningError("GPG signing timed out")
+    except subprocess.TimeoutExpired as e:
+        raise SigningError("GPG signing timed out") from e
 
 
 def sign_appimage(appimage_path: str, key_fingerprint: str | None = None,
@@ -188,8 +186,8 @@ def export_public_key(fingerprint: str, output_path: str,
         return output_path
     except FileNotFoundError as e:
         raise SigningError(f"GPG not found: {e}") from e
-    except subprocess.TimeoutExpired:
-        raise SigningError("GPG export timed out")
+    except subprocess.TimeoutExpired as e:
+        raise SigningError("GPG export timed out") from e
 
 
 def import_public_key(key_path: str) -> str:
@@ -219,8 +217,8 @@ def import_public_key(key_path: str) -> str:
         return fp or ""
     except FileNotFoundError as e:
         raise SigningError(f"GPG not found: {e}") from e
-    except subprocess.TimeoutExpired:
-        raise SigningError("GPG import timed out")
+    except subprocess.TimeoutExpired as e:
+        raise SigningError("GPG import timed out") from e
 
 
 def _extract_fingerprint_from_import(stderr: str) -> str:

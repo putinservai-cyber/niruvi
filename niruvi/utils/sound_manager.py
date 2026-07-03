@@ -11,8 +11,8 @@ import shutil
 import subprocess
 import time
 
-from PyQt6.QtCore import QObject, Qt, QEvent
-from PyQt6.QtWidgets import QApplication, QMenu, QAbstractButton
+from PyQt6.QtCore import QEvent, QObject, Qt
+from PyQt6.QtWidgets import QAbstractButton, QApplication, QMenu
 
 from niruvi.ui.settings import _settings
 from niruvi.ui.toggle_switch import ToggleSwitch
@@ -37,7 +37,7 @@ _player: str | None = None
 _initialized = False
 _sound_filter: QObject | None = None
 _last_play_time: float = 0.0
-_PLAY_DEBOUNCE_MS: float = 0.3
+_PLAY_DEBOUNCE_S: float = 0.3
 
 
 def _find_audio_dir() -> str:
@@ -77,7 +77,7 @@ def play(sound_name: str):
     if not _settings.get("sound_effects_enabled", True):
         return
     now = time.time()
-    if now - _last_play_time < _PLAY_DEBOUNCE_MS:
+    if now - _last_play_time < _PLAY_DEBOUNCE_S:
         return
     _last_play_time = now
     _init()

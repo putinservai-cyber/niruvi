@@ -5,14 +5,19 @@ import subprocess
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QScrollArea,
-    QWidget, QDialogButtonBox, QLabel, QFrame,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
 from niruvi.app.health_check import check_system_compatibility
-from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils import get_icon
-
+from niruvi.utils.sound_manager import play as play_sound
 
 _ICON_MAP = {
     "Operating System": "globe",

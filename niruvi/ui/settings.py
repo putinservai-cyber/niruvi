@@ -4,15 +4,28 @@ import os
 import subprocess
 
 from PyQt6.QtCore import Qt
-from niruvi.utils import get_icon
 from PyQt6.QtWidgets import (
-    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLineEdit, QPushButton, QDialogButtonBox,
-    QFileDialog, QGroupBox, QRadioButton, QLabel, QScrollArea,
-    QFrame, QSizePolicy, QMessageBox, QComboBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
 from niruvi.ui.toggle_switch import ToggleSwitch
+from niruvi.utils import get_icon
 
 DEFAULT_INSTALL_DIR = os.path.expanduser("~/Applications")
 DESKTOP_DIR = os.path.expanduser("~/.local/share/applications")
@@ -429,7 +442,7 @@ class SettingsPage(QWidget):
 
     def _detect_backend_details(self) -> dict:
         try:
-            from niruvi.core.sandbox import check_firejail_available, check_bwrap_available
+            from niruvi.core.sandbox import check_bwrap_available, check_firejail_available
             return {
                 "firejail": check_firejail_available().get("available", False),
                 "bwrap": check_bwrap_available().get("available", False),
@@ -496,7 +509,7 @@ class SettingsPage(QWidget):
             self.install_dir_edit.setText(dir_path)
 
     def _on_theme_changed(self):
-        from niruvi.utils.theme_engine import get_theme_engine, ThemeMode
+        from niruvi.utils.theme_engine import ThemeMode, get_theme_engine
         mode_map = {"auto": ThemeMode.AUTO, "light": ThemeMode.LIGHT, "dark": ThemeMode.DARK}
         mode = mode_map.get(self.theme_combo.currentData(), ThemeMode.AUTO)
         get_theme_engine().mode = mode

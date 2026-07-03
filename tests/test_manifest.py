@@ -1,13 +1,17 @@
 """Tests for the Package Manifest module."""
 
-import json
 import os
 import tempfile
+
 import pytest
 
 from niruvi.core.manifest import (
-    Manifest, ManifestError, default_manifest, find_manifest, load_manifest,
     MANIFEST_FILENAME,
+    Manifest,
+    ManifestError,
+    default_manifest,
+    find_manifest,
+    load_manifest,
 )
 
 

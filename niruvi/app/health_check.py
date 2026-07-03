@@ -1,6 +1,5 @@
 import datetime
 import os
-import shutil
 import stat
 import subprocess
 import time
@@ -106,8 +105,7 @@ def check_app_health(app_name: str, app_dir: str, record) -> dict:
             try:
                 install_dt = datetime.datetime.fromisoformat(install_date_str)
                 install_age = (now - install_dt.timestamp()) / 86400
-                if install_age > HEALTH_DAYS_THRESHOLD:
-                    if "No updates checked" not in [x for x in warnings]:
+                if install_age > HEALTH_DAYS_THRESHOLD and "No updates checked" not in warnings:
                         warnings.append("No updates checked recently")
             except (ValueError, TypeError):
                 pass

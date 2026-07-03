@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import unquote, urlparse
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
@@ -26,34 +26,50 @@ def _fix_qt_platform_path():
         else:
             os.environ.pop("LD_LIBRARY_PATH", None)
 
+    def _has_platform_plugins(path: str) -> bool:
+        platforms = os.path.join(path, "platforms")
+        if not os.path.isdir(platforms):
+            return False
+        return any(
+            f.startswith("libq") and f.endswith(".so")
+            for f in os.listdir(platforms)
+        )
+
     cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
-    if cur and os.path.isdir(cur):
+    if cur and _has_platform_plugins(cur):
         return
+
     candidates = [
+        os.path.join(os.environ.get("APPDIR", ""), "usr", "lib64", "qt6", "plugins"),
         "/usr/lib64/qt6/plugins",
         "/usr/lib/x86_64-linux-gnu/qt6/plugins",
-        "/usr/lib64/qt6/plugins/platforms/..",
     ]
     for p in candidates:
-        platforms = os.path.join(p, "platforms")
-        if os.path.isdir(platforms) and any(
-            f.startswith("libq") for f in os.listdir(platforms)
-            if f.endswith(".so")
-        ):
+        if _has_platform_plugins(p):
             os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
             return
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
 
-from niruvi.ui.settings import load_settings, get_settings, get_data_dir, DEFAULT_INSTALL_DIR, INSTALLED_DIR, DESKTOP_DIR
-from niruvi.ui.manager import AppManager, get_appimage_metadata
-from niruvi.ui.wizard import InstallWizard
-from niruvi.desktop.installation_registry import InstallationRegistry, InstallationRecord
-from niruvi.desktop.desktop_utils import (
-    get_version, create_desktop_entry, find_desktop_for_app,
-    find_desktop_shortcut, refresh_desktop_database,
-)
-from niruvi.core.worker import extract_appimage_sync
 from niruvi._version import __version__
+from niruvi.core.worker import extract_appimage_sync
+from niruvi.desktop.desktop_utils import (
+    create_desktop_entry,
+    find_desktop_for_app,
+    find_desktop_shortcut,
+    get_version,
+    refresh_desktop_database,
+)
+from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
+from niruvi.ui.manager import AppManager, get_appimage_metadata
+from niruvi.ui.settings import (
+    DEFAULT_INSTALL_DIR,
+    DESKTOP_DIR,
+    INSTALLED_DIR,
+    get_data_dir,
+    get_settings,
+    load_settings,
+)
+from niruvi.ui.wizard import InstallWizard
 from niruvi.utils import get_icon
 
 
@@ -68,8 +84,7 @@ def process_appimage(path_str: str, parent=None):
     registry = InstallationRegistry()
     existing = registry.lookup_by_name(app_name) or registry.lookup_by_path(str(path))
     if existing:
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QGridLayout, QLabel, QPushButton
-        from PyQt6.QtGui import QIcon
+        from PyQt6.QtWidgets import QDialog, QGridLayout, QLabel, QPushButton, QVBoxLayout
 
         dlg = QDialog(parent)
         dlg.setWindowTitle("Already Installed")
@@ -137,7 +152,7 @@ def process_appimage(path_str: str, parent=None):
 def cli_install(path_str: str):
     """Silent CLI install without GUI."""
     path = Path(path_str)
-    info, icon_data = get_appimage_metadata(str(path))
+    info, _icon_data = get_appimage_metadata(str(path))
     app_name = info.get("Name", path.stem)
     install_dir = get_settings()["install_dir"]
     dest_dir = os.path.join(install_dir, app_name)
@@ -269,8 +284,8 @@ def main():
             print("No apps with update URLs configured.")
             sys.exit(0)
         print(f"Checking {len(apps)} app(s) for updates...")
-        from niruvi.app.update_sources import resolve_update_source
         from niruvi.app.self_update import compare_versions
+        from niruvi.app.update_sources import resolve_update_source
         updates = []
         for name, url, ver in apps:
             try:
@@ -297,8 +312,8 @@ def main():
         if not record.update_url:
             print(f"No update URL configured for '{args.update_check}'.")
             sys.exit(0)
-        from niruvi.app.update_sources import resolve_update_source
         from niruvi.app.self_update import compare_versions
+        from niruvi.app.update_sources import resolve_update_source
         try:
             info = resolve_update_source(record.update_url, record.version)
             if info and info.version and compare_versions(info.version, 'gt', record.version):
@@ -335,13 +350,12 @@ def main():
             pass
         else:
             p = Path(raw)
-            if p.is_file() and p.suffix.lower() in (".appimage", ".AppImage"):
-                file_to_process = str(p)
-            elif p.is_file():
+            if (p.is_file() and p.suffix.lower() in (".appimage", ".AppImage")) or p.is_file():
                 file_to_process = str(p)
 
     _fix_qt_platform_path()
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     from niruvi.utils import _init_icon_theme
     _init_icon_theme()
     app.setApplicationName("Niruvi")

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PyQt6.QtCore import QBuffer, QIODevice, QSize, Qt
-from PyQt6.QtGui import QPixmap, QIcon, QImage, QPainter
+from PyQt6.QtGui import QImage, QPainter, QPixmap
 
 try:
     from PyQt6.QtSvg import QSvgRenderer

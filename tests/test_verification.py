@@ -3,11 +3,12 @@
 import os
 import tempfile
 
-import pytest
-
 from niruvi.core.verification import (
-    sha256_file, verify_sha256, verify_essential_files,
-    verify_apprun_executable, VerificationResult,
+    VerificationResult,
+    sha256_file,
+    verify_apprun_executable,
+    verify_essential_files,
+    verify_sha256,
 )
 
 

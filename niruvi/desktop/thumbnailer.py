@@ -109,7 +109,7 @@ def generate_thumbnail(input_path: str, output_path: str, size: int = 256):
 
     if icon_data:
         try:
-            from niruvi.desktop.icon_utils import to_png_bytes, save_icon_to_png
+            from niruvi.desktop.icon_utils import save_icon_to_png, to_png_bytes
             png = to_png_bytes(icon_data)
             if png:
                 save_icon_to_png(png, output_path)

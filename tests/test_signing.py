@@ -6,8 +6,12 @@ import tempfile
 import pytest
 
 from niruvi.core.signing import (
-    gpg_available, list_secret_keys, get_default_key,
-    SigningKey, SigningError, _extract_fingerprint_from_import,
+    SigningError,
+    SigningKey,
+    _extract_fingerprint_from_import,
+    get_default_key,
+    gpg_available,
+    list_secret_keys,
     signing_info_for_manifest,
 )
 

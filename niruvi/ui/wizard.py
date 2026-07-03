@@ -14,25 +14,38 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QMessageBox, QLineEdit,
-    QProgressBar, QCheckBox, QTextEdit, QRadioButton,
-    QButtonGroup, QFileDialog, QSizePolicy, QSpacerItem,
+    QButtonGroup,
+    QCheckBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWizard,
+    QWizardPage,
 )
 
-from niruvi.ui.settings import get_settings
 from niruvi.core.worker import ExtractionWorker, _ensure_local, _is_removable_path
-from niruvi.desktop.desktop_utils import (
-    get_version, create_desktop_entry, create_desktop_shortcut,
-    find_icon_in_appdir, parse_desktop_file_content, refresh_desktop_database,
-)
 from niruvi.desktop.appimage_assets import extract_metadata
 from niruvi.desktop.appimage_metadata import AppImageMetadata
+from niruvi.desktop.desktop_utils import (
+    create_desktop_entry,
+    create_desktop_shortcut,
+    find_icon_in_appdir,
+    get_version,
+    parse_desktop_file_content,
+    refresh_desktop_database,
+)
 from niruvi.desktop.icon_utils import get_pixmap_from_file
-from niruvi.desktop.installation_registry import InstallationRegistry, InstallationRecord
-from niruvi.utils.sound_manager import play as play_sound
+from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
+from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
-
+from niruvi.utils.sound_manager import play as play_sound
 
 _PREDEFINED_LOCATIONS = [
     ("~/Applications (Recommended)", os.path.expanduser("~/Applications")),
@@ -211,7 +224,7 @@ class DestinationPage(QWizardPage):
         layout.addStretch()
 
         space_label = QLabel(
-            f"Required space: <b>--</b> &nbsp;|&nbsp; Available: <b>--</b>"
+            "Required space: <b>--</b> &nbsp;|&nbsp; Available: <b>--</b>"
         )
         space_label.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
         layout.addWidget(space_label)
@@ -228,7 +241,7 @@ class DestinationPage(QWizardPage):
     def set_app_name(self, name: str):
         self._app_name = name
         paths = []
-        for label, base in _PREDEFINED_LOCATIONS:
+        for _label, base in _PREDEFINED_LOCATIONS:
             paths.append(os.path.join(base, name))
         self._loc_paths = paths
         self._on_selection_changed()

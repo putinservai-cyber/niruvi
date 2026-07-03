@@ -5,13 +5,10 @@ validation, and file integrity checking for installed and packaged apps.
 """
 
 import hashlib
-import json
 import logging
 import os
+import shutil
 import subprocess
-import tempfile
-from pathlib import Path
-from typing import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +70,7 @@ def verify_sha256(path: str, expected: str) -> VerificationResult:
 def verify_manifest_integrity(app_dir: str) -> VerificationResult:
     """Validate that the manifest file in an AppDir/install is internally consistent."""
     try:
-        from niruvi.core.manifest import load_manifest, ManifestError
+        from niruvi.core.manifest import ManifestError, load_manifest
     except ImportError:
         return VerificationResult(False, "Manifest module not available")
     m = load_manifest(app_dir)
