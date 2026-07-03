@@ -42,12 +42,12 @@ class TestExtractFingerprint:
     def test_extract_from_stderr(self):
         stderr = (
             'gpg: key C0FFEE1234567890: public key "Test <test@example>" imported\n'
-            'gpg: Total number processed: 1\n'
-            'gpg:               imported: 1\n'
-            'gpg: marginals needed: 3\n'
-            'gpg: depth: 0  valid:   1  signed:   0  trust: 0-, 0q, 0n, 0m, 0f, 1u\n'
-            'gpg: next trustdb check due at 2027-01-01\n'
-            '             Fingerprint: DEAD BEEF 1234 5678 90AB  CDEF 1234 5678 9ABC DEF0'
+            "gpg: Total number processed: 1\n"
+            "gpg:               imported: 1\n"
+            "gpg: marginals needed: 3\n"
+            "gpg: depth: 0  valid:   1  signed:   0  trust: 0-, 0q, 0n, 0m, 0f, 1u\n"
+            "gpg: next trustdb check due at 2027-01-01\n"
+            "             Fingerprint: DEAD BEEF 1234 5678 90AB  CDEF 1234 5678 9ABC DEF0"
         )
         fp = _extract_fingerprint_from_import(stderr)
         assert fp == "DEADBEEF1234567890ABCDEF123456789ABCDEF0"
@@ -81,6 +81,7 @@ class TestSigningError:
     def test_sign_file_no_gpg_raises(self, monkeypatch):
         monkeypatch.setattr("niruvi.core.signing.gpg_available", lambda: False)
         from niruvi.core.signing import sign_file
+
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(b"test")
             p = f.name

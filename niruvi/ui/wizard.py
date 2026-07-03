@@ -88,10 +88,7 @@ class WelcomePage(QWizardPage):
 
         layout.addStretch()
 
-        hint = QLabel(
-            "This wizard will install the AppImage to your system.\n"
-            "Click Next to continue."
-        )
+        hint = QLabel("This wizard will install the AppImage to your system.\nClick Next to continue.")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
         layout.addWidget(hint)
@@ -150,10 +147,7 @@ class InstallTypePage(QWizardPage):
         self.rec_radio.setChecked(True)
         self.type_group.addButton(self.rec_radio)
         rec_layout.addWidget(self.rec_radio)
-        rec_desc = QLabel(
-            "Install to the default location with standard settings. "
-            "Recommended for most users."
-        )
+        rec_desc = QLabel("Install to the default location with standard settings. Recommended for most users.")
         rec_desc.setWordWrap(True)
         rec_desc.setStyleSheet("color: palette(disabled-text); font-size: 11px; padding-left: 24px;")
         rec_layout.addWidget(rec_desc)
@@ -163,10 +157,7 @@ class InstallTypePage(QWizardPage):
         self.cust_radio = QRadioButton("Custom")
         self.type_group.addButton(self.cust_radio)
         cust_layout.addWidget(self.cust_radio)
-        cust_desc = QLabel(
-            "Choose a custom installation location and configure "
-            "advanced options."
-        )
+        cust_desc = QLabel("Choose a custom installation location and configure advanced options.")
         cust_desc.setWordWrap(True)
         cust_desc.setStyleSheet("color: palette(disabled-text); font-size: 11px; padding-left: 24px;")
         cust_layout.addWidget(cust_desc)
@@ -223,9 +214,7 @@ class DestinationPage(QWizardPage):
 
         layout.addStretch()
 
-        space_label = QLabel(
-            "Required space: <b>--</b> &nbsp;|&nbsp; Available: <b>--</b>"
-        )
+        space_label = QLabel("Required space: <b>--</b> &nbsp;|&nbsp; Available: <b>--</b>")
         space_label.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
         layout.addWidget(space_label)
         self.space_label = space_label
@@ -250,7 +239,7 @@ class DestinationPage(QWizardPage):
         current = self.path_edit.text() or os.path.expanduser("~")
         path = QFileDialog.getExistingDirectory(self, "Select Install Location", current)
         if path:
-            self.path_edit.setText(os.path.join(path, getattr(self, '_app_name', 'app')))
+            self.path_edit.setText(os.path.join(path, getattr(self, "_app_name", "app")))
             self.custom_radio.setChecked(True)
 
     def get_destination(self, default_base: str) -> str:
@@ -259,18 +248,18 @@ class DestinationPage(QWizardPage):
         for i, rb in enumerate(self._loc_buttons):
             if rb.isChecked():
                 return self._loc_paths[i]
-        return os.path.join(default_base, getattr(self, '_app_name', 'app'))
+        return os.path.join(default_base, getattr(self, "_app_name", "app"))
 
     def set_space_info(self, size_mb: float):
         import shutil
+
         dest = self.path_edit.text() or os.path.expanduser("~")
         parent = os.path.dirname(dest) if os.path.isfile(dest) else dest
         try:
             usage = shutil.disk_usage(parent)
             avail_gb = usage.free / (1024**3)
             self.space_label.setText(
-                f"Required space: <b>{size_mb:.0f} MB</b> &nbsp;|&nbsp; "
-                f"Available: <b>{avail_gb:.1f} GB</b>"
+                f"Required space: <b>{size_mb:.0f} MB</b> &nbsp;|&nbsp; Available: <b>{avail_gb:.1f} GB</b>"
             )
         except Exception:
             self.space_label.setText(f"Required space: <b>{size_mb:.0f} MB</b>")
@@ -290,23 +279,18 @@ class ComponentsPage(QWizardPage):
         self.cb_desktop_file = QCheckBox("Add to Applications Menu")
         self.cb_desktop_file.setChecked(get_settings().get("create_desktop", True))
         self.cb_desktop_file.setToolTip(
-            "Creates a .desktop file so the app appears in your "
-            "desktop environment's application launcher."
+            "Creates a .desktop file so the app appears in your desktop environment's application launcher."
         )
         layout.addWidget(self.cb_desktop_file)
 
         self.cb_desktop_shortcut = QCheckBox("Create Desktop Shortcut")
         self.cb_desktop_shortcut.setChecked(get_settings().get("create_shortcut", False))
-        self.cb_desktop_shortcut.setToolTip(
-            "Places a shortcut icon on your Desktop."
-        )
+        self.cb_desktop_shortcut.setToolTip("Places a shortcut icon on your Desktop.")
         layout.addWidget(self.cb_desktop_shortcut)
 
         self.cb_file_assoc = QCheckBox("Register File Associations")
         self.cb_file_assoc.setChecked(True)
-        self.cb_file_assoc.setToolTip(
-            "Associate file types with this application."
-        )
+        self.cb_file_assoc.setToolTip("Associate file types with this application.")
         layout.addWidget(self.cb_file_assoc)
 
         layout.addSpacing(12)
@@ -334,7 +318,8 @@ class ComponentsPage(QWizardPage):
     def validate(self) -> bool:
         if not self.cb_desktop_file.isChecked() and not self.cb_desktop_shortcut.isChecked():
             reply = QMessageBox.question(
-                self, "No Integration",
+                self,
+                "No Integration",
                 "No integration options selected. Proceed anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
@@ -441,9 +426,7 @@ class FinishPage(QWizardPage):
 
         layout.addStretch()
 
-        hint = QLabel(
-            "The application has been installed and is ready to use."
-        )
+        hint = QLabel("The application has been installed and is ready to use.")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
         layout.addWidget(hint)
@@ -622,6 +605,7 @@ class InstallWizard(QWizard):
 
         if self._icon_data:
             from niruvi.desktop.icon_utils import get_pixmap_from_data
+
             pixmap = get_pixmap_from_data(self._icon_data, 80)
             if pixmap and not pixmap.isNull():
                 self._icon_pixmap = pixmap
@@ -659,7 +643,7 @@ class InstallWizard(QWizard):
                         self._welcome_page.icon_label.setPixmap(pixmap)
                 desktop_path = assets.get("desktop")
                 if desktop_path:
-                    content = Path(desktop_path).read_text(encoding='utf-8', errors='ignore')
+                    content = Path(desktop_path).read_text(encoding="utf-8", errors="ignore")
                     self._desktop_info = parse_desktop_file_content(content)
                     name = self._desktop_info.get("Name", self.app_name)
                     self.app_name = name
@@ -669,7 +653,7 @@ class InstallWizard(QWizard):
                         self._welcome_page.desc_label.setText(comment)
                 license_path = assets.get("license")
                 if license_path and os.path.isfile(license_path):
-                    self._license_text = Path(license_path).read_text(encoding='utf-8', errors='ignore')
+                    self._license_text = Path(license_path).read_text(encoding="utf-8", errors="ignore")
                     self._license_page.set_license_text(self._license_text)
         except Exception:
             pass
@@ -719,9 +703,9 @@ class InstallWizard(QWizard):
             self.dest_dir = dest
             if os.path.exists(self.dest_dir):
                 reply = QMessageBox.question(
-                    self, "Overwrite?",
-                    f"Folder '{self.dest_dir}' already exists.\n"
-                    "Existing files will be backed up.",
+                    self,
+                    "Overwrite?",
+                    f"Folder '{self.dest_dir}' already exists.\nExisting files will be backed up.",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
@@ -734,9 +718,9 @@ class InstallWizard(QWizard):
             dest = self.dest_dir or os.path.join(get_settings()["install_dir"], self.app_name or "app")
             if os.path.exists(dest):
                 reply = QMessageBox.question(
-                    self, "Overwrite?",
-                    f"Folder '{dest}' already exists.\n"
-                    "Existing files will be backed up.",
+                    self,
+                    "Overwrite?",
+                    f"Folder '{dest}' already exists.\nExisting files will be backed up.",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
@@ -749,7 +733,8 @@ class InstallWizard(QWizard):
         if not os.path.isdir(directory):
             return
         import uuid
-        safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', self.app_name or "unknown")[:64]
+
+        safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", self.app_name or "unknown")[:64]
         backup_dir = os.path.join(tempfile.gettempdir(), f"aim-backup-{safe_name}-{uuid.uuid4().hex[:8]}")
         try:
             shutil.copytree(directory, backup_dir)
@@ -833,7 +818,8 @@ class InstallWizard(QWizard):
                 msg += "\n\n" + "\n".join(diag_warnings[:5])
             play_sound("warning")
             reply = QMessageBox.warning(
-                self, "Validation Warning",
+                self,
+                "Validation Warning",
                 msg + "\n\nDo you want to continue anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
@@ -865,7 +851,9 @@ class InstallWizard(QWizard):
                 metadata["scan_risk"] = self._scan_result.get("risk_level", "")
                 metadata["scan_warnings"] = self._scan_result.get("warnings", [])
             meta_path = os.path.join(dest_dir, ".appimage-manager.json")
-            with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(meta_path), delete=False, suffix=".tmp") as tf:
+            with tempfile.NamedTemporaryFile(
+                mode="w", dir=os.path.dirname(meta_path), delete=False, suffix=".tmp"
+            ) as tf:
                 json.dump(metadata, tf)
                 tmp_path = tf.name
             os.replace(tmp_path, meta_path)
@@ -898,9 +886,7 @@ class InstallWizard(QWizard):
                         if icon_path:
                             break
             try:
-                shortcut_path = create_desktop_shortcut(
-                    app_name, os.path.join(dest_dir, "AppRun"), icon_path
-                )
+                shortcut_path = create_desktop_shortcut(app_name, os.path.join(dest_dir, "AppRun"), icon_path)
                 self._progress_page.append_log(f"Desktop shortcut: {shortcut_path or 'failed'}")
             except Exception as e:
                 self._progress_page.append_log(f"Desktop shortcut failed: {e}")
@@ -928,11 +914,10 @@ class InstallWizard(QWizard):
 
         try:
             import hashlib
+
             source_sha256 = ""
             if self.appimage_path and os.path.isfile(self.appimage_path):
-                source_sha256 = hashlib.sha256(
-                    Path(self.appimage_path).read_bytes()
-                ).hexdigest()
+                source_sha256 = hashlib.sha256(Path(self.appimage_path).read_bytes()).hexdigest()
             sandbox_config = {
                 "enabled": self._components_page.cb_hardening.isChecked(),
                 "hardening": self._components_page.cb_hardening.isChecked(),
@@ -948,7 +933,7 @@ class InstallWizard(QWizard):
                 desktop_file=desktop_file_path or "",
                 desktop_shortcut=shortcut_path or "",
                 source_sha256=source_sha256,
-                architecture=getattr(self, '_architecture', ''),
+                architecture=getattr(self, "_architecture", ""),
                 sandbox_config=sandbox_config,
             )
             registry.add(record)
@@ -985,9 +970,7 @@ class InstallWizard(QWizard):
         self._restore_backup()
         self._cleanup_backup()
         QMessageBox.critical(
-            self, "Installation Error",
-            f"Failed to install: {error_msg}\n\n"
-            "The previous version has been restored."
+            self, "Installation Error", f"Failed to install: {error_msg}\n\nThe previous version has been restored."
         )
         self.reject()
 
@@ -1006,6 +989,7 @@ class InstallWizard(QWizard):
                 return True, warnings
 
         from niruvi.app.health_check import check_app_runnable, check_fuse_available
+
         diag = check_app_runnable(os.path.basename(dest_dir), dest_dir)
         if not diag["healthy"]:
             for issue in diag["issues"]:
@@ -1084,6 +1068,7 @@ class InstallWizard(QWizard):
             if os.path.isfile(apprun) and os.access(apprun, os.X_OK):
                 try:
                     import subprocess
+
                     subprocess.Popen([apprun], start_new_session=True)
                 except Exception:
                     pass

@@ -32,16 +32,16 @@ def detect_source_type(url: str) -> str:
 
 
 def parse_github_repo(url: str) -> tuple[str, str] | None:
-    m = re.match(r'^(?:https?://)?(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:\/|$)', url)
+    m = re.match(r"^(?:https?://)?(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:\/|$)", url)
     if m:
         return m.group(1), m.group(2).rstrip("/")
     return None
 
 
 def parse_gitlab_project(url: str) -> str | None:
-    m = re.match(r'^(?:https?://)?(?:www\.)?gitlab\.com/(.+)\.git\/?$', url)
+    m = re.match(r"^(?:https?://)?(?:www\.)?gitlab\.com/(.+)\.git\/?$", url)
     if not m:
-        m = re.match(r'^(?:https?://)?(?:www\.)?gitlab\.com/(.+?)/?$', url)
+        m = re.match(r"^(?:https?://)?(?:www\.)?gitlab\.com/(.+?)/?$", url)
     if m:
         return m.group(1).rstrip("/")
     return None
@@ -55,6 +55,7 @@ def _fetch_json(url: str, timeout: int = 15) -> dict:
 
 def _get_arch_filter() -> str:
     import platform
+
     machine = platform.machine().lower()
     if machine in ("x86_64", "amd64"):
         return "x86_64"
@@ -176,6 +177,7 @@ def resolve_gitlab(url: str, channel: str = "stable", timeout: int = 15) -> Upda
     if not project_path:
         return None
     from urllib.parse import quote
+
     encoded = quote(project_path, safe="")
     api_url = GITLAB_API.format(project_id=encoded)
     try:
@@ -240,7 +242,7 @@ def resolve_direct(url: str, current_version: str = "", timeout: int = 15) -> Up
         filename = m.group(1) if m else os.path.basename(urlparse(url).path)
         version = ""
         if filename:
-            m2 = re.search(r'[vV]?(\d+\.\d+\.\d+[a-zA-Z0-9._-]*)', filename)
+            m2 = re.search(r"[vV]?(\d+\.\d+\.\d+[a-zA-Z0-9._-]*)", filename)
             if m2:
                 version = m2.group(1)
         if not version and current_version:
@@ -256,8 +258,9 @@ def resolve_direct(url: str, current_version: str = "", timeout: int = 15) -> Up
         return None
 
 
-def resolve_update_source(url: str, current_version: str = "",
-                          channel: str = "stable", timeout: int = 15) -> UpdateInfo | None:
+def resolve_update_source(
+    url: str, current_version: str = "", channel: str = "stable", timeout: int = 15
+) -> UpdateInfo | None:
     source_type = detect_source_type(url)
     if source_type == "github":
         return resolve_github(url, channel, timeout)

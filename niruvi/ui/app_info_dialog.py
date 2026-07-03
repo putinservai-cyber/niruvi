@@ -112,12 +112,12 @@ _CARD_STYLE = """
 def _format_size(size_bytes: int) -> str:
     if size_bytes < 1024:
         return f"{size_bytes} B"
-    elif size_bytes < 1024 ** 2:
+    elif size_bytes < 1024**2:
         return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 ** 3:
-        return f"{size_bytes / 1024 ** 2:.1f} MB"
+    elif size_bytes < 1024**3:
+        return f"{size_bytes / 1024**2:.1f} MB"
     else:
-        return f"{size_bytes / 1024 ** 3:.2f} GB"
+        return f"{size_bytes / 1024**3:.2f} GB"
 
 
 def _format_date(timestamp: float) -> str:
@@ -139,7 +139,7 @@ class UpdateCheckWorker(QThread):
             if not info or not info.version:
                 self.error.emit("Could not resolve update source")
                 return
-            available = compare_versions(info.version, 'gt', self.current_version)
+            available = compare_versions(info.version, "gt", self.current_version)
             self.update_checked.emit(available, info.version, info.download_url, info.changelog or "")
         except Exception as e:
             self.error.emit(str(e))
@@ -175,6 +175,7 @@ class FileTreeWidget(QTreeWidget):
                         add_dir(item, full)
                 except OSError:
                     pass
+
         try:
             for name in sorted(os.listdir(app_dir)):
                 full = os.path.join(app_dir, name)
@@ -234,7 +235,11 @@ class AppInfoDialog(QDialog):
         if icon_path and os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             if not pixmap.isNull():
-                icon_label.setPixmap(pixmap.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                icon_label.setPixmap(
+                    pixmap.scaled(
+                        48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    )
+                )
         else:
             icon_label.setPixmap(get_icon("package-x-generic", "application-x-archive").pixmap(48, 48))
         icon_label.setFixedSize(48, 48)
@@ -443,7 +448,9 @@ class AppInfoDialog(QDialog):
 
         cust_reset_row = QHBoxLayout()
         self.btn_reset_defaults = QPushButton(get_icon("document-revert"), "Reset to Defaults")
-        self.btn_reset_defaults.setToolTip("Reset all customization, updates, and isolation settings to defaults for this app")
+        self.btn_reset_defaults.setToolTip(
+            "Reset all customization, updates, and isolation settings to defaults for this app"
+        )
         self.btn_reset_defaults.clicked.connect(self._reset_app_defaults)
         cust_reset_row.addWidget(self.btn_reset_defaults)
         cust_reset_row.addStretch()
@@ -459,9 +466,7 @@ class AppInfoDialog(QDialog):
         shield_grid.setSpacing(6)
 
         self.sb_enabled_cb = QCheckBox("Enable process hardening")
-        self.sb_enabled_cb.setToolTip(
-            "Applies rlimits, memory locking, ptrace disable, and malloc hardening."
-        )
+        self.sb_enabled_cb.setToolTip("Applies rlimits, memory locking, ptrace disable, and malloc hardening.")
         shield_grid.addWidget(self.sb_enabled_cb)
 
         self.cb_portable_home = QCheckBox("Portable .home folder")
@@ -610,7 +615,7 @@ class AppInfoDialog(QDialog):
         action_layout.setContentsMargins(20, 10, 20, 10)
         action_layout.setSpacing(8)
 
-        is_self = (self._app_name == __app_name__)
+        is_self = self._app_name == __app_name__
         if not is_self:
             self.btn_run = QPushButton(get_icon("media-playback-start"), "Run")
             f = self.btn_run.font()
@@ -644,7 +649,9 @@ class AppInfoDialog(QDialog):
 
     def _pick_custom_icon(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Choose Custom Icon", "",
+            self,
+            "Choose Custom Icon",
+            "",
             "Images (*.png *.svg *.xpm *.ico);;All files (*)",
         )
         if not path:
@@ -675,7 +682,11 @@ class AppInfoDialog(QDialog):
         if icon_path and os.path.isfile(icon_path):
             pixmap = QPixmap(icon_path)
             if not pixmap.isNull():
-                self.custom_icon_preview.setPixmap(pixmap.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                self.custom_icon_preview.setPixmap(
+                    pixmap.scaled(
+                        24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    )
+                )
                 return
         self.custom_icon_preview.clear()
 
@@ -684,7 +695,10 @@ class AppInfoDialog(QDialog):
         record = registry.get(self._app_name)
         if not record:
             from niruvi.desktop.installation_registry import InstallationRecord
-            record = InstallationRecord(name=self._app_name, path=self._info.get("path", ""), version=self._info.get("version", ""))
+
+            record = InstallationRecord(
+                name=self._app_name, path=self._info.get("path", ""), version=self._info.get("version", "")
+            )
         return record
 
     def _save_run_args(self):
@@ -755,14 +769,20 @@ class AppInfoDialog(QDialog):
         if st == "github":
             repo = parse_github_repo(url)
             if repo:
-                QMessageBox.information(self, "GitHub Repository Detected",
-                    f"Owner: {repo[0]}\nRepo: {repo[1]}\n\nNiruvi will auto-detect the latest release from GitHub when checking for updates.")
+                QMessageBox.information(
+                    self,
+                    "GitHub Repository Detected",
+                    f"Owner: {repo[0]}\nRepo: {repo[1]}\n\nNiruvi will auto-detect the latest release from GitHub when checking for updates.",
+                )
             self._update_source_type_label()
         elif st == "gitlab":
             project = parse_gitlab_project(url)
             if project:
-                QMessageBox.information(self, "GitLab Project Detected",
-                    f"Project: {project}\n\nNiruvi will auto-detect the latest release from GitLab when checking for updates.")
+                QMessageBox.information(
+                    self,
+                    "GitLab Project Detected",
+                    f"Project: {project}\n\nNiruvi will auto-detect the latest release from GitLab when checking for updates.",
+                )
             self._update_source_type_label()
         else:
             QMessageBox.information(self, "Direct URL", "This URL will be used as a direct download link for updates.")
@@ -789,9 +809,9 @@ class AppInfoDialog(QDialog):
             self.btn_revert.setEnabled(False)
             return
         reply = QMessageBox.question(
-            self, "Revert Version",
-            f"Revert {app_name} to the version in {prev_dir}?\n"
-            "The current version will be removed.",
+            self,
+            "Revert Version",
+            f"Revert {app_name} to the version in {prev_dir}?\nThe current version will be removed.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -813,11 +833,17 @@ class AppInfoDialog(QDialog):
     def _check_for_updates(self):
         url = self.update_url_edit.text().strip()
         if not url:
-            QMessageBox.information(self, "No Update URL", "No update URL configured. Enter a GitHub/GitLab repo URL or direct download link.")
+            QMessageBox.information(
+                self,
+                "No Update URL",
+                "No update URL configured. Enter a GitHub/GitLab repo URL or direct download link.",
+            )
             return
         current_version = self._info.get("version", "")
         if not current_version or current_version == "unknown":
-            QMessageBox.information(self, "Unknown Version", "Current version is unknown. Update check requires a known version string.")
+            QMessageBox.information(
+                self, "Unknown Version", "Current version is unknown. Update check requires a known version string."
+            )
             return
         self.btn_check_update.setEnabled(False)
         self.btn_check_update.setText("Checking...")
@@ -834,12 +860,21 @@ class AppInfoDialog(QDialog):
             msg = f"Version {latest} is available for {self._app_name}.\n\nCurrent: {self._info.get('version', 'unknown')}\nNew: {latest}\n"
             if changelog:
                 msg += f"\nWhat's new:\n{changelog[:500]}"
-            reply = QMessageBox.question(self, "Update Available", msg + "\n\nDownload and install now?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)
+            reply = QMessageBox.question(
+                self,
+                "Update Available",
+                msg + "\n\nDownload and install now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
             if reply == QMessageBox.StandardButton.Yes:
                 self._download_and_update(download_url, latest)
         else:
-            QMessageBox.information(self, "Up to Date", f"{self._app_name} (version {self._info.get('version', '?')}) is already the latest version.")
+            QMessageBox.information(
+                self,
+                "Up to Date",
+                f"{self._app_name} (version {self._info.get('version', '?')}) is already the latest version.",
+            )
 
     def _on_update_check_error(self, error_msg: str):
         self.btn_check_update.setEnabled(True)
@@ -849,6 +884,7 @@ class AppInfoDialog(QDialog):
 
     def _download_and_update(self, download_url: str, latest_version: str):
         from niruvi.core.worker import DownloadWorker, extract_appimage_sync
+
         dest_dir = self._info.get("path", "")
         fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
         os.close(fd)
@@ -905,6 +941,7 @@ class AppInfoDialog(QDialog):
         if os.path.isdir(backup_dir):
             shutil.rmtree(backup_dir, ignore_errors=True)
         from niruvi.desktop.desktop_utils import get_version
+
         version = get_version(dest_dir) or latest_version
         registry = InstallationRegistry()
         record = registry.get(self._app_name)
@@ -916,11 +953,16 @@ class AppInfoDialog(QDialog):
 
     def _load_shield_ui(self):
         from niruvi.ui.settings import _settings
+
         record = self._get_or_create_record()
         sc = record.sandbox_config or {}
         default_enabled = _settings.get("sandbox_default_enabled", True)
         default_backend_str = _settings.get("sandbox_default_backend", "shield")
-        default_backend = {"shield": SandboxBackend.SHIELD, "firejail": SandboxBackend.FIREJAIL, "bwrap": SandboxBackend.BUBBLEWRAP}.get(default_backend_str, SandboxBackend.SHIELD)
+        default_backend = {
+            "shield": SandboxBackend.SHIELD,
+            "firejail": SandboxBackend.FIREJAIL,
+            "bwrap": SandboxBackend.BUBBLEWRAP,
+        }.get(default_backend_str, SandboxBackend.SHIELD)
         self.sb_enabled_cb.setChecked(sc.get("enabled", default_enabled))
         self.cb_portable_home.setChecked(sc.get("portable_home", False))
         self.cb_portable_config.setChecked(sc.get("portable_config", False))
@@ -972,7 +1014,8 @@ class AppInfoDialog(QDialog):
 
     def _reset_app_defaults(self):
         reply = QMessageBox.question(
-            self, "Reset to Defaults",
+            self,
+            "Reset to Defaults",
             f"Reset all settings for {self._app_name} to defaults?\n\n"
             "This will clear custom display name, icon, run arguments, "
             "environment variables, update URL/channel, and isolation settings.",
@@ -988,7 +1031,13 @@ class AppInfoDialog(QDialog):
         record.update_url = ""
         record.update_channel = "stable"
         record.auto_update = False
-        record.sandbox_config = {"enabled": True, "hardening": True, "portable_home": False, "portable_config": False, "backend": SandboxBackend.SHIELD}
+        record.sandbox_config = {
+            "enabled": True,
+            "hardening": True,
+            "portable_home": False,
+            "portable_config": False,
+            "backend": SandboxBackend.SHIELD,
+        }
         InstallationRegistry().add(record)
         self.display_name_edit.clear()
         self.run_args_edit.clear()

@@ -1,6 +1,5 @@
 """Tests for the update source resolution module."""
 
-
 from niruvi.app.update_sources import (
     _get_arch_filter,
     _score_asset,

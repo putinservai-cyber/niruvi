@@ -48,9 +48,7 @@ class PermissionStore:
     """Persistent permission storage per app."""
 
     def __init__(self):
-        self._path = os.path.join(
-            os.path.expanduser("~/.config/niruvi"), "permissions.json"
-        )
+        self._path = os.path.join(os.path.expanduser("~/.config/niruvi"), "permissions.json")
         self._data: dict[str, dict[str, bool]] = {}
         self._lock = threading.Lock()
         self._load()

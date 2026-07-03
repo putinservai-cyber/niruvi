@@ -59,9 +59,9 @@ def _format_size(path: str) -> str:
                         total += os.path.getsize(fp)
                     except OSError:
                         pass
-        if total >= 1024 ** 3:
+        if total >= 1024**3:
             return f"{total / (1024**3):.1f} GB"
-        if total >= 1024 ** 2:
+        if total >= 1024**2:
             return f"{total / (1024**2):.0f} MB"
         if total >= 1024:
             return f"{total / 1024:.0f} KB"
@@ -333,9 +333,7 @@ class UninstallWorker(QThread):
 
             if self.checks.get("start_menu"):
                 self.step_changed.emit("Removing start menu entry...", 20)
-                uninstall_entry = os.path.expanduser(
-                    f"~/.local/share/applications/uninstall-{self.app_name}.desktop"
-                )
+                uninstall_entry = os.path.expanduser(f"~/.local/share/applications/uninstall-{self.app_name}.desktop")
                 if os.path.exists(uninstall_entry):
                     os.remove(uninstall_entry)
 
@@ -374,9 +372,7 @@ class UninstallWorker(QThread):
                         shutil.rmtree(self.app_dir)
                     except OSError as e:
                         self.error.emit(
-                            f"Unable to delete {self.app_dir}\n\n"
-                            f"Reason: {e}\n\n"
-                            "The application may still be running."
+                            f"Unable to delete {self.app_dir}\n\nReason: {e}\n\nThe application may still be running."
                         )
                         return
 
@@ -573,6 +569,7 @@ class UninstallWizard(QWizard):
         self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
 
         from niruvi.core.repair import repair_full
+
         self._progress_page.update_step("Repairing installation...", 10)
         report = repair_full(self.app_name, self.app_dir)
 
@@ -590,9 +587,7 @@ class UninstallWizard(QWizard):
         if report.all_succeeded:
             self._progress_page.update_step("Repair complete - all issues fixed.", 100)
         else:
-            self._progress_page.update_step(
-                f"Repair completed with {report.failure_count} issue(s).", 100
-            )
+            self._progress_page.update_step(f"Repair completed with {report.failure_count} issue(s).", 100)
         self._on_finished()
 
     def _on_finished(self):

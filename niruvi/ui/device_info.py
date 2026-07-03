@@ -85,7 +85,9 @@ def _collect_system_info() -> dict[str, str]:
     try:
         result = subprocess.run(
             ["glxinfo", "-B"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             for line in result.stdout.splitlines():
@@ -100,7 +102,9 @@ def _collect_system_info() -> dict[str, str]:
     try:
         result = subprocess.run(
             ["vulkaninfo", "--summary"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             for line in result.stdout.splitlines():
@@ -113,14 +117,18 @@ def _collect_system_info() -> dict[str, str]:
 
     # Mesa version — try rpm, then dpkg, then parse ldconfig
     try:
-        r = subprocess.run(["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(
+            ["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5
+        )
         if r.returncode == 0:
             info["Mesa"] = r.stdout.strip()
     except Exception:
         pass
     if "Mesa" not in info:
         try:
-            r = subprocess.run(["dpkg-query", "-W", "-f", "${Version}", "libgl1-mesa-dri"], capture_output=True, text=True, timeout=5)
+            r = subprocess.run(
+                ["dpkg-query", "-W", "-f", "${Version}", "libgl1-mesa-dri"], capture_output=True, text=True, timeout=5
+            )
             if r.returncode == 0:
                 info["Mesa"] = r.stdout.strip()
         except Exception:
@@ -147,7 +155,9 @@ def _collect_system_info() -> dict[str, str]:
         pass
     if "glibc" not in info:
         try:
-            r = subprocess.run(["dpkg-query", "-W", "-f", "${Version}", "libc6"], capture_output=True, text=True, timeout=5)
+            r = subprocess.run(
+                ["dpkg-query", "-W", "-f", "${Version}", "libc6"], capture_output=True, text=True, timeout=5
+            )
             if r.returncode == 0:
                 info["glibc"] = r.stdout.strip()
         except Exception:
@@ -197,9 +207,7 @@ def _build_info_row(icon_name: str, key: str, value: str) -> QWidget:
     escaped = str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
     val_lbl = QLabel(escaped)
     val_lbl.setWordWrap(True)
-    val_lbl.setTextInteractionFlags(
-        Qt.TextInteractionFlag.TextSelectableByMouse
-    )
+    val_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     layout.addWidget(val_lbl, 1)
 
     return row
@@ -241,9 +249,7 @@ class DeviceInfoDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         content = QWidget()
         content_layout = QVBoxLayout(content)

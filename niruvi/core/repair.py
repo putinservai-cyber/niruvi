@@ -66,8 +66,7 @@ class RepairReport:
         return self.failure_count == 0
 
     def summary(self) -> str:
-        return (f"Repair: {self.success_count} succeeded, "
-                f"{self.failure_count} failed out of {len(self.actions)} actions")
+        return f"Repair: {self.success_count} succeeded, {self.failure_count} failed out of {len(self.actions)} actions"
 
 
 def _refresh_desktop_db():
@@ -75,7 +74,8 @@ def _refresh_desktop_db():
         try:
             subprocess.run(
                 [cmd, os.path.expanduser("~/.local/share/applications")],
-                capture_output=True, timeout=30,
+                capture_output=True,
+                timeout=30,
             )
         except Exception:
             pass
@@ -95,6 +95,7 @@ def repair_apprun(app_dir: str) -> RepairAction:
         if not (mode & stat.S_IXUSR):
             os.chmod(apprun, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         return True
+
     return RepairAction(f"Fix AppRun permissions in {app_dir}", _do)
 
 
@@ -119,6 +120,7 @@ def repair_desktop_entry(app_name: str, app_dir: str, icon_path: str = "") -> Re
         with open(dest, "w") as f:
             f.write(content)
         return True
+
     return RepairAction(f"Create desktop entry for {app_name}", _do)
 
 
@@ -133,14 +135,15 @@ def repair_icon(app_name: str, app_dir: str) -> RepairAction:
                 shutil.copy2(str(candidates[0]), dest)
                 return True
         return False
+
     return RepairAction(f"Install icon for {app_name}", _do)
 
 
-def repair_registry_entry(app_name: str, app_dir: str, version: str = "",
-                           update_url: str = "") -> RepairAction:
+def repair_registry_entry(app_name: str, app_dir: str, version: str = "", update_url: str = "") -> RepairAction:
     def _do() -> bool:
         try:
             from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
+
             registry = InstallationRegistry()
             existing = registry.get(app_name)
             record = InstallationRecord(
@@ -148,14 +151,13 @@ def repair_registry_entry(app_name: str, app_dir: str, version: str = "",
                 path=app_dir,
                 version=version or (existing.version if existing else ""),
                 update_url=update_url or (existing.update_url if existing else ""),
-                desktop_file=os.path.expanduser(
-                    f"~/.local/share/applications/{app_name}.desktop"
-                ),
+                desktop_file=os.path.expanduser(f"~/.local/share/applications/{app_name}.desktop"),
             )
             registry.add(record)
             return True
         except Exception:
             return False
+
     return RepairAction(f"Register {app_name} in Niruvi", _do)
 
 
@@ -163,6 +165,7 @@ def repair_manifest(app_dir: str) -> RepairAction:
     def _do() -> bool:
         try:
             from niruvi.core.manifest import MANIFEST_FILENAME, default_manifest
+
             install_dir = Path(app_dir) / ".niruvi-install"
             install_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = install_dir / MANIFEST_FILENAME
@@ -173,6 +176,7 @@ def repair_manifest(app_dir: str) -> RepairAction:
             return True
         except Exception:
             return False
+
     return RepairAction(f"Generate manifest for {os.path.basename(app_dir)}", _do)
 
 

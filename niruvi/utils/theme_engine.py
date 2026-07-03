@@ -75,9 +75,12 @@ class ThemeEngine:
     def _detect_system_theme(self) -> ThemeMode:
         try:
             import subprocess
+
             result = subprocess.run(
                 ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if "dark" in result.stdout.lower():
                 return ThemeMode.DARK
@@ -85,9 +88,10 @@ class ThemeEngine:
             pass
         try:
             result = subprocess.run(
-                ["kreadconfig6", "--group", "General", "--key", "ColorScheme",
-                 "--default", "Breeze"],
-                capture_output=True, text=True, timeout=5,
+                ["kreadconfig6", "--group", "General", "--key", "ColorScheme", "--default", "Breeze"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if "dark" in result.stdout.lower():
                 return ThemeMode.DARK

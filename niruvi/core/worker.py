@@ -180,8 +180,7 @@ class DownloadWorker(QThread):
     error = pyqtSignal(str)
     speed_updated = pyqtSignal(str)
 
-    def __init__(self, url: str, dest_path: str, expected_sha256: str = "",
-                 parent=None):
+    def __init__(self, url: str, dest_path: str, expected_sha256: str = "", parent=None):
         super().__init__(parent)
         self.url = url
         self.dest_path = dest_path
@@ -197,6 +196,7 @@ class DownloadWorker(QThread):
             sha256_hash = hashlib.sha256()
             start_time = 0
             import time
+
             start_time = time.time()
 
             with open(self.dest_path, "wb") as f:
@@ -222,12 +222,10 @@ class DownloadWorker(QThread):
 
             actual_sha = sha256_hash.hexdigest()
             if self.expected_sha256 and actual_sha.lower() != self.expected_sha256.lower():
-                    self.error.emit(
-                        f"SHA256 mismatch\nExpected: {self.expected_sha256}\nActual: {actual_sha}"
-                    )
-                    if os.path.exists(self.dest_path):
-                        os.unlink(self.dest_path)
-                    return
+                self.error.emit(f"SHA256 mismatch\nExpected: {self.expected_sha256}\nActual: {actual_sha}")
+                if os.path.exists(self.dest_path):
+                    os.unlink(self.dest_path)
+                return
 
             self.finished.emit(self.dest_path)
         except Exception as e:

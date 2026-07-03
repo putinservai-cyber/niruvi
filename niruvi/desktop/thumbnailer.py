@@ -68,7 +68,7 @@ MimeType={MIME_TYPES}
 
 
 def _write_helper_script():
-    content = "#!/bin/sh\nexec python3 -m niruvi.thumbnailer \"$@\"\n"
+    content = '#!/bin/sh\nexec python3 -m niruvi.thumbnailer "$@"\n'
     tmp = HELPER_PATH + ".tmp"
     with open(tmp, "w") as f:
         f.write(content)
@@ -110,6 +110,7 @@ def generate_thumbnail(input_path: str, output_path: str, size: int = 256):
     if icon_data:
         try:
             from niruvi.desktop.icon_utils import save_icon_to_png, to_png_bytes
+
             png = to_png_bytes(icon_data)
             if png:
                 save_icon_to_png(png, output_path)
@@ -130,12 +131,15 @@ def _extract_icon(appimage_path: str) -> bytes | None:
         os.chmod(appimage_path, 0o755)
 
     import tempfile
+
     extract_dir = tempfile.mkdtemp(prefix="niruvi-thumb-")
     try:
         r = subprocess.run(
             [appimage_path, "--appimage-extract"],
             cwd=extract_dir,
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if r.returncode != 0:
             logger.debug("Extraction returned %d: %s", r.returncode, r.stderr[:200])
@@ -242,7 +246,7 @@ def _fallback_icon(appimage_path: str) -> bytes | None:
             end = 0
             while pos + 8 <= len(data):
                 length = struct.unpack_from(">I", data, pos)[0]
-                chunk_type = data[pos + 4:pos + 8]
+                chunk_type = data[pos + 4 : pos + 8]
                 if chunk_type == b"IEND":
                     end = pos + 8 + length + 4
                     break

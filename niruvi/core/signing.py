@@ -37,7 +37,9 @@ def list_secret_keys() -> list[SigningKey]:
     try:
         result = subprocess.run(
             ["gpg", "--list-secret-keys", "--with-colons"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         if result.returncode != 0:
             return []
@@ -55,6 +57,7 @@ def list_secret_keys() -> list[SigningKey]:
             elif record_type == "uid":
                 uid = parts[9] if len(parts) > 9 else ""
                 import re
+
                 m = re.match(r"^(.*?)\s*<(.+?)>\s*$", uid)
                 if m:
                     current_name = m.group(1).strip()
@@ -75,8 +78,7 @@ def list_secret_keys() -> list[SigningKey]:
         return []
 
 
-def sign_file(path: str, key_fingerprint: str | None = None,
-              output_sig: str | None = None, armor: bool = True) -> str:
+def sign_file(path: str, key_fingerprint: str | None = None, output_sig: str | None = None, armor: bool = True) -> str:
     """Create a GPG detached signature for a file.
 
     Args:
@@ -106,8 +108,7 @@ def sign_file(path: str, key_fingerprint: str | None = None,
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
             raise SigningError(f"GPG signing failed: {result.stderr.strip()}")
-        logger.info("Signed %s -> %s with key %s", path, output_sig,
-                    key_fingerprint or "default")
+        logger.info("Signed %s -> %s with key %s", path, output_sig, key_fingerprint or "default")
         return output_sig
     except FileNotFoundError as e:
         raise SigningError(f"GPG not found: {e}") from e
@@ -115,8 +116,7 @@ def sign_file(path: str, key_fingerprint: str | None = None,
         raise SigningError("GPG signing timed out") from e
 
 
-def sign_appimage(appimage_path: str, key_fingerprint: str | None = None,
-                  armor: bool = True) -> str:
+def sign_appimage(appimage_path: str, key_fingerprint: str | None = None, armor: bool = True) -> str:
     """Sign an AppImage file with a GPG detached signature.
 
     The signature is placed alongside the AppImage as <name>.AppImage.sig.
@@ -130,8 +130,7 @@ def sign_appimage(appimage_path: str, key_fingerprint: str | None = None,
     return sign_file(appimage_path, key_fingerprint, armor=armor)
 
 
-def verify_signature(path: str, sig_path: str | None = None,
-                     gpg_keyring: str | None = None) -> bool:
+def verify_signature(path: str, sig_path: str | None = None, gpg_keyring: str | None = None) -> bool:
     """Verify a GPG detached signature against a file.
 
     Args:
@@ -159,8 +158,7 @@ def verify_signature(path: str, sig_path: str | None = None,
         return False
 
 
-def export_public_key(fingerprint: str, output_path: str,
-                      armor: bool = True) -> str:
+def export_public_key(fingerprint: str, output_path: str, armor: bool = True) -> str:
     """Export a GPG public key to a file.
 
     Args:
@@ -256,6 +254,7 @@ def signing_info_for_manifest(fingerprint: str, sig_path: str) -> dict:
         Dict suitable for ``Manifest`` ``signing`` field.
     """
     import hashlib
+
     sig_sha256 = ""
     if os.path.isfile(sig_path):
         h = hashlib.sha256()

@@ -62,7 +62,8 @@ def verify_sha256(path: str, expected: str) -> VerificationResult:
     if actual.lower() == expected.lower():
         return VerificationResult(True, "SHA-256 matches")
     return VerificationResult(
-        False, "SHA-256 mismatch",
+        False,
+        "SHA-256 mismatch",
         [f"Expected: {expected}", f"Actual:   {actual}"],
     )
 
@@ -99,7 +100,9 @@ def verify_desktop_file(app_dir: str) -> VerificationResult:
             try:
                 result = subprocess.run(
                     ["desktop-file-validate", path],
-                    capture_output=True, text=True, timeout=15,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
                 )
                 if result.returncode == 0:
                     return VerificationResult(True, f"Desktop file valid: {fname}")
@@ -137,8 +140,7 @@ def verify_complete(app_dir: str) -> list[VerificationResult]:
     return results
 
 
-def verify_gpg_signature(path: str, sig_path: str | None = None,
-                         gpg_keyring: str | None = None) -> VerificationResult:
+def verify_gpg_signature(path: str, sig_path: str | None = None, gpg_keyring: str | None = None) -> VerificationResult:
     """Verify a GPG detached signature against a file."""
     if not shutil.which("gpg"):
         return VerificationResult(False, "GPG not available")

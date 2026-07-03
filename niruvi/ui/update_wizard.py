@@ -36,9 +36,9 @@ from niruvi.utils.sound_manager import play as play_sound
 class _FormatSize:
     @staticmethod
     def format(bytes_val: int) -> str:
-        if bytes_val >= 1024 ** 3:
+        if bytes_val >= 1024**3:
             return f"{bytes_val / (1024**3):.1f} GB"
-        if bytes_val >= 1024 ** 2:
+        if bytes_val >= 1024**2:
             return f"{bytes_val / (1024**2):.0f} MB"
         if bytes_val >= 1024:
             return f"{bytes_val / 1024:.0f} KB"
@@ -345,8 +345,9 @@ class UpdateInstallWorker(QThread):
 
 
 class UpdateWizard(QWizard):
-    def __init__(self, app_name: str, app_dir: str, current_version: str,
-                 update_url: str, channel: str = "stable", parent=None):
+    def __init__(
+        self, app_name: str, app_dir: str, current_version: str, update_url: str, channel: str = "stable", parent=None
+    ):
         super().__init__(parent)
         self.setWindowTitle(f"Update {app_name}")
         self.setFixedSize(620, 540)
@@ -440,23 +441,19 @@ class UpdateWizard(QWizard):
 
     def _run_update_check(self):
         try:
-            info = resolve_update_source(
-                self.update_url, self.current_version, channel=self.channel
-            )
+            info = resolve_update_source(self.update_url, self.current_version, channel=self.channel)
             if info and info.version:
                 from niruvi.app.self_update import compare_versions
-                if compare_versions(info.version, 'gt', self.current_version):
+
+                if compare_versions(info.version, "gt", self.current_version):
                     self._update_info = info
                     self._has_update = True
-                    self._changelog_page.set_info(
-                        self.current_version, info.version, info.changelog or ""
-                    )
+                    self._changelog_page.set_info(self.current_version, info.version, info.changelog or "")
                     self.button(QWizard.WizardButton.NextButton).setEnabled(True)
                     self.next()
                     return
             QMessageBox.information(
-                self, "Up to Date",
-                f"{self.app_name} ({self.current_version}) is already the latest version."
+                self, "Up to Date", f"{self.app_name} ({self.current_version}) is already the latest version."
             )
             self.reject()
         except Exception as e:
@@ -474,8 +471,10 @@ class UpdateWizard(QWizard):
         os.close(fd)
 
         self._download_worker = DownloadWorker(
-            self._update_info.download_url, self._downloaded_path,
-            self._update_info.sha256 or "", self,
+            self._update_info.download_url,
+            self._downloaded_path,
+            self._update_info.sha256 or "",
+            self,
         )
         self._download_worker.progress_updated.connect(self._download_page.update_progress)
         self._download_worker.speed_updated.connect(self._download_page.update_speed)
@@ -490,9 +489,7 @@ class UpdateWizard(QWizard):
         self._download_timer.start()
 
         try:
-            resp = __import__('urllib.request').request.urlopen(
-                self._update_info.download_url, timeout=10
-            )
+            resp = __import__("urllib.request").request.urlopen(self._update_info.download_url, timeout=10)
             total = int(resp.headers.get("Content-Length", 0))
             self._download_total = total
             resp.close()
@@ -544,9 +541,7 @@ class UpdateWizard(QWizard):
         self.button(QWizard.WizardButton.NextButton).setEnabled(False)
         self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
 
-        self._install_worker = UpdateInstallWorker(
-            self._downloaded_path, self.app_dir, self.app_name, self
-        )
+        self._install_worker = UpdateInstallWorker(self._downloaded_path, self.app_dir, self.app_name, self)
         self._install_worker.task_changed.connect(self._install_page.set_task)
         self._install_worker.log_message.connect(self._install_page.append_log)
         self._install_worker.finished.connect(self._on_install_finished)

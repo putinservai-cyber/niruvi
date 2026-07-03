@@ -2,7 +2,7 @@ from niruvi.installer.sanitize import sanitize_bash_string
 
 
 def apprun_appimagelauncher_detection() -> str:
-    return '''# ── AppImageLauncher bypass ──────────────────────────────
+    return """# ── AppImageLauncher bypass ──────────────────────────────
 # Force-disable AppImageLauncher immediately, before it can intercept.
 # This must be set before any command that could trigger AIL.
 export APPIMAGE_LAUNCHER_DISABLE=1
@@ -41,7 +41,7 @@ so AppImageLauncher will ignore it entirely."
 fi
 unset _ail_detected _ail_pid _ail_name _ail_msg _i
 # ──────────────────────────────────────────────────────────────
-'''
+"""
 
 
 def apprun_common_header(safe_name: str, safe_ver: str) -> str:
@@ -56,7 +56,7 @@ META="$INSTALL_DIR/.appimage-manager.json"
 
 
 def apprun_common_help() -> str:
-    return '''# ── Version / Help ──
+    return """# ── Version / Help ──
 if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
     INSTALLED_VER="?"
     if [ -f "$META" ]; then
@@ -83,11 +83,11 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo "Run without arguments to install or launch."
     exit 0
 fi
-'''
+"""
 
 
 def apprun_common_gui_functions() -> str:
-    return '''
+    return """
 _gui_available() {
     command -v zenity &>/dev/null || command -v kdialog &>/dev/null
 }
@@ -122,11 +122,11 @@ _confirm() {
         [ "$REPLY" != "n" ] && [ "$REPLY" != "N" ]
     fi
 }
-'''
+"""
 
 
 def apprun_update_check_section() -> str:
-    return '''
+    return """
 # ── Check for update (auto-prompt on version mismatch) ──
 if [ -f "$MARKER" ] && [ -f "$META" ] && [ -n "$APP_VERSION" ]; then
     INSTALLED_VER=$(python3 -c "import json; print(json.load(open('$META')).get('version',''))" 2>/dev/null || echo "")
@@ -154,11 +154,14 @@ if [ -f "$META" ] && [ -f "$HERE/.niruvi-install/update.sh" ]; then
         "$HERE/.niruvi-install/update.sh" --check-silent &
     fi
 fi
-'''
+"""
 
 
 def apprun_bash_content() -> str:
-    return apprun_common_gui_functions() + apprun_common_help() + '''
+    return (
+        apprun_common_gui_functions()
+        + apprun_common_help()
+        + """
 if [ "$1" = "--uninstall" ]; then
     exec "$HERE/.niruvi-install/uninstall.sh" "$@"
     exit 0
@@ -185,18 +188,22 @@ if [ "$1" = "--check-updates" ]; then
     fi
     exit 0
 fi
-''' + apprun_update_check_section() + '''
+"""
+        + apprun_update_check_section()
+        + """
 # ── Launch installed or run installer ──
 if [ -f "$MARKER" ] && [ -f "$INSTALL_DIR/AppRun" ]; then
     exec "$INSTALL_DIR/AppRun" "$@"
 fi
 
 exec "$HERE/.niruvi-install/install.sh" "$@"
-'''
+"""
+    )
 
 
 def apprun_qt6_content() -> str:
-    return '''
+    return (
+        """
 WIZARD="$HERE/.niruvi-install/self_install_wizard.py"
 
 # Save original LD_LIBRARY_PATH for installed app launch
@@ -214,7 +221,10 @@ _pyqt6_available() {
     python3 -c "from PyQt6.QtWidgets import QApplication" 2>/dev/null
 }
 
-''' + apprun_common_gui_functions() + apprun_common_help() + '''
+"""
+        + apprun_common_gui_functions()
+        + apprun_common_help()
+        + """
 # ── CLI mode with PyQt6 wizard (falls back to bash if wizard fails) ──
 if [ "$1" = "--uninstall" ]; then
     if _pyqt6_available && [ -f "$WIZARD" ]; then
@@ -254,7 +264,9 @@ if [ "$1" = "--check-updates" ]; then
     fi
     exit 0
 fi
-''' + apprun_update_check_section() + '''
+"""
+        + apprun_update_check_section()
+        + """
 # ── Launch installed or run installer ──
 if [ -f "$MARKER" ] && [ -f "$INSTALL_DIR/AppRun" ]; then
     export LD_LIBRARY_PATH="$_SAVED_LD_LIBRARY_PATH"
@@ -262,7 +274,8 @@ if [ -f "$MARKER" ] && [ -f "$INSTALL_DIR/AppRun" ]; then
 fi
 
 exec "$HERE/.niruvi-install/install.sh" "$@"
-'''
+"""
+    )
 
 
 def apprun_script(app_name: str, app_version: str = "", style: str = "bash") -> str:
@@ -273,6 +286,6 @@ def apprun_script(app_name: str, app_version: str = "", style: str = "bash") -> 
     ail_detect = apprun_appimagelauncher_detection()
 
     if style == "qt6":
-        return '#!/bin/bash\n' + header + ail_detect + apprun_qt6_content()
+        return "#!/bin/bash\n" + header + ail_detect + apprun_qt6_content()
 
-    return '#!/bin/bash\n' + header + ail_detect + apprun_bash_content()
+    return "#!/bin/bash\n" + header + ail_detect + apprun_bash_content()

@@ -24,7 +24,10 @@ def check_appimageupdate_available() -> dict:
             result["path"] = path
             try:
                 r = subprocess.run(
-                    [path, "--version"], capture_output=True, text=True, timeout=10,
+                    [path, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 result["version"] = (r.stdout or r.stderr or "").strip()[:80]
             except Exception:
@@ -38,7 +41,9 @@ def get_update_info_from_appimage(appimage_path: str) -> str | None:
     try:
         r = subprocess.run(
             [appimage_path, "--appimage-updateinformation"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         out = (r.stdout or "").strip()
         err = (r.stderr or "").strip()
@@ -70,7 +75,9 @@ def update_appimage_via_tool(appimage_path: str) -> tuple[bool, str]:
     try:
         r = subprocess.run(
             [tool, appimage_path],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         if r.returncode == 0:
             msg = (r.stdout or "").strip() or "Update applied"

@@ -43,13 +43,16 @@ class ErrorReportDialog(QDialog):
     and provides technical details for advanced users.
     """
 
-    def __init__(self, parent=None,
-                 title="Something went wrong",
-                 summary="",
-                 details="",
-                 suggestions=None,
-                 technical="",
-                 log_text=""):
+    def __init__(
+        self,
+        parent=None,
+        title="Something went wrong",
+        summary="",
+        details="",
+        suggestions=None,
+        technical="",
+        log_text="",
+    ):
         super().__init__(parent)
         self.setWindowTitle("Error Report")
         self.setMinimumSize(640, 480)
@@ -62,23 +65,18 @@ class ErrorReportDialog(QDialog):
         self._init_ui()
 
     @classmethod
-    def from_exception(cls, parent, exception: Exception, context: str = "",
-                       log_text: str = "") -> "ErrorReportDialog":
+    def from_exception(cls, parent, exception: Exception, context: str = "", log_text: str = "") -> "ErrorReportDialog":
         """Create a report from a Python exception with helpful context."""
         exc_type = type(exception).__name__
         exc_msg = str(exception)
         import traceback
+
         tb = traceback.format_exc()
 
         summary = f"An unexpected error occurred while {context or 'running the operation'}."
         details = str(exception)
         suggestions = _suggest_for_exception(exception, exc_type, context)
-        technical = (
-            f"Exception Type: {exc_type}\n"
-            f"Message: {exc_msg}\n"
-            f"Context: {context or 'N/A'}\n"
-            f"\nTraceback:\n{tb}"
-        )
+        technical = f"Exception Type: {exc_type}\nMessage: {exc_msg}\nContext: {context or 'N/A'}\n\nTraceback:\n{tb}"
         return cls(
             parent,
             title=f"Error: {exc_type}",
@@ -111,9 +109,7 @@ class ErrorReportDialog(QDialog):
         if self._summary:
             summary_label = QLabel(self._summary)
             summary_label.setWordWrap(True)
-            summary_label.setStyleSheet(
-                "color: palette(text); font-size: 11pt; margin-bottom: 4px;"
-            )
+            summary_label.setStyleSheet("color: palette(text); font-size: 11pt; margin-bottom: 4px;")
             layout.addWidget(summary_label)
 
         # ── Details ──
@@ -235,6 +231,7 @@ class ErrorReportDialog(QDialog):
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
         from PyQt6.QtWidgets import QToolTip
+
         QToolTip.showText(self.mapToGlobal(self.rect().center()), "Report copied to clipboard!", self)
 
     @staticmethod
@@ -273,6 +270,7 @@ class ErrorReportDialog(QDialog):
 def _get_pyqt_version() -> str:
     try:
         from PyQt6.QtCore import QT_VERSION_STR
+
         return QT_VERSION_STR
     except Exception:
         return "unknown"
@@ -315,17 +313,29 @@ def _suggest_for_exception(exc: Exception, exc_type: str, context: str) -> list[
     else:
         suggestions.append("An unexpected error occurred. Check the Technical Details tab for more information.")
         suggestions.append("If the problem persists, try restarting the application.")
-    suggestions.append("If these steps don't help, please report this issue with the full error report (click 'Copy Report').")
+    suggestions.append(
+        "If these steps don't help, please report this issue with the full error report (click 'Copy Report')."
+    )
     return suggestions
 
 
 class BuildSummaryDialog(QDialog):
     """Post-build summary with verification results."""
 
-    def __init__(self, parent=None, appimage_path="",
-                 file_size=0, is_elf=False, is_executable=False,
-                 validation_warnings=None, architecture="",
-                 sha256="", app_type="", file_count=0, bundle_size=0):
+    def __init__(
+        self,
+        parent=None,
+        appimage_path="",
+        file_size=0,
+        is_elf=False,
+        is_executable=False,
+        validation_warnings=None,
+        architecture="",
+        sha256="",
+        app_type="",
+        file_count=0,
+        bundle_size=0,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Build Summary")
         self.setMinimumSize(500, 380)
@@ -358,17 +368,14 @@ class BuildSummaryDialog(QDialog):
 
         # Path
         name = os.path.basename(self._appimage_path)
-        layout.addWidget(QLabel(
-            f"<span style='font-size:10pt'>{name}</span>"
-        ))
+        layout.addWidget(QLabel(f"<span style='font-size:10pt'>{name}</span>"))
 
         icon_ok = get_icon("emblem-ok", "dialog-ok-apply")
         icon_warn = get_icon("emblem-warning", "dialog-warning")
 
         details_w = QWidget()
         details_w.setStyleSheet(
-            "QWidget{background:palette(base);border:1px solid palette(mid);"
-            "border-radius:4px;padding:6px}"
+            "QWidget{background:palette(base);border:1px solid palette(mid);border-radius:4px;padding:6px}"
         )
         dl = QVBoxLayout(details_w)
         dl.setSpacing(1)
@@ -389,8 +396,7 @@ class BuildSummaryDialog(QDialog):
             stat, col = "Not a valid ELF binary", "#cc4400"
         elif not self._is_executable:
             stat, col = "Not executable (run chmod +x)", "#cc6600"
-        _row(icon_ok if self._is_elf and self._is_executable else icon_warn,
-             f"<span style='color:{col}'>{stat}</span>")
+        _row(icon_ok if self._is_elf and self._is_executable else icon_warn, f"<span style='color:{col}'>{stat}</span>")
         _row(None, f"Size: {self._format_size(self._file_size)}")
         if self._architecture:
             _row(None, f"Architecture: {self._architecture}")
@@ -409,9 +415,7 @@ class BuildSummaryDialog(QDialog):
         # Warnings
         if self._validation_warnings:
             warn_w = QWidget()
-            warn_w.setStyleSheet(
-                "QWidget{background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:6px}"
-            )
+            warn_w.setStyleSheet("QWidget{background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:6px}")
             wl = QVBoxLayout(warn_w)
             wl.setSpacing(2)
             for w in self._validation_warnings:
@@ -432,8 +436,7 @@ class BuildSummaryDialog(QDialog):
         # Tips (compact)
         tips_w = QWidget()
         tips_w.setStyleSheet(
-            "QWidget{background:palette(window);border:1px solid palette(mid);"
-            "border-radius:4px;padding:6px}"
+            "QWidget{background:palette(window);border:1px solid palette(mid);border-radius:4px;padding:6px}"
         )
         tl = QVBoxLayout(tips_w)
         tl.setSpacing(2)

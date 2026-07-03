@@ -75,19 +75,18 @@ def _fix_qt_platform_path():
     ]
     for p in candidates:
         platforms = os.path.join(p, "platforms")
-        if os.path.isdir(platforms) and any(
-            f.startswith("libq") for f in os.listdir(platforms)
-            if f.endswith(".so")
-        ):
+        if os.path.isdir(platforms) and any(f.startswith("libq") for f in os.listdir(platforms) if f.endswith(".so")):
             os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
             return
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+
 
 def _theme_icon(name):
     icon = QIcon.fromTheme(name)
     if not icon.isNull():
         return icon
     return QIcon()
+
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = SCRIPT_DIR / "config.json"
@@ -172,14 +171,18 @@ class InstallWorker(QThread):
             proc = subprocess.Popen(
                 ["unsquashfs", "-d", "squashfs-root", "-force", self.self_appimage],
                 cwd=self.dest,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
             )
         else:
             self.log.emit("Extracting AppImage...")
             proc = subprocess.Popen(
                 [self.self_appimage, "--appimage-extract"],
                 cwd=self.dest,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
             )
         for line in proc.stdout or []:
             self.log.emit(line.strip())
@@ -240,6 +243,7 @@ class InstallWorker(QThread):
                 self.log.emit("Restored real application launcher")
                 # Validate restored AppRun
                 import re as _re
+
                 try:
                     with open(apprun_path) as _f:
                         _content = _f.read()
@@ -365,9 +369,7 @@ class InstallWorker(QThread):
             os.makedirs(data_dir, exist_ok=True)
             sha256 = ""
             if self.self_appimage and os.path.isfile(self.self_appimage):
-                sha256 = hashlib.sha256(
-                    open(self.self_appimage, "rb").read(65536)
-                ).hexdigest()
+                sha256 = hashlib.sha256(open(self.self_appimage, "rb").read(65536)).hexdigest()
             record = {
                 "name": app_name,
                 "path": install_dir,
@@ -409,7 +411,8 @@ class InstallWorker(QThread):
             try:
                 subprocess.run(
                     [cmd, os.path.expanduser("~/.local/share/applications")],
-                    capture_output=True, timeout=30,
+                    capture_output=True,
+                    timeout=30,
                 )
             except Exception:
                 pass
@@ -484,7 +487,8 @@ class UninstallWorker(QThread):
                 try:
                     subprocess.run(
                         [cmd, os.path.expanduser("~/.local/share/applications")],
-                        capture_output=True, timeout=30,
+                        capture_output=True,
+                        timeout=30,
                     )
                 except Exception:
                     pass
@@ -550,6 +554,7 @@ class UpdateWorker(QThread):
             expected_sha = manifest.get("sha256", "")
             if expected_sha:
                 import hashlib
+
                 actual = hashlib.sha256(open(tmp_path, "rb").read()).hexdigest()
                 if actual != expected_sha:
                     os.unlink(tmp_path)
@@ -573,7 +578,9 @@ class UpdateWorker(QThread):
                 proc = subprocess.Popen(
                     [tmp_path, "--appimage-extract"],
                     cwd=inst_dir,
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
                 )
                 for line in proc.stdout or []:
                     self.log.emit(line.strip())
@@ -625,10 +632,7 @@ class WelcomePage(QWizardPage):
         msg = config.get("welcome_message", "")
         self.setSubTitle(f"Welcome to the {brand} Setup Wizard.")
         layout = QVBoxLayout(self)
-        welcome = QLabel(
-            f"<h2>{brand}</h2>"
-            f"<p>{msg or 'This wizard will guide you through the installation.'}</p>"
-        )
+        welcome = QLabel(f"<h2>{brand}</h2><p>{msg or 'This wizard will guide you through the installation.'}</p>")
         welcome.setWordWrap(True)
         layout.addWidget(welcome)
         info = QLabel(
@@ -756,8 +760,7 @@ class FinishPage(QWizardPage):
         layout = QVBoxLayout(self)
 
         self.label = QLabel(
-            "<h3>Installation Complete</h3>"
-            "<p>The application has been installed successfully on your system.</p>"
+            "<h3>Installation Complete</h3><p>The application has been installed successfully on your system.</p>"
         )
         self.label.setWordWrap(True)
         layout.addWidget(self.label)
@@ -815,11 +818,11 @@ class FinishPage(QWizardPage):
         self._path_label.setText(f"<b>Installed to:</b> {path}")
         self._version_label.setText(f"<b>Version:</b> {version or '?'}")
         try:
-            size = sum(
-                os.path.getsize(os.path.join(dp, f))
-                for dp, _, fn in os.walk(path)
-                for f in fn
-            ) if os.path.isdir(path) else 0
+            size = (
+                sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fn in os.walk(path) for f in fn)
+                if os.path.isdir(path)
+                else 0
+            )
             if size > 1073741824:
                 size_str = f"{size / 1073741824:.1f} GB"
             elif size > 1048576:
@@ -844,13 +847,15 @@ class FinishPage(QWizardPage):
         if self._dest:
             from PyQt6.QtCore import QUrl
             from PyQt6.QtGui import QDesktopServices
+
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._dest))
 
     def _on_show_in_niruvi(self):
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "niruvi.main", "--open", self._dest],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
         except Exception:
             pass
@@ -987,6 +992,7 @@ class SelfInstallWizard(QWizard):
     def _on_worker_error(self, msg):
         try:
             from niruvi.utils.sound_manager import play as play_sound
+
             play_sound("error")
         except ImportError:
             pass
@@ -998,24 +1004,31 @@ class SelfInstallWizard(QWizard):
             self.startInstall()
 
     def accept(self):
-        if self._finish_appimage and os.path.isfile(self._finish_appimage) and self._finish_page and self._finish_page.shouldLaunch():
-                try:
-                    proc = subprocess.Popen(
-                        [self._finish_appimage],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        start_new_session=True,
+        if (
+            self._finish_appimage
+            and os.path.isfile(self._finish_appimage)
+            and self._finish_page
+            and self._finish_page.shouldLaunch()
+        ):
+            try:
+                proc = subprocess.Popen(
+                    [self._finish_appimage],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                import time
+
+                time.sleep(1)
+                if proc.poll() is not None and proc.returncode != 0:
+                    QMessageBox.warning(
+                        self,
+                        "Launch Issue",
+                        "The application was installed but could not be launched. "
+                        "You can open the install folder and run it manually.",
                     )
-                    import time
-                    time.sleep(1)
-                    if proc.poll() is not None and proc.returncode != 0:
-                        QMessageBox.warning(
-                            self, "Launch Issue",
-                            "The application was installed but could not be launched. "
-                            "You can open the install folder and run it manually.",
-                        )
-                except Exception:
-                    pass
+            except Exception:
+                pass
         super().accept()
 
     def _on_uninstall_page_changed(self, idx):
@@ -1037,7 +1050,7 @@ class SelfInstallWizard(QWizard):
         if page is self._avail_page and self._manifest:
             self._changelog.setText(self._manifest.get("changelog", "No changelog available."))
         if isinstance(page, ProgressPage) and self._manifest:
-                self._start_update_download()
+            self._start_update_download()
 
     def _start_update_check(self):
         self._worker = UpdateWorker(self.config)
@@ -1075,8 +1088,7 @@ class SelfInstallWizard(QWizard):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: self_install_wizard.py --install|--uninstall|--update|--check-updates",
-              file=sys.stderr)
+        print("Usage: self_install_wizard.py --install|--uninstall|--update|--check-updates", file=sys.stderr)
         sys.exit(1)
 
     raw = sys.argv[1].lstrip("-").replace("-", "_")
@@ -1106,6 +1118,7 @@ def main():
 
     if mode == "check_updates":
         from PyQt6.QtCore import QCoreApplication
+
         QCoreApplication(sys.argv)
         w = UpdateWorker(config)
         w.no_update.connect(lambda: print("No update available"))
@@ -1131,6 +1144,7 @@ def main():
                 pass
 
     sys.exit(exit_code if exit_code else 0)
+
 
 if __name__ == "__main__":
     main()

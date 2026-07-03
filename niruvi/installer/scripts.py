@@ -24,29 +24,29 @@ def build_config_to_bash(config: dict) -> str:
     lines.append(f'APP_VERSION="{safe_ver}"')
     lines.append(f'EXEC_NAME="{safe_exec}"')
     lines.append(f'BRAND_NAME="{safe_brand}"')
-    lines.append(f'ENABLE_ROLLBACK={rollback}')
-    lines.append(f'ENABLE_SILENT={silent}')
-    lines.append(f'HAS_LICENSE={has_license}')
-    lines.append(f'HAS_PRE_INSTALL={has_pre}')
-    lines.append(f'HAS_POST_INSTALL={has_post}')
-    lines.append(f'HAS_COMPONENTS={has_components}')
+    lines.append(f"ENABLE_ROLLBACK={rollback}")
+    lines.append(f"ENABLE_SILENT={silent}")
+    lines.append(f"HAS_LICENSE={has_license}")
+    lines.append(f"HAS_PRE_INSTALL={has_pre}")
+    lines.append(f"HAS_POST_INSTALL={has_post}")
+    lines.append(f"HAS_COMPONENTS={has_components}")
     lines.append(f'WELCOME_MSG="{welcome}"')
     lines.append(f'FINISH_MSG="{finish}"')
-    lines.append(f'ENABLE_LAUNCH={enable_launch}')
-    lines.append('')
+    lines.append(f"ENABLE_LAUNCH={enable_launch}")
+    lines.append("")
     lines.append('HERE="$(dirname "$(readlink -f "$0")")"')
     lines.append('APPIMAGE_DIR="$(dirname "$HERE")"')
-    lines.append('')
+    lines.append("")
     lines.append('if [ -n "$APPIMAGE" ]; then')
     lines.append('    SELF="$APPIMAGE"')
-    lines.append('else')
+    lines.append("else")
     lines.append('    SELF="$(readlink -f /proc/self/exe 2>/dev/null || echo "")"')
-    lines.append('fi')
-    return '\n'.join(lines)
+    lines.append("fi")
+    return "\n".join(lines)
 
 
 def common_install_functions() -> str:
-    return '''
+    return """
 # ── Handle --unattended / --silent flags ──
 UNATTENDED=false
 for arg in "$@"; do
@@ -440,11 +440,11 @@ _refresh_desktop_db() {
         command -v "$kde" &>/dev/null && "$kde" 2>/dev/null || true
     done
 }
-'''
+"""
 
 
 def wizard_install_body() -> str:
-    return '''
+    return """
 # ═══════════════════════════════════════════
 #  Handle License
 # ═══════════════════════════════════════════
@@ -522,11 +522,11 @@ if _ask_run "Run $APP_NAME?" "Launch $APP_NAME now?"; then
 fi
 
 exit 0
-'''
+"""
 
 
 def macos_install_body() -> str:
-    return '''
+    return """
 # ═══════════════════════════════════════════
 #  Step 1: Welcome
 # ═══════════════════════════════════════════
@@ -625,11 +625,11 @@ if _ask_run "Run $APP_NAME?" "Launch $APP_NAME now?"; then
 fi
 
 exit 0
-'''
+"""
 
 
 def minimal_install_body() -> str:
-    return '''
+    return """
 # ═══════════════════════════════════════════
 #  License Agreement
 # ═══════════════════════════════════════════
@@ -740,11 +740,11 @@ echo ""
 echo "Run '$INSTALL_DIR/AppRun' to launch."
 echo ""
 exit 0
-'''
+"""
 
 
 def installbuilder_install_body() -> str:
-    return '''
+    return """
 # ═══════════════════════════════════════════════════════════════
 #  InstallBuilder-style state machine wizard
 # ═══════════════════════════════════════════════════════════════
@@ -969,7 +969,7 @@ _page_progress
 # ── Page: Finish ──
 _page_finish
 exit 0
-'''
+"""
 
 
 _INSTALLER_STYLES = {
@@ -997,7 +997,7 @@ def build_install_script(config: dict) -> str:
     functions = common_install_functions()
     style = config.get("installer_style", "wizard")
     body = _get_install_body(style)
-    return '#!/bin/bash\nset -e\n' + preamble + functions + body
+    return "#!/bin/bash\nset -e\n" + preamble + functions + body
 
 
 def uninstall_script(app_name: str) -> str:

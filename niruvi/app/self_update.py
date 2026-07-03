@@ -22,7 +22,8 @@ UPDATE_SIGNATURE_URL = UPDATE_MANIFEST_URL + ".asc"
 
 SIGNING_KEY_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "signing-key.asc",
+    "data",
+    "signing-key.asc",
 )
 
 NIRUVI_APPIMAGE_NAME = "Niruvi-x86_64.AppImage"
@@ -40,6 +41,7 @@ def _get_install_dir() -> str:
     if appimage and os.path.isfile(appimage):
         return os.path.dirname(os.path.realpath(appimage))
     from niruvi.ui.settings import INSTALLED_DIR
+
     return os.path.expanduser(INSTALLED_DIR)
 
 
@@ -60,8 +62,8 @@ def compare_versions(v1, op, v2):
     def parse_version(v):
         v = v.lstrip("vV")
         parts = []
-        for p in v.split('.'):
-            digit = ''
+        for p in v.split("."):
+            digit = ""
             for ch in p:
                 if ch.isdigit():
                     digit += ch
@@ -82,11 +84,11 @@ def compare_versions(v1, op, v2):
 
     cmp = (v1_parts > v2_parts) - (v1_parts < v2_parts)
 
-    if op == 'gt':
+    if op == "gt":
         return cmp > 0
-    elif op == 'eq':
+    elif op == "eq":
         return cmp == 0
-    elif op == 'lt':
+    elif op == "lt":
         return cmp < 0
     return False
 
@@ -154,9 +156,10 @@ def _verify_update_manifest(manifest_json: str) -> bool:
 
         try:
             subprocess.run(
-                ["gpg", "--import", "--no-default-keyring", "--keyring", keyring_path,
-                 SIGNING_KEY_PATH],
-                capture_output=True, timeout=15, check=True,
+                ["gpg", "--import", "--no-default-keyring", "--keyring", keyring_path, SIGNING_KEY_PATH],
+                capture_output=True,
+                timeout=15,
+                check=True,
             )
         except subprocess.CalledProcessError as e:
             logger.warning("Failed to import signing key: %s", e.stderr.decode())
@@ -164,9 +167,9 @@ def _verify_update_manifest(manifest_json: str) -> bool:
 
         try:
             result = subprocess.run(
-                ["gpg", "--no-default-keyring", "--keyring", keyring_path,
-                 "--verify", sig_path, manifest_path],
-                capture_output=True, timeout=15,
+                ["gpg", "--no-default-keyring", "--keyring", keyring_path, "--verify", sig_path, manifest_path],
+                capture_output=True,
+                timeout=15,
             )
             if result.returncode == 0:
                 logger.info("Update manifest GPG signature verified successfully")
@@ -192,7 +195,8 @@ def check_for_updates(parent: QWidget):
         if not _verify_update_manifest(raw_json):
             play_sound("warning")
             QMessageBox.warning(
-                parent, "Update Check Failed",
+                parent,
+                "Update Check Failed",
                 "The update manifest could not be verified. The signature is "
                 "invalid or missing.\n\n"
                 "This may indicate a tampered update server. "
@@ -208,12 +212,11 @@ def check_for_updates(parent: QWidget):
         if not latest_version or not download_url:
             play_sound("warning")
             QMessageBox.warning(
-                parent, "Update Check",
-                "Update manifest is missing required fields (version, download_url)."
+                parent, "Update Check", "Update manifest is missing required fields (version, download_url)."
             )
             return
 
-        if compare_versions(latest_version, 'gt', current_version):
+        if compare_versions(latest_version, "gt", current_version):
             msg = (
                 f"A new version of Niruvi is available!\n\n"
                 f"Current version: {current_version}\n"
@@ -276,7 +279,8 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
                 Path(temp_path).unlink(missing_ok=True)
                 play_sound("error")
                 QMessageBox.critical(
-                    parent, "Verification Failed",
+                    parent,
+                    "Verification Failed",
                     f"SHA256 mismatch!\n\n"
                     f"Expected: {expected_sha256}\n"
                     f"Actual:   {actual}\n\n"

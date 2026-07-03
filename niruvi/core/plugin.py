@@ -168,5 +168,4 @@ def discover_builtin_plugins():
 def init_plugins():
     discover_entry_point_plugins()
     discover_builtin_plugins()
-    logger.info("Plugin system initialized with %d total plugins",
-                sum(len(v) for v in _PLUGIN_REGISTRY.values()))
+    logger.info("Plugin system initialized with %d total plugins", sum(len(v) for v in _PLUGIN_REGISTRY.values()))

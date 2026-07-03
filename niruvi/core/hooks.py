@@ -29,8 +29,8 @@ def list_hooks(app_name: str) -> list[str]:
         for f in sorted(os.listdir(base)):
             path = os.path.join(base, f)
             if f.endswith(".hook") and os.path.isfile(path) and f not in seen:
-                    seen.add(f)
-                    hooks.append(path)
+                seen.add(f)
+                hooks.append(path)
     return hooks
 
 
@@ -58,12 +58,14 @@ def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict
     results = []
     for hook_path in list_hooks(app_name):
         if not _check_hook_secure(hook_path):
-            results.append({
-                "hook": hook_path,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": "skipped: insecure permissions or ownership",
-            })
+            results.append(
+                {
+                    "hook": hook_path,
+                    "returncode": -1,
+                    "stdout": "",
+                    "stderr": "skipped: insecure permissions or ownership",
+                }
+            )
             continue
         try:
             hook_env = os.environ.copy()
@@ -84,12 +86,14 @@ def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict
                 logging.info("Hook %s stdout: %s", hook_path, out)
             if err:
                 logging.warning("Hook %s stderr: %s", hook_path, err)
-            results.append({
-                "hook": hook_path,
-                "returncode": result.returncode,
-                "stdout": out,
-                "stderr": err,
-            })
+            results.append(
+                {
+                    "hook": hook_path,
+                    "returncode": result.returncode,
+                    "stdout": out,
+                    "stderr": err,
+                }
+            )
         except subprocess.TimeoutExpired:
             logging.warning("Hook %s timed out", hook_path)
             results.append({"hook": hook_path, "returncode": -1, "stdout": "", "stderr": "timed out"})

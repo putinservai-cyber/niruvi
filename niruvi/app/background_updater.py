@@ -80,8 +80,7 @@ class BackgroundUpdater(QObject):
             self._check_in_progress = False
             self.all_checked.emit()
 
-    def _check_app(self, app_name: str, update_url: str, current_version: str,
-                   channel: str = "stable"):
+    def _check_app(self, app_name: str, update_url: str, current_version: str, channel: str = "stable"):
         """Check for updates for a single app.
 
         Args:
@@ -96,7 +95,7 @@ class BackgroundUpdater(QObject):
             if not info or not info.version:
                 self.update_checked.emit(app_name, False)
                 return
-            if compare_versions(info.version, 'gt', current_version):
+            if compare_versions(info.version, "gt", current_version):
                 result = UpdateResult(
                     app_name=app_name,
                     current_version=current_version,
@@ -112,13 +111,14 @@ class BackgroundUpdater(QObject):
             logging.debug("Background update check failed for %s: %s", app_name, e)
             self.update_checked.emit(app_name, False)
 
-    def check_app_sync(self, app_name: str, update_url: str,
-                       current_version: str, channel: str = "stable") -> UpdateResult | None:
+    def check_app_sync(
+        self, app_name: str, update_url: str, current_version: str, channel: str = "stable"
+    ) -> UpdateResult | None:
         try:
             info = resolve_update_source(update_url, current_version, channel=channel)
             if not info or not info.version:
                 return None
-            if compare_versions(info.version, 'gt', current_version):
+            if compare_versions(info.version, "gt", current_version):
                 return UpdateResult(
                     app_name=app_name,
                     current_version=current_version,

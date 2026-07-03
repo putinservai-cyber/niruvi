@@ -26,16 +26,18 @@ logger = logging.getLogger(__name__)
 
 # ── Backend enum ───────────────────────────────────────────────────────────
 
+
 class SandboxBackend:
     SHIELD = "shield"
     FIREJAIL = "firejail"
     BUBBLEWRAP = "bwrap"
 
+
 # ── Prctl constants ──────────────────────────────────────────────────────
 
 PR_SET_NO_NEW_PRIVS = 38
 PR_SET_DUMPABLE = 4
-PR_SET_PTRACER = 0x59616d61
+PR_SET_PTRACER = 0x59616D61
 
 PR_SET_PTRACER_DISABLE = 0
 
@@ -73,7 +75,7 @@ def resolve_xdg(path: str) -> str:
         if raw == shortcut:
             return real
         if raw.startswith(shortcut + "/"):
-            return real + raw[len(shortcut):]
+            return real + raw[len(shortcut) :]
     return path
 
 
@@ -86,6 +88,7 @@ def _is_under(child: str, parent: str) -> bool:
 
 
 # ── RLIMIT helpers (non-destructive) ──────────────────────────────────────
+
 
 def _apply_rlimits_ctypes():
     libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
@@ -116,6 +119,7 @@ def _apply_rlimits_ctypes():
 
 # ── Memory hardening (mlockall) ─────────────────────────────────────────
 
+
 def _apply_memory_hardening():
     try:
         libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
@@ -129,11 +133,11 @@ def _apply_memory_hardening():
 
 # ── Ptrace scope ─────────────────────────────────────────────────────────
 
+
 def _apply_ptrace_scope():
     try:
         libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-        libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
-                               ctypes.c_ulong, ctypes.c_ulong]
+        libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
         libc.prctl.restype = ctypes.c_int
         libc.prctl(PR_SET_PTRACER, PR_SET_PTRACER_DISABLE, 0, 0, 0)
     except Exception as e:
@@ -142,12 +146,12 @@ def _apply_ptrace_scope():
 
 # ── Process hardening (preexec) ────────────────────────────────────────
 
+
 def _preexec_harden():
     """Apply process hardening in child before exec."""
     try:
         libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-        libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
-                               ctypes.c_ulong, ctypes.c_ulong]
+        libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
         libc.prctl.restype = ctypes.c_int
         if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
             logger.debug("PR_SET_NO_NEW_PRIVS failed: errno=%d", ctypes.get_errno())
@@ -172,6 +176,7 @@ def _preexec_harden():
 
 
 # ── xdg-open daemon ────────────────────────────────────────────────────────
+
 
 class XdgOpenDaemon:
     """Forwards xdg-open calls from sandboxed app to host via FIFO."""
@@ -260,6 +265,7 @@ def _get_xdg_open_daemon() -> XdgOpenDaemon | None:
 
 # ── Backend detection ──────────────────────────────────────────────────────
 
+
 def _which(name: str) -> str | None:
     return shutil.which(name)
 
@@ -274,7 +280,9 @@ def check_firejail_available() -> dict:
     try:
         r = subprocess.run(
             ["firejail", "--version"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode == 0:
             result["available"] = True
@@ -298,7 +306,9 @@ def check_bwrap_available() -> dict:
     try:
         r = subprocess.run(
             ["bwrap", "--version"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode == 0:
             result["available"] = True
@@ -313,6 +323,7 @@ def check_bwrap_available() -> dict:
 
 
 # ── Config ─────────────────────────────────────────────────────────────────
+
 
 class ShieldConfig:
     def __init__(
@@ -352,21 +363,54 @@ class ShieldConfig:
 # ── Shield runner ─────────────────────────────────────────────────────────
 
 ALWAYS_KEEP_ENV = {
-    "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR",
-    "DBUS_SESSION_BUS_ADDRESS", "SESSION_MANAGER",
-    "PULSE_SERVER", "PULSE_CLIENTCONFIG", "PULSE_COOKIE", "PULSE_CONFIG",
-    "PIPEWIRE_RUNTIME_DIR", "PIPEWIRE_CONFIG_NAME", "PIPEWIRE_LINK",
-    "PIPEWIRE_PROTOCOL", "PIPEWIRE_NODE",
-    "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_MESSAGES",
-    "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE", "LC_MONETARY",
-    "GTK_MODULES", "GTK_IM_MODULE", "GTK_THEME",
-    "QT_QPA_PLATFORM", "QT_WAYLAND_DISABLE_WINDOWDECORATION",
-    "QT_QPA_PLATFORMTHEME", "QT_STYLE_OVERRIDE",
-    "GDK_BACKEND", "GDK_SCALE", "GDK_DPI_SCALE",
-    "CLUTTER_BACKEND", "SDL_VIDEO_DRIVER", "SDL_AUDIODRIVER",
-    "EDITOR", "SHELL", "TERM", "COLORTERM",
-    "TZ", "NO_AT_BRIDGE", "GTK_DEBUG",
-    "JOURNAL_STREAM", "INVOCATION_ID",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XAUTHORITY",
+    "XDG_RUNTIME_DIR",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "SESSION_MANAGER",
+    "PULSE_SERVER",
+    "PULSE_CLIENTCONFIG",
+    "PULSE_COOKIE",
+    "PULSE_CONFIG",
+    "PIPEWIRE_RUNTIME_DIR",
+    "PIPEWIRE_CONFIG_NAME",
+    "PIPEWIRE_LINK",
+    "PIPEWIRE_PROTOCOL",
+    "PIPEWIRE_NODE",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "LANG",
+    "LC_ALL",
+    "LC_MESSAGES",
+    "LC_CTYPE",
+    "LC_NUMERIC",
+    "LC_TIME",
+    "LC_COLLATE",
+    "LC_MONETARY",
+    "GTK_MODULES",
+    "GTK_IM_MODULE",
+    "GTK_THEME",
+    "QT_QPA_PLATFORM",
+    "QT_WAYLAND_DISABLE_WINDOWDECORATION",
+    "QT_QPA_PLATFORMTHEME",
+    "QT_STYLE_OVERRIDE",
+    "GDK_BACKEND",
+    "GDK_SCALE",
+    "GDK_DPI_SCALE",
+    "CLUTTER_BACKEND",
+    "SDL_VIDEO_DRIVER",
+    "SDL_AUDIODRIVER",
+    "EDITOR",
+    "SHELL",
+    "TERM",
+    "COLORTERM",
+    "TZ",
+    "NO_AT_BRIDGE",
+    "GTK_DEBUG",
+    "JOURNAL_STREAM",
+    "INVOCATION_ID",
 }
 
 HARDENED_ENV = {
@@ -413,8 +457,7 @@ class Shield:
     def __init__(self, config: ShieldConfig):
         self.config = config
 
-    def run(self, cmd: list[str], cwd: str | None = None,
-            env: dict | None = None) -> subprocess.Popen | None:
+    def run(self, cmd: list[str], cwd: str | None = None, env: dict | None = None) -> subprocess.Popen | None:
         if not self.config.enabled:
             return self._run_direct(cmd, cwd, env)
 
@@ -441,8 +484,7 @@ class Shield:
         else:
             return self._run_shield(cmd, cwd, env)
 
-    def _run_shield(self, cmd: list[str], cwd: str | None,
-                    env: dict | None) -> subprocess.Popen | None:
+    def _run_shield(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen | None:
         env = env or {}
         app_dir = cwd or ""
 
@@ -456,6 +498,7 @@ class Shield:
         # Inject permission broker
         try:
             from niruvi.core.broker import get_daemon as _get_perm_daemon
+
             perm_daemon = _get_perm_daemon()
             if perm_daemon and perm_daemon.fifo_dir:
                 env["NIRUVI_PERM_BROKER"] = perm_daemon.fifo_dir
@@ -478,8 +521,7 @@ class Shield:
             preexec_fn=preexec_fn,
         )
 
-    def _run_firejail(self, cmd: list[str], cwd: str | None,
-                      env: dict | None) -> subprocess.Popen | None:
+    def _run_firejail(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen | None:
         app_dir = cwd or ""
         fj_cmd = ["firejail"]
 
@@ -508,8 +550,7 @@ class Shield:
             start_new_session=True,
         )
 
-    def _run_bwrap(self, cmd: list[str], cwd: str | None,
-                   env: dict | None) -> subprocess.Popen | None:
+    def _run_bwrap(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen | None:
         app_dir = cwd or ""
         bwrap_cmd = [
             "bwrap",
@@ -558,14 +599,14 @@ class Shield:
                     env[k] = v
         return env
 
-    def _run_direct(self, cmd: list[str], cwd: str | None,
-                    env: dict | None) -> subprocess.Popen:
+    def _run_direct(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen:
         result_env = (env or os.environ).copy()
         for k in ALWAYS_KEEP_ENV:
             if k in os.environ:
                 result_env[k] = os.environ[k]
         return subprocess.Popen(
-            cmd, cwd=cwd or os.getcwd(),
+            cmd,
+            cwd=cwd or os.getcwd(),
             env=result_env,
             start_new_session=True,
         )

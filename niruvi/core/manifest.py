@@ -20,9 +20,18 @@ _REQUIRED_KEYS = {"manifest_version", "app_id", "app_name", "version", "build"}
 _VALID_INSTALL_TYPES = {"typical", "custom", "portable", "developer", "repair", "silent"}
 _VALID_UPDATE_CHANNELS = {"stable", "beta", "nightly"}
 _VALID_CATEGORIES = {
-    "Development", "Utility", "Graphics", "Network", "Office",
-    "AudioVideo", "Game", "Science", "System", "Education",
-    "Settings", "Other",
+    "Development",
+    "Utility",
+    "Graphics",
+    "Network",
+    "Office",
+    "AudioVideo",
+    "Game",
+    "Science",
+    "System",
+    "Education",
+    "Settings",
+    "Other",
 }
 
 
@@ -187,21 +196,28 @@ class Manifest:
 
 
 def default_manifest(
-    app_id: str, app_name: str, version: str = "1.0.0",
-    publisher: str = "", description: str = "", category: str = "Utility",
-    update_url: str = "", installer_type: str = "typical",
+    app_id: str,
+    app_name: str,
+    version: str = "1.0.0",
+    publisher: str = "",
+    description: str = "",
+    category: str = "Utility",
+    update_url: str = "",
+    installer_type: str = "typical",
 ) -> Manifest:
-    return Manifest({
-        "app_id": app_id,
-        "app_name": app_name,
-        "version": version,
-        "publisher": publisher,
-        "description": description,
-        "category": category,
-        "update": {"url": update_url, "channel": "stable"},
-        "installer": {"type": installer_type},
-        "build": {"timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")},
-    })
+    return Manifest(
+        {
+            "app_id": app_id,
+            "app_name": app_name,
+            "version": version,
+            "publisher": publisher,
+            "description": description,
+            "category": category,
+            "update": {"url": update_url, "channel": "stable"},
+            "installer": {"type": installer_type},
+            "build": {"timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")},
+        }
+    )
 
 
 def find_manifest(appdir: str | os.PathLike) -> str | None:

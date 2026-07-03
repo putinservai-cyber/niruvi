@@ -8,15 +8,26 @@ from niruvi.ui.settings import get_data_dir
 
 
 class InstallationRecord:
-    def __init__(self, name: str, path: str, version: str = "",
-                 install_date: str = "", install_type: str = "extract",
-                 source_sha256: str = "", desktop_file: str = "",
-                 desktop_shortcut: str = "", update_url: str = "",
-                 architecture: str = "", display_name_override: str = "",
-                 custom_icon_path: str = "", env_vars: dict | None = None,
-                 run_args: str = "", auto_update: bool = False,
-                 update_channel: str = "stable",
-                 sandbox_config: dict | None = None):
+    def __init__(
+        self,
+        name: str,
+        path: str,
+        version: str = "",
+        install_date: str = "",
+        install_type: str = "extract",
+        source_sha256: str = "",
+        desktop_file: str = "",
+        desktop_shortcut: str = "",
+        update_url: str = "",
+        architecture: str = "",
+        display_name_override: str = "",
+        custom_icon_path: str = "",
+        env_vars: dict | None = None,
+        run_args: str = "",
+        auto_update: bool = False,
+        update_channel: str = "stable",
+        sandbox_config: dict | None = None,
+    ):
         self.name = name
         self.path = path
         self.version = version
@@ -105,9 +116,7 @@ class InstallationRegistry:
         data = [r.to_dict() for r in self._records.values()]
         tmp = None
         try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", dir=data_dir, delete=False, suffix=".tmp"
-            ) as f:
+            with tempfile.NamedTemporaryFile(mode="w", dir=data_dir, delete=False, suffix=".tmp") as f:
                 json.dump(data, f, indent=2)
                 tmp = f.name
             os.replace(tmp, self._registry_file())

@@ -1,6 +1,5 @@
 """Tests for the input sanitizer module."""
 
-
 from niruvi.installer.sanitize import sanitize_bash_string
 
 
@@ -12,12 +11,10 @@ class TestSanitizeBashString:
         assert sanitize_bash_string("My App 2.0_rc1", "app_name") == "My App 2.0_rc1"
 
     def test_strips_unsafe_chars(self):
-        result = sanitize_bash_string('foo;rm $(id) `pwd`', "test")
+        result = sanitize_bash_string("foo;rm $(id) `pwd`", "test")
         assert ";" not in result
         assert "$" not in result
         assert "`" not in result
-
-
 
     def test_strips_shell_metacharacters(self):
         result = sanitize_bash_string("$(id)", "test")

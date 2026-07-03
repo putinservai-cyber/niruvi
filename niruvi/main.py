@@ -30,10 +30,7 @@ def _fix_qt_platform_path():
         platforms = os.path.join(path, "platforms")
         if not os.path.isdir(platforms):
             return False
-        return any(
-            f.startswith("libq") and f.endswith(".so")
-            for f in os.listdir(platforms)
-        )
+        return any(f.startswith("libq") and f.endswith(".so") for f in os.listdir(platforms))
 
     cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
     if cur and _has_platform_plugins(cur):
@@ -49,6 +46,7 @@ def _fix_qt_platform_path():
             os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
             return
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+
 
 from niruvi._version import __version__
 from niruvi.core.worker import extract_appimage_sync
@@ -174,6 +172,7 @@ def cli_install(path_str: str):
     }
     with open(os.path.join(dest_dir, ".appimage-manager.json"), "w") as f:
         import json
+
         json.dump(metadata, f)
 
     desk = create_desktop_entry(dest_dir, app_name)
@@ -211,7 +210,9 @@ def main():
         description="Niruvi — Universal Linux AppImage Manager",
     )
     parser.add_argument("file", nargs="?", help="AppImage file to open/manage")
-    parser.add_argument("--open", metavar="PATH", help="Open an AppImage file in the manager (for file association handlers)")
+    parser.add_argument(
+        "--open", metavar="PATH", help="Open an AppImage file in the manager (for file association handlers)"
+    )
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--install", metavar="PATH", help="Install an AppImage (silent, no GUI)")
     parser.add_argument("--uninstall", metavar="APP", help="Uninstall an installed app")
@@ -286,11 +287,12 @@ def main():
         print(f"Checking {len(apps)} app(s) for updates...")
         from niruvi.app.self_update import compare_versions
         from niruvi.app.update_sources import resolve_update_source
+
         updates = []
         for name, url, ver in apps:
             try:
                 info = resolve_update_source(url, ver)
-                if info and info.version and compare_versions(info.version, 'gt', ver):
+                if info and info.version and compare_versions(info.version, "gt", ver):
                     updates.append((name, ver, info.version, info.download_url))
                     print(f"  {name}: {ver} -> {info.version} (update available)")
                 else:
@@ -314,9 +316,10 @@ def main():
             sys.exit(0)
         from niruvi.app.self_update import compare_versions
         from niruvi.app.update_sources import resolve_update_source
+
         try:
             info = resolve_update_source(record.update_url, record.version)
-            if info and info.version and compare_versions(info.version, 'gt', record.version):
+            if info and info.version and compare_versions(info.version, "gt", record.version):
                 print(f"{record.name}: {record.version} -> {info.version} (update available)")
             else:
                 print(f"{record.name}: {record.version} (up to date)")
@@ -357,6 +360,7 @@ def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     from niruvi.utils import _init_icon_theme
+
     _init_icon_theme()
     app.setApplicationName("Niruvi")
     app.setApplicationVersion(__version__)
@@ -396,6 +400,7 @@ def main():
                 break
     if icon_path:
         from PyQt6.QtGui import QIcon
+
         app.setWindowIcon(QIcon(icon_path))
 
     if file_to_process:
@@ -406,17 +411,20 @@ def main():
     ret = app.exec()
     window.close()
     from niruvi.utils.sound_manager import uninstall_button_filter
+
     uninstall_button_filter()
     for _ in range(3):
         import gc as _gc
+
         _gc.collect()
-    for _attr in ('last_exc', 'last_value', 'last_traceback', 'last_type'):
+    for _attr in ("last_exc", "last_value", "last_traceback", "last_type"):
         try:
             setattr(sys, _attr, None)
         except AttributeError:
             pass
     for _ in range(3):
         import gc as _gc
+
         _gc.collect()
     window = None
     app = None

@@ -53,6 +53,7 @@ class TestHookManagement:
     def test_write_and_list_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             import niruvi.core.hooks as hooks_mod
+
             orig = hooks_mod.HOOKS_DIR
             hooks_mod.HOOKS_DIR = os.path.join(tmpdir, "hooks")
             try:
@@ -67,6 +68,7 @@ class TestHookManagement:
     def test_remove_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             import niruvi.core.hooks as hooks_mod
+
             orig = hooks_mod.HOOKS_DIR
             hooks_mod.HOOKS_DIR = os.path.join(tmpdir, "hooks")
             try:
@@ -80,6 +82,7 @@ class TestHookManagement:
     def test_ensure_hooks_dir_creates(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             import niruvi.core.hooks as hooks_mod
+
             orig = hooks_mod.HOOKS_DIR
             hooks_mod.HOOKS_DIR = os.path.join(tmpdir, "niruvi_hooks")
             try:
@@ -93,6 +96,7 @@ class TestRunHooks:
     def test_run_hooks_empty_when_no_hooks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             import niruvi.core.hooks as hooks_mod
+
             orig = hooks_mod.HOOKS_DIR
             hooks_mod.HOOKS_DIR = os.path.join(tmpdir, "hooks")
             try:
@@ -104,6 +108,7 @@ class TestRunHooks:
     def test_skips_insecure_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             import niruvi.core.hooks as hooks_mod
+
             orig = hooks_mod.HOOKS_DIR
             hooks_mod.HOOKS_DIR = os.path.join(tmpdir, "hooks")
             try:

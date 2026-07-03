@@ -140,17 +140,17 @@ def extract_metadata(appimage_path, extract_dir):
 def _get_icon_name_from_desktop(extracted_dir):
     for df in extracted_dir.glob("*.desktop"):
         try:
-            content = df.read_text(encoding='utf-8', errors='ignore')
+            content = df.read_text(encoding="utf-8", errors="ignore")
             in_desktop = False
-            for line in content.split('\n'):
+            for line in content.split("\n"):
                 line = line.strip()
-                if line == '[Desktop Entry]':
+                if line == "[Desktop Entry]":
                     in_desktop = True
                     continue
-                if in_desktop and line.startswith('[') and line.endswith(']'):
+                if in_desktop and line.startswith("[") and line.endswith("]"):
                     break
-                if in_desktop and line.startswith('Icon='):
-                    icon = line.split('=', 1)[1].strip()
+                if in_desktop and line.startswith("Icon="):
+                    icon = line.split("=", 1)[1].strip()
                     if icon and icon != "application-x-executable":
                         return icon
         except OSError:
@@ -162,7 +162,9 @@ def _find_icon_in_dir(extracted_dir, icon_name):
     if icon_name:
         for size_dir in ("scalable", "256x256", "128x128", "64x48", "48x48"):
             for ext in (".png", ".svg", ".xpm", ""):
-                candidate = extracted_dir / "usr" / "share" / "icons" / "hicolor" / size_dir / "apps" / f"{icon_name}{ext}"
+                candidate = (
+                    extracted_dir / "usr" / "share" / "icons" / "hicolor" / size_dir / "apps" / f"{icon_name}{ext}"
+                )
                 if candidate.exists() and candidate.stat().st_size > 0:
                     return candidate
         for ext in (".png", ".svg", ".xpm"):
@@ -170,7 +172,11 @@ def _find_icon_in_dir(extracted_dir, icon_name):
             if candidate.exists() and candidate.stat().st_size > 0:
                 return candidate
         for candidate in extracted_dir.rglob(f"{icon_name}*"):
-            if candidate.is_file() and candidate.suffix in (".png", ".svg", ".xpm", "") and candidate.stat().st_size > 0:
+            if (
+                candidate.is_file()
+                and candidate.suffix in (".png", ".svg", ".xpm", "")
+                and candidate.stat().st_size > 0
+            ):
                 return candidate
 
     dir_icon = extracted_dir / ".DirIcon"
@@ -187,7 +193,11 @@ def _find_icon_in_dir(extracted_dir, icon_name):
     ]:
         if icon_dir.exists():
             for icon_file in icon_dir.iterdir():
-                if icon_file.is_file() and icon_file.suffix in (".png", ".svg", ".xpm") and icon_file.stat().st_size > 0:
+                if (
+                    icon_file.is_file()
+                    and icon_file.suffix in (".png", ".svg", ".xpm")
+                    and icon_file.stat().st_size > 0
+                ):
                     return icon_file
 
     icons_base = extracted_dir / "usr" / "share" / "icons"

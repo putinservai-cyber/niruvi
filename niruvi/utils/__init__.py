@@ -26,9 +26,12 @@ def _init_icon_theme():
         search_dirs.append(os.path.join(appdir, "icons"))
 
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for parent in (here, os.path.join(here, "niruvi"),
-                   os.path.join(here, "asset"),
-                   os.path.join(os.path.dirname(here), "asset")):
+    for parent in (
+        here,
+        os.path.join(here, "niruvi"),
+        os.path.join(here, "asset"),
+        os.path.join(os.path.dirname(here), "asset"),
+    ):
         search_dirs.append(os.path.join(parent, "icons"))
 
     icon_dir = None

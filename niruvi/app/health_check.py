@@ -106,7 +106,7 @@ def check_app_health(app_name: str, app_dir: str, record) -> dict:
                 install_dt = datetime.datetime.fromisoformat(install_date_str)
                 install_age = (now - install_dt.timestamp()) / 86400
                 if install_age > HEALTH_DAYS_THRESHOLD and "No updates checked" not in warnings:
-                        warnings.append("No updates checked recently")
+                    warnings.append("No updates checked recently")
             except (ValueError, TypeError):
                 pass
         if not getattr(record, "update_url", ""):
@@ -131,7 +131,9 @@ def check_fuse_available() -> bool:
     try:
         result = subprocess.run(
             ["fusermount3", "--version"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -139,7 +141,9 @@ def check_fuse_available() -> bool:
     try:
         result = subprocess.run(
             ["fusermount", "--version"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -147,7 +151,9 @@ def check_fuse_available() -> bool:
     try:
         result = subprocess.run(
             ["which", "fusermount3", "fusermount"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return bool(result.stdout.strip())
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -158,7 +164,9 @@ def check_namespace_available() -> bool:
     try:
         result = subprocess.run(
             ["unshare", "--user", "--mount", "true"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -186,7 +194,9 @@ def check_system_compatibility() -> dict:
     except Exception:
         pass
     try:
-        r = subprocess.run(["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(
+            ["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5
+        )
         if r.returncode == 0:
             info["mesa"] = r.stdout.strip()
     except Exception:

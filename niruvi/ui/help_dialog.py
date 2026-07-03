@@ -1247,5 +1247,6 @@ or feature request. Before reporting:</p>
                 text = p.read_text()
                 break
         import html
+
         escaped = html.escape(text)
         return f"<h2>License (GPL-3.0)</h2><pre style='font-size:9pt;'>{escaped}</pre>"

@@ -206,6 +206,7 @@ class BuildDialog(QDialog):
 
     def _refresh_signing_keys(self):
         from niruvi.core.signing import list_secret_keys
+
         self.sign_key_combo.clear()
         self.sign_key_combo.addItem("(default key)", "")
         for key in list_secret_keys():
@@ -225,7 +226,8 @@ class BuildDialog(QDialog):
 
     def _browse_source(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select source package",
+            self,
+            "Select source package",
             os.path.expanduser("~"),
             "Package files (*.deb *.rpm *.tar.gz *.tar.xz *.tar.bz2 *.tgz *.txz *.tbz2 *.tar);;All files (*)",
         )
@@ -233,12 +235,13 @@ class BuildDialog(QDialog):
             self.source_edit.setText(path)
             stem = Path(path).stem
             if not self.app_name_edit.text():
-                name = stem.split('-')[0] if '-' in stem else stem
+                name = stem.split("-")[0] if "-" in stem else stem
                 self.app_name_edit.setText(name)
 
     def _browse_folder(self):
         dir_path = QFileDialog.getExistingDirectory(
-            self, "Select project folder",
+            self,
+            "Select project folder",
             os.path.expanduser("~"),
         )
         if dir_path:
@@ -258,7 +261,7 @@ class BuildDialog(QDialog):
             has_executable = False
             has_apprun = False
             for root, _dirs, files in os.walk(folder_path):
-                depth = root[len(folder_path):].count(os.sep)
+                depth = root[len(folder_path) :].count(os.sep)
                 max_depth = max(max_depth, depth)
                 for f in files:
                     fp = os.path.join(root, f)
@@ -282,9 +285,7 @@ class BuildDialog(QDialog):
             self.folder_info_label.setText("")
 
     def _browse_output(self):
-        dir_path = QFileDialog.getExistingDirectory(
-            self, "Select output directory", self.output_edit.text()
-        )
+        dir_path = QFileDialog.getExistingDirectory(self, "Select output directory", self.output_edit.text())
         if dir_path:
             self.output_edit.setText(dir_path)
 
@@ -303,7 +304,10 @@ class BuildDialog(QDialog):
             if size > 2 * 1024 * 1024 * 1024:
                 return f"The source file is very large ({self._format_size(size)}). AppImage builds may fail with files over 2 GB."
             low = src.lower()
-            if not any(low.endswith(e) for e in ('.deb', '.rpm', '.tar.gz', '.tar.xz', '.tar.bz2', '.tgz', '.txz', '.tbz2', '.tar')):
+            if not any(
+                low.endswith(e)
+                for e in (".deb", ".rpm", ".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".tbz2", ".tar")
+            ):
                 return "Unsupported package format. Please select a DEB, RPM, or tar archive."
         else:
             folder = self.folder_edit.text()
@@ -312,7 +316,7 @@ class BuildDialog(QDialog):
             if not os.path.isdir(folder):
                 return f"The folder doesn't exist:\n{folder}"
             entries = os.listdir(folder)
-            cleaned = [e for e in entries if not e.startswith('.') and e != '__pycache__']
+            cleaned = [e for e in entries if not e.startswith(".") and e != "__pycache__"]
             if not cleaned:
                 return f"The selected folder appears to be empty:\n{folder}"
         return None
@@ -332,9 +336,9 @@ class BuildDialog(QDialog):
             warnings.append("AppImage is not executable. Users will need to run: chmod +x")
         is_elf = False
         try:
-            with open(path, 'rb') as f:
+            with open(path, "rb") as f:
                 header = f.read(4)
-                is_elf = header == b'\x7fELF'
+                is_elf = header == b"\x7fELF"
             if not is_elf:
                 warnings.append("File does not have a valid ELF header. It may not run.")
         except Exception:
@@ -342,10 +346,7 @@ class BuildDialog(QDialog):
 
         # Try --appimage-help (handled by runtime, won't launch the app)
         try:
-            result = subprocess.run(
-                [path, "--appimage-help"],
-                capture_output=True, text=True, timeout=15
-            )
+            result = subprocess.run([path, "--appimage-help"], capture_output=True, text=True, timeout=15)
             if result.returncode != 0:
                 warnings.append(f"AppImage runtime check failed (exit {result.returncode}).")
         except (subprocess.TimeoutExpired, OSError) as e:
@@ -412,9 +413,7 @@ class BuildDialog(QDialog):
 
     def _on_log(self, msg: str):
         self.log_text.append(msg)
-        self.log_text.verticalScrollBar().setValue(
-            self.log_text.verticalScrollBar().maximum()
-        )
+        self.log_text.verticalScrollBar().setValue(self.log_text.verticalScrollBar().maximum())
 
     def _on_progress(self, value: int):
         self.progress_bar.setValue(value)
@@ -433,6 +432,7 @@ class BuildDialog(QDialog):
             self.log_text.append("\n<b>Signing AppImage...</b>")
             try:
                 from niruvi.core.signing import sign_appimage
+
                 sig_path = sign_appimage(out_path, self._sign_key)
                 self.log_text.append(f"Signed: {sig_path}")
             except Exception as e:
@@ -451,16 +451,23 @@ class BuildDialog(QDialog):
         file_count = 0
         bundle_size = 0
         try:
-            with open(out_path, 'rb') as f:
+            with open(out_path, "rb") as f:
                 header = f.read(20)
-                is_elf = header[:4] == b'\x7fELF'
+                is_elf = header[:4] == b"\x7fELF"
                 if is_elf and len(header) >= 20:
                     ei_class = header[4]
                     ei_data = header[5]
                     e_machine_bytes = header[18:20]
-                    arch_map = {0: "None", 3: "i386", 62: "x86_64",
-                                40: "ARM", 183: "AArch64", 20: "PowerPC",
-                                21: "PowerPC64", 43: "SPARC"}
+                    arch_map = {
+                        0: "None",
+                        3: "i386",
+                        62: "x86_64",
+                        40: "ARM",
+                        183: "AArch64",
+                        20: "PowerPC",
+                        21: "PowerPC64",
+                        43: "SPARC",
+                    }
                     if ei_class == 1:
                         arch = "32-bit "
                     elif ei_class == 2:
@@ -472,14 +479,15 @@ class BuildDialog(QDialog):
                     elif ei_data == 2:
                         arch += "BE"
                     import struct
-                    e_machine = struct.unpack('<H' if ei_data == 1 else '>H', e_machine_bytes)[0]
+
+                    e_machine = struct.unpack("<H" if ei_data == 1 else ">H", e_machine_bytes)[0]
                     arch_name = arch_map.get(e_machine, f"machine={e_machine}")
                     architecture = f"{arch} {arch_name}"
                     # Detect AppImage type
                     if len(header) >= 12:
                         f.seek(8)
                         type_check = f.read(4)
-                        if type_check[:2] == b'AI':
+                        if type_check[:2] == b"AI":
                             app_type = "Type 2"
                         else:
                             app_type = "Type 1"
@@ -492,6 +500,7 @@ class BuildDialog(QDialog):
         # Count files in extracted squashfs if available
         try:
             import subprocess as _sp
+
             result = _sp.run(["du", "-sb", out_path], capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 size_str = result.stdout.split()[0]
@@ -521,6 +530,7 @@ class BuildDialog(QDialog):
         self.build_btn.setEnabled(True)
         self.close_btn.setEnabled(True)
         import traceback
+
         play_sound("error")
         suggestions = ErrorReportDialog.suggest_for_build_error(msg)
         dlg = ErrorReportDialog(
@@ -539,6 +549,7 @@ class BuildDialog(QDialog):
         dest = os.path.join(install_dir, os.path.basename(appimage_path))
         try:
             import shutil
+
             shutil.copy2(appimage_path, dest)
             os.chmod(dest, 0o755)
             self.log_text.append(f"Copied to managed directory: {dest}")

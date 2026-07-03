@@ -83,6 +83,8 @@ def _prune_detached():
 
 
 _append_p = _DETACHED.append
+
+
 def _track_detached(p: subprocess.Popen):
     _prune_detached()
     _append_p(p)
@@ -90,6 +92,7 @@ def _track_detached(p: subprocess.Popen):
 
 def _get_system_info_for_dialog() -> str:
     import platform
+
     lines = []
     lines.append(f"<b>Distribution:</b> {platform.system()} {platform.release()}")
     try:
@@ -110,7 +113,9 @@ def _get_system_info_for_dialog() -> str:
     except Exception:
         pass
     try:
-        result = subprocess.run(["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            ["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5
+        )
         if result.returncode == 0:
             lines.append(f"<b>Mesa:</b> {result.stdout.strip()}")
     except Exception:
@@ -185,6 +190,7 @@ class AppManager(QMainWindow):
         self._background_updater = BackgroundUpdater(self)
         self._background_updater.update_found.connect(self._on_background_update_found)
         from niruvi.utils.sound_manager import _init as _init_sound
+
         _init_sound()
         ensure_hooks_dir()
         install_button_filter()
@@ -231,7 +237,9 @@ class AppManager(QMainWindow):
         tools_menu = menubar.addMenu(get_icon("applications-utilities", "preferences-other", "emblem-system"), "Tools")
         install_menu_sound(tools_menu)
 
-        build_action = QAction(get_icon("emblem-system", "applications-utilities", "document-export"), "Build AppImage...", self)
+        build_action = QAction(
+            get_icon("emblem-system", "applications-utilities", "document-export"), "Build AppImage...", self
+        )
         build_action.triggered.connect(self._open_build_dialog)
         tools_menu.addAction(build_action)
 
@@ -241,11 +249,17 @@ class AppManager(QMainWindow):
 
         tools_menu.addSeparator()
 
-        check_updates_action = QAction(get_icon("emblem-downloads", "system-software-update", "download", "document-save"), "Check for Niruvi Updates...", self)
+        check_updates_action = QAction(
+            get_icon("emblem-downloads", "system-software-update", "download", "document-save"),
+            "Check for Niruvi Updates...",
+            self,
+        )
         check_updates_action.triggered.connect(lambda: check_for_updates(self))
         tools_menu.addAction(check_updates_action)
 
-        check_all_action = QAction(get_icon("network-server", "emblem-downloads"), "Check All Apps for Updates...", self)
+        check_all_action = QAction(
+            get_icon("network-server", "emblem-downloads"), "Check All Apps for Updates...", self
+        )
         check_all_action.triggered.connect(self._check_all_app_updates)
         tools_menu.addAction(check_all_action)
 
@@ -262,9 +276,7 @@ class AppManager(QMainWindow):
         help_action.triggered.connect(self._show_help)
         help_menu.addAction(help_action)
 
-        report_action = QAction(
-            get_icon("bug", "tools-report-bug", "dialog-warning"), "Report Issue...", self
-        )
+        report_action = QAction(get_icon("bug", "tools-report-bug", "dialog-warning"), "Report Issue...", self)
         report_action.triggered.connect(self._show_report_page)
         help_menu.addAction(report_action)
 
@@ -321,12 +333,14 @@ class AppManager(QMainWindow):
         search_sort_layout.addWidget(self.search_edit)
 
         self.sort_combo = QComboBox()
-        self.sort_combo.addItems([
-            "Sort by Name",
-            "Sort by Version",
-            "Sort by Size",
-            "Sort by Install Date",
-        ])
+        self.sort_combo.addItems(
+            [
+                "Sort by Name",
+                "Sort by Version",
+                "Sort by Size",
+                "Sort by Install Date",
+            ]
+        )
         self.sort_combo.currentIndexChanged.connect(self._sort_apps)
         self.sort_combo.setToolTip("Change how installed apps are ordered")
         search_sort_layout.addWidget(self.sort_combo)
@@ -347,15 +361,14 @@ class AppManager(QMainWindow):
         disabled_hex = self.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
         self.drop_hint = QLabel(
             '<div style="text-align: center; padding: 40px;">'
-            '<br><br>'
+            "<br><br>"
             '<b style="font-size: 16px;">Drop AppImage files here</b><br>'
             f'<span style="color: {disabled_hex};">to install them automatically</span>'
-            '</div>'
+            "</div>"
         )
         self.drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.drop_hint.setStyleSheet(
-            "background: palette(window); border: 2px dashed palette(mid); "
-            "border-radius: 12px; margin: 8px;"
+            "background: palette(window); border: 2px dashed palette(mid); border-radius: 12px; margin: 8px;"
         )
         self.drop_hint.setVisible(False)
         layout.addWidget(self.drop_hint, 1)
@@ -377,18 +390,14 @@ class AppManager(QMainWindow):
         empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_title)
 
-        empty_desc = QLabel(
-            "Drag an AppImage file here or click the button below to get started."
-        )
+        empty_desc = QLabel("Drag an AppImage file here or click the button below to get started.")
         empty_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_desc.setWordWrap(True)
         empty_layout.addWidget(empty_desc)
 
         self.empty_install_btn = QPushButton(get_icon("list-add"), "Install Your First AppImage")
         self.empty_install_btn.setFixedWidth(280)
-        self.empty_install_btn.setStyleSheet(
-            "QPushButton { padding: 10px 24px; font-size: 14px; }"
-        )
+        self.empty_install_btn.setStyleSheet("QPushButton { padding: 10px 24px; font-size: 14px; }")
         self.empty_install_btn.clicked.connect(self.run_install_wizard)
         btn_wrapper = QHBoxLayout()
         btn_wrapper.addStretch()
@@ -413,7 +422,19 @@ class AppManager(QMainWindow):
         uninstall_button_filter()
         super().closeEvent(event)
 
-    def _add_app_to_list(self, key: str, app_dir: str, version: str, display_name: str | None = None, icon_path: str | None = None, update_url: str = "", architecture: str = "", display_name_override: str = "", custom_icon_path: str = "", health_info: dict | None = None):
+    def _add_app_to_list(
+        self,
+        key: str,
+        app_dir: str,
+        version: str,
+        display_name: str | None = None,
+        icon_path: str | None = None,
+        update_url: str = "",
+        architecture: str = "",
+        display_name_override: str = "",
+        custom_icon_path: str = "",
+        health_info: dict | None = None,
+    ):
         if display_name is None:
             display_name = key
         version_str = version if version and version != "unknown" else ""
@@ -427,11 +448,7 @@ class AppManager(QMainWindow):
         list_item = QListWidgetItem(text)
         list_item.setData(Qt.ItemDataRole.UserRole, key)
         list_item.setData(Qt.ItemDataRole.UserRole + 1, app_dir)
-        tooltip = (
-            f"Path: {app_dir}\n"
-            f"Version: {version_str or 'unknown'}\n"
-            f"Name: {key}"
-        )
+        tooltip = f"Path: {app_dir}\nVersion: {version_str or 'unknown'}\nName: {key}"
         if health_info:
             if health_info.get("issues"):
                 tooltip += f"\nIssues: {'; '.join(health_info['issues'])}"
@@ -515,9 +532,11 @@ class AppManager(QMainWindow):
                 try:
                     version = get_version(app_dir)
                     icon_path = self._find_app_icon(app_dir)
-                    desktop_info = parse_desktop_file(
-                        os.path.join(app_dir, f"{item}.desktop")
-                    ) if os.path.exists(os.path.join(app_dir, f"{item}.desktop")) else {}
+                    desktop_info = (
+                        parse_desktop_file(os.path.join(app_dir, f"{item}.desktop"))
+                        if os.path.exists(os.path.join(app_dir, f"{item}.desktop"))
+                        else {}
+                    )
                     desktop_info2 = {}
                     for f in os.listdir(app_dir):
                         if f.endswith(".desktop"):
@@ -532,7 +551,18 @@ class AppManager(QMainWindow):
                     cust_icon = rec.custom_icon_path if rec else ""
                     display_name = dn_override or display_name
                     health_info = check_app_health(item, app_dir, rec)
-                    self._add_app_to_list(item, app_dir, version, display_name, icon_path, update_url, arch, dn_override, cust_icon, health_info)
+                    self._add_app_to_list(
+                        item,
+                        app_dir,
+                        version,
+                        display_name,
+                        icon_path,
+                        update_url,
+                        arch,
+                        dn_override,
+                        cust_icon,
+                        health_info,
+                    )
                 except Exception as e:
                     logging.error("Failed to scan app %s: %s", item, e)
                     continue
@@ -553,7 +583,17 @@ class AppManager(QMainWindow):
             icon_path = self._find_app_icon(app_dir)
             display_name = record.display_name_override or record.name
             cust_icon = record.custom_icon_path or icon_path
-            self._add_app_to_list(record.name, app_dir, version, display_name, cust_icon or icon_path, record.update_url, record.architecture, record.display_name_override, record.custom_icon_path)
+            self._add_app_to_list(
+                record.name,
+                app_dir,
+                version,
+                display_name,
+                cust_icon or icon_path,
+                record.update_url,
+                record.architecture,
+                record.display_name_override,
+                record.custom_icon_path,
+            )
         for name in stale:
             registry.remove(name)
 
@@ -569,7 +609,11 @@ class AppManager(QMainWindow):
         self.sort_combo.setVisible(has_apps)
         self.drop_hint.setVisible(False)
         self.empty_widget.setVisible(not has_apps)
-        self._status_bar.showMessage(f"Found {count} installed app{'s' if count != 1 else ''}" if has_apps else "Ready — no AppImages installed yet")
+        self._status_bar.showMessage(
+            f"Found {count} installed app{'s' if count != 1 else ''}"
+            if has_apps
+            else "Ready — no AppImages installed yet"
+        )
         self.btn_refresh.setEnabled(True)
         self._is_scanning = False
 
@@ -608,7 +652,8 @@ class AppManager(QMainWindow):
         names = "<br>".join(f"<b>{n}</b> — <code>{p}</code>" for n, p in to_remove)
         play_sound("warning")
         reply = QMessageBox.question(
-            self, "Orphaned Installation",
+            self,
+            "Orphaned Installation",
             "Found apps installed to a phone or removable drive that is no longer connected.<br><br>"
             f"{names}<br><br>"
             "Do you want to remove them from the installed list?<br>"
@@ -620,10 +665,13 @@ class AppManager(QMainWindow):
             for name, _path in to_remove:
                 self.installed_apps.pop(name, None)
                 registry.remove(name)
-            self._status_bar.showMessage(f"Removed {len(to_remove)} orphaned entr{'y' if len(to_remove) == 1 else 'ies'} from the installed list")
+            self._status_bar.showMessage(
+                f"Removed {len(to_remove)} orphaned entr{'y' if len(to_remove) == 1 else 'ies'} from the installed list"
+            )
 
     def _find_app_icon(self, app_dir: str) -> str | None:
         from niruvi.desktop.desktop_utils import find_icon_in_appdir
+
         for f in os.listdir(app_dir):
             if f.endswith(".desktop"):
                 try:
@@ -636,9 +684,17 @@ class AppManager(QMainWindow):
                                     return path
                 except OSError:
                     pass
-        common_names = {"icon.png", "icon.svg", "logo.png", "logo.svg",
-                        "appicon.png", "appicon.svg", "AppIcon.png",
-                        "AppIcon.svg", "application.png"}
+        common_names = {
+            "icon.png",
+            "icon.svg",
+            "logo.png",
+            "logo.svg",
+            "appicon.png",
+            "appicon.svg",
+            "AppIcon.png",
+            "AppIcon.svg",
+            "application.png",
+        }
         for root, _, files in os.walk(app_dir):
             for f in files:
                 if f in common_names:
@@ -653,7 +709,7 @@ class AppManager(QMainWindow):
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if url.isLocalFile() and url.path().lower().endswith('.appimage'):
+                if url.isLocalFile() and url.path().lower().endswith(".appimage"):
                     self.drop_hint.setVisible(True)
                     self.installed_list.setVisible(False)
                     event.acceptProposedAction()
@@ -669,7 +725,7 @@ class AppManager(QMainWindow):
         self.drop_hint.setVisible(False)
         urls = []
         for url in event.mimeData().urls():
-            if url.isLocalFile() and url.path().lower().endswith('.appimage'):
+            if url.isLocalFile() and url.path().lower().endswith(".appimage"):
                 urls.append(url.path())
         if len(urls) == 1:
             self.process_appimage(urls[0])
@@ -731,6 +787,7 @@ class AppManager(QMainWindow):
             layout.addStretch()
 
             from PyQt6.QtWidgets import QGridLayout
+
             btn_grid = QGridLayout()
             btn_grid.setSpacing(8)
 
@@ -822,11 +879,13 @@ class AppManager(QMainWindow):
         for p in paths:
             name = Path(p).stem
             dest = os.path.join(install_dir, name)
-            queue_worker.add_task({
-                "appimage_path": p,
-                "dest_dir": dest,
-                "app_name": name,
-            })
+            queue_worker.add_task(
+                {
+                    "appimage_path": p,
+                    "dest_dir": dest,
+                    "app_name": name,
+                }
+            )
 
         def on_task_started(app_name, idx):
             self._batch_status.setText(f"[{idx}/{len(paths)}] Installing {app_name}...")
@@ -834,9 +893,7 @@ class AppManager(QMainWindow):
 
         def on_task_finished(app_name):
             self._batch_status.setText(f"Finished: {app_name}")
-            self._batch_progress.setValue(
-                self._batch_progress.value() + 1
-            )
+            self._batch_progress.setValue(self._batch_progress.value() + 1)
 
         def on_task_error(msg):
             self._batch_status.setText(f"Error: {msg}")
@@ -875,7 +932,7 @@ class AppManager(QMainWindow):
             return
 
         app_info = self.installed_apps[app_name]
-        is_self = (app_name == __app_name__)
+        is_self = app_name == __app_name__
         menu = QMenu()
         shadow = QGraphicsDropShadowEffect(menu)
         shadow.setBlurRadius(12)
@@ -890,9 +947,9 @@ class AppManager(QMainWindow):
             run_action = menu.addAction(get_icon("media-playback-start"), "Run")
         update_action = menu.addAction(get_icon("emblem-downloads"), "Update...")
         has_url = bool(app_info.get("update_url"))
-        check_update_action = menu.addAction(
-            get_icon("network-server", "emblem-downloads"), "Check for Updates"
-        ) if has_url else None
+        check_update_action = (
+            menu.addAction(get_icon("network-server", "emblem-downloads"), "Check for Updates") if has_url else None
+        )
         uninstall_action = menu.addAction(get_icon("edit-delete"), "Uninstall")
         open_folder_action = menu.addAction(get_icon("folder-open"), "Open Folder")
         menu.addSeparator()
@@ -901,7 +958,10 @@ class AppManager(QMainWindow):
         shortcut_action = menu.addAction(get_icon("user-desktop"), shortcut_text)
         verify_action = menu.addAction(get_icon("dialog-password", "security-high"), "Verify Installation")
         repair_action = menu.addAction(get_icon("emblem-system", "preferences-system"), "Repair Installation")
-        hooks_action = menu.addAction(get_icon("text-x-script", "applications-system", "utilities-terminal", "folder-open"), "Edit Hooks for This App")
+        hooks_action = menu.addAction(
+            get_icon("text-x-script", "applications-system", "utilities-terminal", "folder-open"),
+            "Edit Hooks for This App",
+        )
         menu.addSeparator()
 
         action = menu.exec(self.installed_list.mapToGlobal(pos))
@@ -963,6 +1023,7 @@ class AppManager(QMainWindow):
 
         # Run diagnostics inline
         from niruvi.app.health_check import check_app_runnable, check_fuse_available
+
         fuse = check_fuse_available()
         diag = check_app_runnable(app_name, app_dir)
 
@@ -1030,6 +1091,7 @@ class AppManager(QMainWindow):
 
         # ── Pre-flight diagnostics ──
         from niruvi.app.health_check import check_app_runnable, check_fuse_available
+
         diag = check_app_runnable(app_name, app_dir)
         if not diag["healthy"]:
             diag_issues = list(diag["issues"])
@@ -1064,6 +1126,7 @@ class AppManager(QMainWindow):
         cmd = [apprun]
         if record and record.run_args:
             import shlex
+
             cmd.extend(shlex.split(record.run_args))
         try:
             if not unsandboxed and record and record.sandbox_config.get("enabled", False):
@@ -1072,7 +1135,10 @@ class AppManager(QMainWindow):
                 p = sb.run(cmd, cwd=app_dir, env=env)
                 if p is None:
                     p = subprocess.Popen(
-                        cmd, cwd=app_dir, env=env, start_new_session=True,
+                        cmd,
+                        cwd=app_dir,
+                        env=env,
+                        start_new_session=True,
                     )
             else:
                 p = subprocess.Popen(
@@ -1091,27 +1157,30 @@ class AppManager(QMainWindow):
 
     def _monitor_launch(self, app_name: str, proc: subprocess.Popen):
         """Check if process crashes immediately after launch (main-thread safe)."""
+
         def _on_timeout():
             try:
                 proc.wait(timeout=0)
                 if proc.returncode != 0 and proc.returncode is not None:
                     from PyQt6.QtWidgets import QMessageBox
+
                     play_sound("warning")
                     QMessageBox.warning(
-                        self, f"{app_name} exited unexpectedly",
+                        self,
+                        f"{app_name} exited unexpectedly",
                         f"<b>{app_name}</b> exited quickly (code {proc.returncode}).<br><br>"
                         "This typically means:<br>"
                         "• Missing system libraries<br>"
                         "• Incompatible architecture<br>"
                         "• Corrupted AppImage<br><br>"
-                        "Try reinstalling the app or check its App Info for diagnostics."
+                        "Try reinstalling the app or check its App Info for diagnostics.",
                     )
             except subprocess.TimeoutExpired:
                 pass
+
         QTimer.singleShot(3000, _on_timeout)
 
-    def _run_app_fallback(self, app_name: str, app_dir: str,
-                          env: dict | None = None, record=None):
+    def _run_app_fallback(self, app_name: str, app_dir: str, env: dict | None = None, record=None):
         appimage_path = self._find_appimage_in_dir(app_dir)
         if appimage_path and os.path.isfile(appimage_path):
             ret = self._try_extract_and_run(appimage_path, app_name, env, record)
@@ -1141,14 +1210,15 @@ class AppManager(QMainWindow):
                 env["XDG_CONFIG_HOME"] = os.path.join(app_dir, ".config")
         return env
 
-    def _try_extract_and_run(self, appimage_path: str, app_name: str,
-                              env: dict | None = None, record=None) -> bool:
+    def _try_extract_and_run(self, appimage_path: str, app_name: str, env: dict | None = None, record=None) -> bool:
         try:
             from niruvi.app.health_check import check_namespace_available
+
             use_namespace = check_namespace_available()
             cmd = [appimage_path, "--appimage-extract-and-run"]
             if record and record.run_args:
                 import shlex
+
                 cmd.extend(shlex.split(record.run_args))
             if use_namespace:
                 runner = ["unshare", "--user", "--mount"]
@@ -1167,31 +1237,34 @@ class AppManager(QMainWindow):
 
     _temp_launch_dirs: list[str] = []
 
-    def _try_extract_and_run_temp(self, app_dir: str, app_name: str,
-                                    env: dict | None = None, record=None) -> bool:
+    def _try_extract_and_run_temp(self, app_dir: str, app_name: str, env: dict | None = None, record=None) -> bool:
         import atexit
         import shutil
         import tempfile
+
         tmp = tempfile.mkdtemp(prefix=f"niruvi-{app_name}-")
         try:
             appimage_path = self._find_appimage_in_dir(app_dir)
             if appimage_path and os.path.isfile(appimage_path):
                 from niruvi.core.worker import extract_appimage_sync
+
                 extract_appimage_sync(appimage_path, tmp)
                 apprun = os.path.join(tmp, "AppRun")
                 if os.path.isfile(apprun):
                     cmd = [apprun]
                     if record and record.run_args:
                         import shlex
+
                         cmd.extend(shlex.split(record.run_args))
                     p = subprocess.Popen(
-                        cmd, cwd=tmp,
+                        cmd,
+                        cwd=tmp,
                         env=self._apply_portable_env(env or os.environ.copy(), app_dir, record),
                         start_new_session=True,
                     )
                     _track_detached(p)
                     self._temp_launch_dirs.append(tmp)
-                    if not hasattr(self, '_temp_atexit_registered'):
+                    if not hasattr(self, "_temp_atexit_registered"):
                         atexit.register(self._cleanup_temp_dirs)
                         self._temp_atexit_registered = True
                     self._status_bar.showMessage(f"Running {app_name} (extracted mode)")
@@ -1203,6 +1276,7 @@ class AppManager(QMainWindow):
 
     def _cleanup_temp_dirs(self):
         import shutil
+
         for d in list(self._temp_launch_dirs):
             shutil.rmtree(d, ignore_errors=True)
         self._temp_launch_dirs.clear()
@@ -1229,7 +1303,8 @@ class AppManager(QMainWindow):
         if not any(real.startswith(p) for p in SAFE_PREFIXES):
             play_sound("error")
             QMessageBox.critical(
-                self, "Security Error",
+                self,
+                "Security Error",
                 f"Refusing to uninstall: the path '{real}' is not in a managed directory.\n\n"
                 f"Uninstall is only allowed for paths under ~/Applications or ~/.local.",
             )
@@ -1280,9 +1355,7 @@ class AppManager(QMainWindow):
         self.worker.extraction_finished.connect(
             lambda d, n: self._on_update_finished(d, n, progress, backup_dir, prev_dir)
         )
-        self.worker.extraction_error.connect(
-            lambda e: self._on_update_error(e, progress, backup_dir, dest_dir)
-        )
+        self.worker.extraction_error.connect(lambda e: self._on_update_error(e, progress, backup_dir, dest_dir))
         self.worker.start()
 
     def _create_prev_backup(self, app_dir: str, prev_dir: str):
@@ -1310,13 +1383,12 @@ class AppManager(QMainWindow):
         app_dir = app_info["path"]
         prev_dir = app_dir + ".prev"
         if not os.path.isdir(prev_dir):
-            QMessageBox.information(self, "No Backup",
-                                    f"No previous version found for {app_name}.")
+            QMessageBox.information(self, "No Backup", f"No previous version found for {app_name}.")
             return
         reply = QMessageBox.question(
-            self, "Revert Version",
-            f"Revert {app_name} to the previous version?\n"
-            "The current version will be moved to a backup.",
+            self,
+            "Revert Version",
+            f"Revert {app_name} to the previous version?\nThe current version will be moved to a backup.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1335,9 +1407,14 @@ class AppManager(QMainWindow):
             play_sound("error")
             QMessageBox.critical(self, "Revert Failed", str(e))
 
-    def _on_update_finished(self, dest_dir: str, app_name: str,
-                            progress: QProgressDialog, backup_dir: str | None,
-                            prev_dir: str | None = None):
+    def _on_update_finished(
+        self,
+        dest_dir: str,
+        app_name: str,
+        progress: QProgressDialog,
+        backup_dir: str | None,
+        prev_dir: str | None = None,
+    ):
         progress.close()
         if prev_dir and os.path.isdir(prev_dir):
             # Keep .prev for rollback
@@ -1384,15 +1461,12 @@ class AppManager(QMainWindow):
                 shutil.rmtree(backup_dir)
             except OSError as e:
                 QMessageBox.critical(
-                    self, "Restore Failed",
-                    f"Update failed and backup could not be restored: {e}\n\n"
-                    f"Your data is at: {backup_dir}"
+                    self,
+                    "Restore Failed",
+                    f"Update failed and backup could not be restored: {e}\n\nYour data is at: {backup_dir}",
                 )
                 return
-            QMessageBox.critical(
-                self, "Update Error",
-                f"Failed to update: {error_msg}\n\nPrevious version restored."
-            )
+            QMessageBox.critical(self, "Update Error", f"Failed to update: {error_msg}\n\nPrevious version restored.")
         else:
             QMessageBox.critical(self, "Update Error", f"Failed to update: {error_msg}")
 
@@ -1433,23 +1507,18 @@ class AppManager(QMainWindow):
         results = verify_complete(app_dir)
         passed = sum(1 for r in results if r.passed)
         total = len(results)
-        details = "\n".join(
-            f"{'✓' if r.passed else '✗'} {r.details}"
-            for r in results
-        )
+        details = "\n".join(f"{'✓' if r.passed else '✗'} {r.details}" for r in results)
         if all(results):
             play_sound("notification")
             QMessageBox.information(
-                self, "Verification Passed",
-                f"<b>{app_name}</b> passed all {total} checks.<br><br>"
-                f"<pre>{details}</pre>"
+                self, "Verification Passed", f"<b>{app_name}</b> passed all {total} checks.<br><br><pre>{details}</pre>"
             )
         else:
             play_sound("warning")
             QMessageBox.warning(
-                self, "Verification Failed",
-                f"<b>{app_name}</b> failed {total - passed}/{total} checks.<br><br>"
-                f"<pre>{details}</pre>"
+                self,
+                "Verification Failed",
+                f"<b>{app_name}</b> failed {total - passed}/{total} checks.<br><br><pre>{details}</pre>",
             )
 
     def _repair_app(self, app_name: str):
@@ -1462,7 +1531,8 @@ class AppManager(QMainWindow):
         if report.all_succeeded:
             play_sound("notification")
             QMessageBox.information(
-                self, "Repair Complete",
+                self,
+                "Repair Complete",
                 f"<b>{app_name}</b> has been repaired.<br><br>"
                 f"{report.summary()}<br><br>"
                 "Desktop entries, icons, registry, and permissions restored.",
@@ -1470,7 +1540,8 @@ class AppManager(QMainWindow):
         else:
             play_sound("warning")
             QMessageBox.warning(
-                self, "Repair Partial",
+                self,
+                "Repair Partial",
                 f"<b>{app_name}</b> repair completed with issues.<br><br>"
                 f"{report.summary()}<br><br>"
                 "Some items could not be fixed. Try reinstalling the application.",
@@ -1493,6 +1564,7 @@ class AppManager(QMainWindow):
         app_dir = app_info["path"]
         from niruvi.app.health_check import check_app_runnable, check_fuse_available
         from niruvi.desktop.installation_registry import InstallationRegistry
+
         registry = InstallationRegistry()
         record = registry.get(app_name)
 
@@ -1543,7 +1615,9 @@ class AppManager(QMainWindow):
             layout.addWidget(lbl)
 
         if runnable["issues"]:
-            lbl = QLabel("<b style='color:red;'>Pre-launch issues:</b><br>" + "<br>".join(f"• {i}" for i in runnable["issues"]))
+            lbl = QLabel(
+                "<b style='color:red;'>Pre-launch issues:</b><br>" + "<br>".join(f"• {i}" for i in runnable["issues"])
+            )
             lbl.setWordWrap(True)
             lbl.setStyleSheet(f"background:{error_bg};border:1px solid {error_border};border-radius:4px;padding:8px;")
             layout.addWidget(lbl)
@@ -1555,7 +1629,9 @@ class AppManager(QMainWindow):
         if runnable.get("info", {}).get("missing_libs"):
             ml = runnable["info"]["missing_libs"]
             info_lines.append(f"<b>Missing libraries:</b> {', '.join(ml[:8])}")
-            info_lines.append(f"<span style='color:{disabled_hex};font-size:0.85em;'>Note: Some libraries may load at runtime. This check may show false positives.</span>")
+            info_lines.append(
+                f"<span style='color:{disabled_hex};font-size:0.85em;'>Note: Some libraries may load at runtime. This check may show false positives.</span>"
+            )
         if health.get("info", {}).get("no_update_url"):
             info_lines.append("<b>Update URL:</b> Not configured (optional)")
         if runnable.get("info", {}).get("apprun_size"):
@@ -1565,7 +1641,9 @@ class AppManager(QMainWindow):
         if info_lines:
             info_lbl = QLabel("<br>".join(info_lines))
             info_lbl.setWordWrap(True)
-            info_lbl.setStyleSheet("background:palette(window);border:1px solid palette(mid);border-radius:4px;padding:8px;")
+            info_lbl.setStyleSheet(
+                "background:palette(window);border:1px solid palette(mid);border-radius:4px;padding:8px;"
+            )
             layout.addWidget(info_lbl)
 
         if health["warnings"] or runnable["warnings"]:
@@ -1574,7 +1652,9 @@ class AppManager(QMainWindow):
                 warn_text += f"• {w}<br>"
             warn_lbl = QLabel(warn_text)
             warn_lbl.setWordWrap(True)
-            warn_lbl.setStyleSheet(f"background:{warn_bg};border:1px solid {warn_border};border-radius:4px;padding:8px;")
+            warn_lbl.setStyleSheet(
+                f"background:{warn_bg};border:1px solid {warn_border};border-radius:4px;padding:8px;"
+            )
             layout.addWidget(warn_lbl)
 
         if not has_real_issues:
@@ -1608,9 +1688,9 @@ class AppManager(QMainWindow):
         apps_with_url = [(r.name, r.update_url, r.version, r.update_channel) for r in records if r.update_url]
         if not apps_with_url:
             QMessageBox.information(
-                self, "No Update URLs",
-                "No installed apps have an update URL configured.\n\n"
-                "Open each app's info page to set its update URL."
+                self,
+                "No Update URLs",
+                "No installed apps have an update URL configured.\n\nOpen each app's info page to set its update URL.",
             )
             return
         updated = 0
@@ -1626,13 +1706,19 @@ class AppManager(QMainWindow):
                     failed += 1
                     continue
                 from niruvi.app.self_update import compare_versions
-                if compare_versions(info.version, 'gt', current_version):
+
+                if compare_versions(info.version, "gt", current_version):
                     from niruvi.ui.update_wizard import UpdateWizard
+
                     app_info = self.installed_apps.get(name, {})
                     app_dir = app_info.get("path", "")
                     wizard = UpdateWizard(
-                        name, app_dir, current_version,
-                        url, channel=channel, parent=self,
+                        name,
+                        app_dir,
+                        current_version,
+                        url,
+                        channel=channel,
+                        parent=self,
                     )
                     if wizard.exec() == QDialog.DialogCode.Accepted:
                         updated += 1
@@ -1651,15 +1737,14 @@ class AppManager(QMainWindow):
     def _check_single_app_update(self, app_name: str, update_url: str, current_version: str):
         if not update_url:
             QMessageBox.information(
-                self, "No Update URL",
-                f"No update URL configured for {app_name}.\n\n"
-                "Open App Info to set one.",
+                self,
+                "No Update URL",
+                f"No update URL configured for {app_name}.\n\nOpen App Info to set one.",
             )
             return
         if not current_version or current_version == "unknown":
             QMessageBox.information(
-                self, "Unknown Version",
-                f"The current version of {app_name} is unknown. Update check cannot proceed."
+                self, "Unknown Version", f"The current version of {app_name} is unknown. Update check cannot proceed."
             )
             return
 
@@ -1668,10 +1753,12 @@ class AppManager(QMainWindow):
             app_dir = app_info.get("path", "")
             if app_dir:
                 from niruvi.desktop.appimageupdate import get_update_method_for_app
+
                 method_info = get_update_method_for_app(app_dir)
                 if method_info["method"] == "zsync":
                     ret = QMessageBox.question(
-                        self, "Delta Update Available",
+                        self,
+                        "Delta Update Available",
                         f"An AppImageUpdate-compatible update is available for <b>{app_name}</b>.<br><br>"
                         f"Update info: <code>{method_info['update_info'][:60]}</code><br><br>"
                         "Use delta update (smaller download)?",
@@ -1686,25 +1773,35 @@ class AppManager(QMainWindow):
         channel = record.update_channel if record else "stable"
 
         from niruvi.ui.update_wizard import UpdateWizard
+
         wizard = UpdateWizard(
-            app_name, app_dir, current_version,
-            update_url, channel=channel, parent=self,
+            app_name,
+            app_dir,
+            current_version,
+            update_url,
+            channel=channel,
+            parent=self,
         )
         wizard.exec()
 
-    def _download_app_update(self, app_name: str, download_url: str,
-                              latest_version: str, expected_sha256: str = ""):
+    def _download_app_update(self, app_name: str, download_url: str, latest_version: str, expected_sha256: str = ""):
         from niruvi.ui.update_wizard import UpdateWizard
+
         app_info = self.installed_apps.get(app_name)
         if app_info is None:
             return
         app_dir = app_info["path"]
         from niruvi.desktop.installation_registry import InstallationRegistry
+
         record = InstallationRegistry().get(app_name)
         channel = record.update_channel if record else "stable"
         wizard = UpdateWizard(
-            app_name, app_dir, latest_version,
-            download_url, channel=channel, parent=self,
+            app_name,
+            app_dir,
+            latest_version,
+            download_url,
+            channel=channel,
+            parent=self,
         )
         wizard.exec()
 
@@ -1718,9 +1815,9 @@ class AppManager(QMainWindow):
         appimage_path = find_appimage_in_dir(app_dir)
         if not appimage_path:
             QMessageBox.information(
-                self, "Original AppImage Not Found",
-                f"The original AppImage file was not found in {app_dir}.\n\n"
-                "Falling back to full download update.",
+                self,
+                "Original AppImage Not Found",
+                f"The original AppImage file was not found in {app_dir}.\n\nFalling back to full download update.",
             )
             self._check_single_app_update(
                 app_name,
@@ -1743,7 +1840,8 @@ class AppManager(QMainWindow):
             if not success:
                 play_sound("warning")
                 QMessageBox.warning(
-                    self, "Delta Update Failed",
+                    self,
+                    "Delta Update Failed",
                     f"AppImageUpdate failed for {app_name}:<br><br><code>{msg}</code><br><br>"
                     "Falling back to full download.",
                 )
@@ -1767,12 +1865,14 @@ class AppManager(QMainWindow):
                 shutil.copytree(app_dir, backup_dir, ignore_errors=True)
 
             from niruvi.core.worker import extract_appimage_sync
+
             extract_appimage_sync(appimage_path, app_dir)
 
             if os.path.isdir(backup_dir):
                 shutil.rmtree(backup_dir, ignore_errors=True)
 
             from niruvi.desktop.desktop_utils import get_version
+
             version = get_version(app_dir) or ""
             registry = InstallationRegistry()
             record = registry.get(app_name)
@@ -1782,9 +1882,9 @@ class AppManager(QMainWindow):
 
             self._status_bar.showMessage(f"Updated {app_name} via delta update (version {version})")
             QMessageBox.information(
-                self, "Update Complete",
-                f"<b>{app_name}</b> was updated via delta update.<br><br>"
-                f"Result: {msg}",
+                self,
+                "Update Complete",
+                f"<b>{app_name}</b> was updated via delta update.<br><br>Result: {msg}",
             )
 
         except Exception as e:
@@ -1805,6 +1905,7 @@ class AppManager(QMainWindow):
     def _start_background_updater(self):
         interval = _settings.get("update_check_interval", "weekly")
         from niruvi.app.background_updater import INTERVAL_OPTIONS
+
         seconds = INTERVAL_OPTIONS.get(interval, 604800)
         auto_update = _settings.get("auto_update_apps", False)
         if seconds > 0:
@@ -1813,6 +1914,7 @@ class AppManager(QMainWindow):
     def _on_background_update_found(self, result):
         play_sound("notification")
         from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
+
         app = QApplication.instance()
         has_tray = app and hasattr(app, "desktop") and QSystemTrayIcon.isSystemTrayAvailable()
         if has_tray:
@@ -1824,9 +1926,7 @@ class AppManager(QMainWindow):
                 tray.setToolTip(f"Update available for {result.app_name}")
                 menu = QMenu()
                 show_action = menu.addAction(f"Show {result.app_name} update")
-                show_action.triggered.connect(
-                    lambda: self._show_app_update_notification(result)
-                )
+                show_action.triggered.connect(lambda: self._show_app_update_notification(result))
                 tray.setContextMenu(menu)
                 tray.show()
                 tray.showMessage(
@@ -1839,12 +1939,13 @@ class AppManager(QMainWindow):
             except Exception:
                 pass
         reply = QMessageBox.question(
-            self, "Update Available",
+            self,
+            "Update Available",
             f"{result.app_name} v{result.latest_version} is available "
             f"(current: v{result.current_version}).\n\n"
             f"Source: {result.source_type}\n"
-            + (f"\n{result.changelog[:300]}" if result.changelog else "") +
-            "\n\nDownload and install now?",
+            + (f"\n{result.changelog[:300]}" if result.changelog else "")
+            + "\n\nDownload and install now?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1857,7 +1958,9 @@ class AppManager(QMainWindow):
 
     def _export_app_list(self):
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Export App List", "niruvi-apps.json",
+            self,
+            "Export App List",
+            "niruvi-apps.json",
             "JSON files (*.json);;All files (*)",
         )
         if not file_path:
@@ -1875,7 +1978,9 @@ class AppManager(QMainWindow):
 
     def _import_app_list(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Import App List", "",
+            self,
+            "Import App List",
+            "",
             "JSON files (*.json);;All files (*)",
         )
         if not file_path:
@@ -1906,9 +2011,7 @@ class AppManager(QMainWindow):
             registry.add(record)
             imported += 1
         self.scan_installed()
-        self._status_bar.showMessage(
-            f"Imported {imported} app(s)" + (f", skipped {skipped}" if skipped else "")
-        )
+        self._status_bar.showMessage(f"Imported {imported} app(s)" + (f", skipped {skipped}" if skipped else ""))
 
     def open_settings(self):
         dialog = SettingsDialog(self)
@@ -1925,6 +2028,7 @@ class AppManager(QMainWindow):
 
     def _show_report_page(self):
         from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout
+
         dlg = QDialog(self)
         dlg.setWindowTitle("Report Issue")
         dlg.setMinimumSize(520, 400)
@@ -1941,6 +2045,7 @@ class AppManager(QMainWindow):
 
     def _show_about(self):
         from niruvi._version import __version__
+
         QMessageBox.about(
             self,
             "About Niruvi",
@@ -1962,5 +2067,5 @@ class AppManager(QMainWindow):
             "This program is free software; you can redistribute it<br>"
             "and/or modify it under the terms of the GNU General<br>"
             "Public License as published by the Free Software<br>"
-            "Foundation; version 3 of the License."
+            "Foundation; version 3 of the License.",
         )

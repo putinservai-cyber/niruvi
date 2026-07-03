@@ -5,18 +5,19 @@ from PyQt6.QtGui import QImage, QPainter, QPixmap
 
 try:
     from PyQt6.QtSvg import QSvgRenderer
+
     HAS_QSVG = True
 except ImportError:
     HAS_QSVG = False
 
 
 def to_png_bytes(data: bytes) -> bytes | None:
-    if data[:4] == b'\x89PNG':
+    if data[:4] == b"\x89PNG":
         return data
 
     if _is_svg_data(data):
         converted = _svg_to_png(data)
-        if converted and converted[:4] == b'\x89PNG':
+        if converted and converted[:4] == b"\x89PNG":
             return converted
         return None
 
@@ -26,7 +27,7 @@ def to_png_bytes(data: bytes) -> bytes | None:
         buf.open(QIODevice.OpenModeFlag.WriteOnly)
         image.save(buf, "PNG")
         result = bytes(buf.data())
-        if result[:4] == b'\x89PNG':
+        if result[:4] == b"\x89PNG":
             return result
     return None
 
@@ -36,7 +37,9 @@ def get_pixmap_from_data(data: bytes, size: int = 64) -> QPixmap | None:
     if png:
         pixmap = QPixmap()
         if pixmap.loadFromData(png):
-            return pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            return pixmap.scaled(
+                size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
     return None
 
 
@@ -44,7 +47,9 @@ def get_pixmap_from_file(path: str, size: int = 64) -> QPixmap | None:
     try:
         pixmap = QPixmap(path)
         if not pixmap.isNull():
-            return pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            return pixmap.scaled(
+                size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
     except Exception:
         pass
     return None
@@ -89,18 +94,21 @@ def _svg_to_png(data: bytes, target_size: int = 256) -> bytes | None:
             buf.open(QIODevice.OpenModeFlag.WriteOnly)
             image.save(buf, "PNG")
             result = bytes(buf.data())
-            if result[:4] == b'\x89PNG':
+            if result[:4] == b"\x89PNG":
                 return result
         except Exception:
             pass
 
     try:
         import subprocess
+
         rsvg = subprocess.run(
             ["rsvg-convert", "-w", str(target_size), "-h", str(target_size), "-f", "png"],
-            input=data, capture_output=True, timeout=10,
+            input=data,
+            capture_output=True,
+            timeout=10,
         )
-        if rsvg.returncode == 0 and rsvg.stdout[:4] == b'\x89PNG':
+        if rsvg.returncode == 0 and rsvg.stdout[:4] == b"\x89PNG":
             return rsvg.stdout
     except Exception:
         pass
@@ -110,7 +118,7 @@ def _svg_to_png(data: bytes, target_size: int = 256) -> bytes | None:
 
 def _is_svg_data(data: bytes) -> bool:
     try:
-        head = data[:200].decode('utf-8', errors='ignore').strip().lower()
+        head = data[:200].decode("utf-8", errors="ignore").strip().lower()
         return head.startswith("<?xml") or head.startswith("<svg")
     except Exception:
         return False

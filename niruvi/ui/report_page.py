@@ -27,9 +27,7 @@ class ReportPage(QWidget):
 
         title_layout = QHBoxLayout()
         icon_label = QLabel()
-        icon_label.setPixmap(
-            get_icon("bug", "tools-report-bug", "dialog-warning").pixmap(32, 32)
-        )
+        icon_label.setPixmap(get_icon("bug", "tools-report-bug", "dialog-warning").pixmap(32, 32))
         title_layout.addWidget(icon_label)
 
         title = QLabel("Report a Bug or Suggest a Feature")
@@ -48,9 +46,7 @@ class ReportPage(QWidget):
         subtitle.setWordWrap(True)
         main_layout.addWidget(subtitle)
 
-        main_layout.addWidget(
-            QFrame(frameShape=QFrame.Shape.HLine, frameShadow=QFrame.Shadow.Sunken)
-        )
+        main_layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine, frameShadow=QFrame.Shadow.Sunken))
 
         self.btn_github = QPushButton(
             get_icon("go-next", "arrow-right", "media-skip-forward"), "Open GitHub Issues Page"
@@ -68,6 +64,4 @@ class ReportPage(QWidget):
 
         main_layout.addStretch()
 
-        self.btn_github.clicked.connect(
-            lambda: webbrowser.open(REPORT_ISSUES_URL)
-        )
+        self.btn_github.clicked.connect(lambda: webbrowser.open(REPORT_ISSUES_URL))

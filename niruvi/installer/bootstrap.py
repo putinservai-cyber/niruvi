@@ -6,18 +6,24 @@ from niruvi.installer.apprun import apprun_script
 from niruvi.installer.scripts import build_install_script, uninstall_script, updater_script
 
 
-def inject_bootstrap(appdir: str, app_name: str, app_version: str = "",
-                     exec_name: str = "", installer_style: str = "wizard",
-                     brand_name: str = "", license_file: str = "",
-                     components: list | None = None,
-                     pre_install_script: str = "",
-                     post_install_script: str = "",
-                     enable_rollback: bool = True,
-                     enable_silent: bool = True,
-                     updater_url: str = "",
-                     welcome_message: str = "",
-                     finish_message: str = "",
-                     enable_launch_at_finish: bool = True):
+def inject_bootstrap(
+    appdir: str,
+    app_name: str,
+    app_version: str = "",
+    exec_name: str = "",
+    installer_style: str = "wizard",
+    brand_name: str = "",
+    license_file: str = "",
+    components: list | None = None,
+    pre_install_script: str = "",
+    post_install_script: str = "",
+    enable_rollback: bool = True,
+    enable_silent: bool = True,
+    updater_url: str = "",
+    welcome_message: str = "",
+    finish_message: str = "",
+    enable_launch_at_finish: bool = True,
+):
     appdir_path = Path(appdir)
     install_dir = appdir_path / ".niruvi-install"
     install_dir.mkdir(parents=True, exist_ok=True)
@@ -69,13 +75,10 @@ def inject_bootstrap(appdir: str, app_name: str, app_version: str = "",
         config["post_install_content"] = "embedded"
 
     config_json = {
-        k: v for k, v in config.items()
-        if k not in ("license_content", "pre_install_content", "post_install_content")
+        k: v for k, v in config.items() if k not in ("license_content", "pre_install_content", "post_install_content")
     }
     config_json["install_dir"] = os.path.expanduser("~/Applications")
-    (install_dir / "config.json").write_text(
-        _json.dumps(config_json, indent=2)
-    )
+    (install_dir / "config.json").write_text(_json.dumps(config_json, indent=2))
 
     wizard_src_path = Path(__file__).parent.parent / "ui" / "self_installer_wizard.py"
     if wizard_src_path.exists():

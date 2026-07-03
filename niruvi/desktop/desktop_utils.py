@@ -125,7 +125,7 @@ def _resolve_icon(app_dir: str, desktop_lines: list[str] | None = None) -> str |
                 desktop_lines = f.readlines()
         except OSError:
             return None
-    for line in (desktop_lines or []):
+    for line in desktop_lines or []:
         if line.startswith("Icon="):
             raw = line.split("=", 1)[1].strip()
             return find_icon_in_appdir(app_dir, raw)
@@ -332,25 +332,25 @@ def rewrite_desktop_entry(app_name: str, new_exec: str, new_icon: str | None = N
 def parse_desktop_file_content(content: str) -> dict:
     info = {}
     in_desktop = False
-    for line in content.split('\n'):
+    for line in content.split("\n"):
         line = line.strip()
-        if line == '[Desktop Entry]':
+        if line == "[Desktop Entry]":
             in_desktop = True
             continue
-        if in_desktop and line.startswith('[') and line.endswith(']'):
+        if in_desktop and line.startswith("[") and line.endswith("]"):
             break
-        if in_desktop and '=' in line:
-            key, val = line.split('=', 1)
+        if in_desktop and "=" in line:
+            key, val = line.split("=", 1)
             key = key.strip()
             val = val.strip()
-            if key in ('Name', 'Comment', 'Icon', 'Exec', 'Categories', 'Type', 'Version'):
+            if key in ("Name", "Comment", "Icon", "Exec", "Categories", "Type", "Version"):
                 info[key] = val
     return info
 
 
 def parse_desktop_file(file_path: str) -> dict:
     try:
-        with open(file_path, encoding='utf-8', errors='ignore') as f:
+        with open(file_path, encoding="utf-8", errors="ignore") as f:
             return parse_desktop_file_content(f.read())
     except OSError:
         return {}
@@ -377,7 +377,8 @@ def register_mime_handler(app_name: str, desktop_name: str | None = None) -> boo
         try:
             subprocess.run(
                 ["xdg-mime", "default", desktop_file, mt],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
             any_success = True
         except Exception:
@@ -406,6 +407,3 @@ def register_mime_handler(app_name: str, desktop_name: str | None = None) -> boo
         pass
 
     return any_success
-
-
-

@@ -22,6 +22,7 @@ class TestRepairAction:
     def test_exception(self):
         def _fail():
             raise ValueError("oops")
+
         action = RepairAction("test", _fail)
         assert action.execute() is False
         assert action.error == "oops"

@@ -60,7 +60,9 @@ class ToggleSwitch(QWidget):
         track_color = QColor(76, 175, 80) if self._checked else QColor(180, 180, 180)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(track_color)
-        painter.drawRoundedRect(int((w - w * 0.85) / 2), int(track_y), int(w * 0.85), int(track_h), int(radius), int(radius))
+        painter.drawRoundedRect(
+            int((w - w * 0.85) / 2), int(track_y), int(w * 0.85), int(track_h), int(radius), int(radius)
+        )
 
         margin = 2
         handle_size = h - margin * 2

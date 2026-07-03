@@ -169,35 +169,31 @@ class SettingsPage(QWidget):
         self.create_desktop_row = _ToggleRow(
             "Create desktop entries (show in app menu)",
             "When enabled, a .desktop file will be created in "
-            "~/.local/share/applications so the app appears in your DE's launcher"
+            "~/.local/share/applications so the app appears in your DE's launcher",
         )
         self.create_desktop_row.setChecked(_settings.get("create_desktop", True))
         defaults_layout.addWidget(self.create_desktop_row)
 
         self.shortcut_row = _ToggleRow(
-            "Create desktop shortcut",
-            "When enabled, a shortcut icon will be placed on your Desktop"
+            "Create desktop shortcut", "When enabled, a shortcut icon will be placed on your Desktop"
         )
         self.shortcut_row.setChecked(_settings.get("create_shortcut", False))
         defaults_layout.addWidget(self.shortcut_row)
 
         self.portable_home_row = _ToggleRow(
-            "Create portable home folder",
-            "Creates a .home folder next to the app for persistent user data"
+            "Create portable home folder", "Creates a .home folder next to the app for persistent user data"
         )
         self.portable_home_row.setChecked(_settings.get("portable_home", False))
         defaults_layout.addWidget(self.portable_home_row)
 
         self.portable_config_row = _ToggleRow(
-            "Create portable config folder",
-            "Creates a .config folder next to the app for persistent configuration"
+            "Create portable config folder", "Creates a .config folder next to the app for persistent configuration"
         )
         self.portable_config_row.setChecked(_settings.get("portable_config", False))
         defaults_layout.addWidget(self.portable_config_row)
 
         self.auto_scan_row = _ToggleRow(
-            "Auto-scan before install",
-            "Runs a security scan on every AppImage before installing it"
+            "Auto-scan before install", "Runs a security scan on every AppImage before installing it"
         )
         self.auto_scan_row.setChecked(_settings.get("auto_scan_before_install", True))
         defaults_layout.addWidget(self.auto_scan_row)
@@ -210,20 +206,16 @@ class SettingsPage(QWidget):
 
         self.shield_enabled_row = _ToggleRow(
             "Enable process hardening for new installations",
-            "Applies rlimits, memory locking, ptrace disable, and malloc hardening"
+            "Applies rlimits, memory locking, ptrace disable, and malloc hardening",
         )
         self.shield_enabled_row.setChecked(_settings.get("sandbox_default_enabled", True))
         shield_layout.addWidget(self.shield_enabled_row)
 
         avail = self._detect_sandbox_status()
         if avail:
-            status_label = QLabel(
-                f"<span style='color:green;'>Available: {avail}</span>"
-            )
+            status_label = QLabel(f"<span style='color:green;'>Available: {avail}</span>")
         else:
-            status_label = QLabel(
-                "<span style='color:orange;'>Process hardening not available</span>"
-            )
+            status_label = QLabel("<span style='color:orange;'>Process hardening not available</span>")
         status_label.setWordWrap(True)
         status_label.setStyleSheet("font-size: 11px;")
         shield_layout.addWidget(status_label)
@@ -255,7 +247,7 @@ class SettingsPage(QWidget):
         self.auto_update_apps_row = _ToggleRow(
             "Auto-update apps in background",
             "When enabled, Niruvi periodically checks all apps that have auto-update "
-            "enabled and notifies you of available updates"
+            "enabled and notifies you of available updates",
         )
         self.auto_update_apps_row.setChecked(_settings.get("auto_update_apps", False))
         update_layout.addWidget(self.auto_update_apps_row)
@@ -280,10 +272,7 @@ class SettingsPage(QWidget):
 
         hooks_dir = os.path.expanduser("~/.config/niruvi/hooks")
         os.makedirs(hooks_dir, exist_ok=True)
-        hooks_label = QLabel(
-            f"Hooks directory:<br>"
-            f"<code>{hooks_dir}</code>"
-        )
+        hooks_label = QLabel(f"Hooks directory:<br><code>{hooks_dir}</code>")
         hooks_label.setWordWrap(True)
         hooks_label.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
         hooks_layout.addWidget(hooks_label)
@@ -298,7 +287,7 @@ class SettingsPage(QWidget):
         hooks_layout.addWidget(hooks_desc)
 
         open_hooks_btn = QPushButton(get_icon("folder-open"), "Open Hooks Directory")
-        open_hooks_btn.clicked.connect(lambda: subprocess.Popen(['xdg-open', hooks_dir], start_new_session=True))
+        open_hooks_btn.clicked.connect(lambda: subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True))
         hooks_layout.addWidget(open_hooks_btn)
 
         layout.addWidget(hooks_group)
@@ -308,9 +297,7 @@ class SettingsPage(QWidget):
 
         self.icon_theme_radio = QRadioButton("Install icon to theme directory (recommended)")
         self.icon_theme_radio.setChecked(_settings.get("icon_in_theme", True))
-        self.icon_theme_radio.setToolTip(
-            "Copies the icon to ~/.local/share/icons/hicolor/ so all DEs can find it"
-        )
+        self.icon_theme_radio.setToolTip("Copies the icon to ~/.local/share/icons/hicolor/ so all DEs can find it")
         icon_layout.addWidget(self.icon_theme_radio)
 
         self.icon_absolute_radio = QRadioButton("Use absolute path to icon inside app dir")
@@ -372,9 +359,7 @@ class SettingsPage(QWidget):
         theme_row.addStretch()
         theme_layout.addLayout(theme_row)
 
-        theme_desc = QLabel(
-            "Changes take effect immediately after applying settings."
-        )
+        theme_desc = QLabel("Changes take effect immediately after applying settings.")
         theme_desc.setWordWrap(True)
         theme_desc.setStyleSheet("font-size: 11px; color: palette(disabled-text);")
         theme_layout.addWidget(theme_desc)
@@ -389,7 +374,7 @@ class SettingsPage(QWidget):
             "Delete source AppImage after successful installation",
             "When enabled, the original .AppImage file is deleted after it is "
             "successfully installed. Helps prevent duplicate files and saves disk space. "
-            "Downloaded files from the catalog are always temporary."
+            "Downloaded files from the catalog are always temporary.",
         )
         self.remove_source_row.setChecked(_settings.get("auto_remove_source", False))
         storage_layout.addWidget(self.remove_source_row)
@@ -401,17 +386,14 @@ class SettingsPage(QWidget):
         audio_layout.setSpacing(4)
 
         self.sound_effects_row = _ToggleRow(
-            "Play sound effects",
-            "Play sounds for installation, errors, and navigation"
+            "Play sound effects", "Play sounds for installation, errors, and navigation"
         )
         self.sound_effects_row.setChecked(_settings.get("sound_effects_enabled", True))
         audio_layout.addWidget(self.sound_effects_row)
 
         layout.addWidget(audio_group)
 
-        help_label = QLabel(
-            '<a href="#">Changes take effect on the next install or build.</a>'
-        )
+        help_label = QLabel('<a href="#">Changes take effect on the next install or build.</a>')
         help_label.setStyleSheet("color: palette(disabled-text);")
         help_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(help_label)
@@ -421,6 +403,7 @@ class SettingsPage(QWidget):
     def _detect_sandbox_status(self) -> str:
         try:
             from niruvi.core.sandbox import check_shield_available
+
             info = check_shield_available()
             parts = []
             if info.get("hardening"):
@@ -443,6 +426,7 @@ class SettingsPage(QWidget):
     def _detect_backend_details(self) -> dict:
         try:
             from niruvi.core.sandbox import check_bwrap_available, check_firejail_available
+
             return {
                 "firejail": check_firejail_available().get("available", False),
                 "bwrap": check_bwrap_available().get("available", False),
@@ -452,10 +436,9 @@ class SettingsPage(QWidget):
 
     def _update_thumbnailer_status(self):
         from niruvi.desktop.thumbnailer import check_thumbnailer_installed
+
         if check_thumbnailer_installed():
-            self.tn_status_label.setText(
-                "<span style='color:green;'>✓ Thumbnailer is installed</span>"
-            )
+            self.tn_status_label.setText("<span style='color:green;'>✓ Thumbnailer is installed</span>")
             self.btn_install_tn.setEnabled(False)
             self.btn_remove_tn.setEnabled(True)
         else:
@@ -467,25 +450,30 @@ class SettingsPage(QWidget):
 
     def _install_thumbnailer(self):
         from niruvi.desktop.thumbnailer import install_thumbnailer
+
         err = install_thumbnailer()
         if err:
             from niruvi.utils.sound_manager import play as play_sound
+
             play_sound("error")
             QMessageBox.critical(self, "Install Failed", err)
         else:
             QMessageBox.information(
-                self, "Thumbnailer Installed",
+                self,
+                "Thumbnailer Installed",
                 "The AppImage thumbnailer has been installed.\n\n"
                 "You may need to restart your file manager "
-                "or log out and back in for changes to take effect."
+                "or log out and back in for changes to take effect.",
             )
         self._update_thumbnailer_status()
 
     def _remove_thumbnailer(self):
         from niruvi.desktop.thumbnailer import remove_thumbnailer
+
         err = remove_thumbnailer()
         if err:
             from niruvi.utils.sound_manager import play as play_sound
+
             play_sound("error")
             QMessageBox.critical(self, "Remove Failed", err)
         else:
@@ -493,15 +481,15 @@ class SettingsPage(QWidget):
         self._update_thumbnailer_status()
 
     def _browse_install_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(
-            self, "Select installation directory", self.install_dir_edit.text()
-        )
+        dir_path = QFileDialog.getExistingDirectory(self, "Select installation directory", self.install_dir_edit.text())
         if dir_path:
             if not _is_local_path(dir_path):
                 from niruvi.utils.sound_manager import play as play_sound
+
                 play_sound("warning")
                 QMessageBox.warning(
-                    self, "Invalid Path",
+                    self,
+                    "Invalid Path",
                     "Cannot use a removable drive or phone path as the install directory.<br><br>"
                     "Please choose a folder on your local filesystem (e.g. <code>~/Applications</code>).",
                 )
@@ -510,6 +498,7 @@ class SettingsPage(QWidget):
 
     def _on_theme_changed(self):
         from niruvi.utils.theme_engine import ThemeMode, get_theme_engine
+
         mode_map = {"auto": ThemeMode.AUTO, "light": ThemeMode.LIGHT, "dark": ThemeMode.DARK}
         mode = mode_map.get(self.theme_combo.currentData(), ThemeMode.AUTO)
         get_theme_engine().mode = mode
@@ -537,11 +526,12 @@ class SettingsPage(QWidget):
         install_dir = self.install_dir_edit.text()
         if not _is_local_path(install_dir):
             from niruvi.utils.sound_manager import play as play_sound
+
             play_sound("warning")
             QMessageBox.warning(
-                self, "Invalid Path",
-                "Cannot set install directory to a removable drive or phone path.<br><br>"
-                "Reverting to previous value.",
+                self,
+                "Invalid Path",
+                "Cannot set install directory to a removable drive or phone path.<br><br>Reverting to previous value.",
             )
             self.install_dir_edit.setText(_settings.get("install_dir", DEFAULT_INSTALL_DIR))
             return False
@@ -571,25 +561,26 @@ class SettingsDialog(QDialog):
         self._page = SettingsPage(self)
         layout = QVBoxLayout(self)
         layout.addWidget(self._page)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
     def accept(self):
         from niruvi.utils.sound_manager import play as play_sound
+
         if self._page.apply():
             play_sound("click")
             super().accept()
 
     def reject(self):
         from niruvi.utils.sound_manager import play as play_sound
+
         if self._page._has_changes():
             play_sound("warning")
             reply = QMessageBox.question(
-                self, "Unsaved Changes",
+                self,
+                "Unsaved Changes",
                 "You have unsaved changes. Discard them?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )

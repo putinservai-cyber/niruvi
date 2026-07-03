@@ -42,10 +42,7 @@ def _fix_qt_platform_path():
     ]
     for p in candidates:
         platforms = os.path.join(p, "platforms")
-        if os.path.isdir(platforms) and any(
-            f.startswith("libq") for f in os.listdir(platforms)
-            if f.endswith(".so")
-        ):
+        if os.path.isdir(platforms) and any(f.startswith("libq") for f in os.listdir(platforms) if f.endswith(".so")):
             os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
             return
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
@@ -174,6 +171,7 @@ def run_self_install():
         has_cli_flags = any(a in sys.argv for a in ("--help", "-h", "--version", "--install", "--uninstall"))
         if has_cli_flags:
             from niruvi.main import main
+
             main()
             return
 
@@ -194,7 +192,11 @@ def run_self_install():
 
         if reply == QMessageBox.StandardButton.Yes:
             progress = QProgressDialog(
-                f"Installing {__app_name__}...", None, 0, 0, None,
+                f"Installing {__app_name__}...",
+                None,
+                0,
+                0,
+                None,
             )
             progress.setWindowTitle("Installing")
             progress.setWindowModality(Qt.WindowModality.ApplicationModal)
@@ -221,15 +223,18 @@ def run_self_install():
 
                 p = subprocess.Popen(
                     [os.path.join(INSTALL_DIR, "AppRun")],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
                 import time
+
                 time.sleep(1.5)
                 if p.poll() is not None and p.returncode != 0:
                     # Installed launch failed — show AppManager from here
                     progress.close()
                     QMessageBox.warning(
-                        None, "Launch Issue",
+                        None,
+                        "Launch Issue",
                         "Niruvi was installed but the launched instance exited "
                         "unexpectedly. The portable instance will open instead.",
                     )
@@ -240,6 +245,7 @@ def run_self_install():
                 progress.close()
                 try:
                     from niruvi.utils.sound_manager import play as play_sound
+
                     play_sound("error")
                 except ImportError:
                     pass
@@ -264,6 +270,7 @@ def run_self_install():
         sys.exit(app.exec())
 
     from niruvi.main import main
+
     main()
 
 

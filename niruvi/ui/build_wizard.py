@@ -182,12 +182,13 @@ class ProjectSetupPage(QWizardPage):
             self.source_edit.setText(path)
             if not self.app_name_edit.text():
                 stem = Path(path).stem
-                name = stem.split('-')[0] if '-' in stem else stem
+                name = stem.split("-")[0] if "-" in stem else stem
                 self.app_name_edit.setText(name)
 
     def _browse_source(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select source package",
+            self,
+            "Select source package",
             os.path.expanduser("~"),
             "Package files (*.deb *.rpm *.tar.gz *.tar.xz *.tar.bz2 *.tgz *.txz *.tbz2 *.tar);;All files (*)",
         )
@@ -195,12 +196,14 @@ class ProjectSetupPage(QWizardPage):
             self.source_edit.setText(path)
             if not self.app_name_edit.text():
                 stem = Path(path).stem
-                name = stem.split('-')[0] if '-' in stem else stem
+                name = stem.split("-")[0] if "-" in stem else stem
                 self.app_name_edit.setText(name)
 
     def _browse_folder(self):
         dir_path = QFileDialog.getExistingDirectory(
-            self, "Select project folder", os.path.expanduser("~"),
+            self,
+            "Select project folder",
+            os.path.expanduser("~"),
         )
         if dir_path:
             self.folder_edit.setText(dir_path)
@@ -225,7 +228,9 @@ class ProjectSetupPage(QWizardPage):
 
     def _browse_icon(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select icon", os.path.expanduser("~"),
+            self,
+            "Select icon",
+            os.path.expanduser("~"),
             "Images (*.png *.svg *.xpm);;All files (*)",
         )
         if path:
@@ -260,9 +265,7 @@ class DependenciesPage(QWizardPage):
 
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setStyleSheet(
-            "font-family: monospace; font-size: 10pt;"
-        )
+        self.result_text.setStyleSheet("font-family: monospace; font-size: 10pt;")
         layout.addWidget(self.result_text, 1)
 
         self.status_label = QLabel("Click 'Scan Dependencies' to analyze the AppDir.")
@@ -283,10 +286,12 @@ class DependenciesPage(QWizardPage):
                 appdir = src
             else:
                 import tempfile
-                tmpdir = tempfile.mkdtemp(prefix='niruvi-depscan-')
+
+                tmpdir = tempfile.mkdtemp(prefix="niruvi-depscan-")
                 from niruvi.build.page import detect_package_type, extract_package
+
                 pkg_type = detect_package_type(src)
-                if pkg_type == 'unknown':
+                if pkg_type == "unknown":
                     self.result_text.setPlainText(f"Unsupported package type: {Path(src).suffix}")
                     return
                 ok, err = extract_package(src, tmpdir)
@@ -303,9 +308,9 @@ class DependenciesPage(QWizardPage):
                     fp = os.path.join(root, f)
                     if os.path.isfile(fp) and os.access(fp, os.X_OK):
                         try:
-                            with open(fp, 'rb') as fh:
+                            with open(fp, "rb") as fh:
                                 header = fh.read(4)
-                            if header == b'\x7fELF':
+                            if header == b"\x7fELF":
                                 binaries.add(fp)
                         except Exception:
                             pass
@@ -319,18 +324,16 @@ class DependenciesPage(QWizardPage):
             missing_total = set()
             for bp in sorted(binaries):
                 try:
-                    proc = shutil.which('ldd')
+                    proc = shutil.which("ldd")
                     if not proc:
                         self.result_text.setPlainText("'ldd' not found on this system.")
                         return
-                    result = subprocess.run(
-                        ['ldd', bp], capture_output=True, text=True, timeout=30
-                    )
+                    result = subprocess.run(["ldd", bp], capture_output=True, text=True, timeout=30)
                     rel = os.path.relpath(bp, appdir)
                     results.append(f"\n--- {rel} ---")
                     not_found = 0
                     for line in result.stdout.splitlines():
-                        if 'not found' in line:
+                        if "not found" in line:
                             parts = line.strip().split()
                             if parts:
                                 missing_total.add(parts[0])
@@ -345,7 +348,7 @@ class DependenciesPage(QWizardPage):
                     results.append(f"\n--- {rel} ---")
                     results.append(f"  Error: {e}")
 
-            self.result_text.setPlainText('\n'.join(results))
+            self.result_text.setPlainText("\n".join(results))
             total_binaries = len(binaries)
             total_missing = len(missing_total)
             if total_missing:
@@ -353,9 +356,7 @@ class DependenciesPage(QWizardPage):
                     f"Scanned {total_binaries} binaries — {total_missing} missing libraries detected."
                 )
             else:
-                self.status_label.setText(
-                    f"Scanned {total_binaries} binaries — all libraries resolved."
-                )
+                self.status_label.setText(f"Scanned {total_binaries} binaries — all libraries resolved.")
         except Exception as e:
             self.result_text.setPlainText(f"Scan failed: {e}")
             self.status_label.setText("Dependency scan encountered an error.")
@@ -436,6 +437,7 @@ class BuildConfigPage(QWizardPage):
 
     def _refresh_signing_keys(self):
         from niruvi.core.signing import list_secret_keys
+
         self.sign_key_combo.clear()
         self.sign_key_combo.addItem("(default key)", "")
         for key in list_secret_keys():
@@ -443,9 +445,7 @@ class BuildConfigPage(QWizardPage):
             self.sign_key_combo.addItem(label, key.fingerprint)
 
     def _browse_output(self):
-        dir_path = QFileDialog.getExistingDirectory(
-            self, "Select output directory", self.output_edit.text()
-        )
+        dir_path = QFileDialog.getExistingDirectory(self, "Select output directory", self.output_edit.text())
         if dir_path:
             self.output_edit.setText(dir_path)
 
@@ -507,6 +507,7 @@ class BuildProgressPage(QWizardPage):
     def _launch(self):
         if self._out_path and os.path.isfile(self._out_path):
             import subprocess
+
             try:
                 subprocess.Popen([self._out_path], start_new_session=True)
             except Exception as e:
@@ -538,7 +539,8 @@ class BuildProgressPage(QWizardPage):
         self._copy_to_managed = config.copy_to_managed_check.isChecked()
 
         self._worker = BuildWorker(
-            src, output_dir,
+            src,
+            output_dir,
             app_name=app_name,
             app_version=app_version,
             self_installing=False,
@@ -574,6 +576,7 @@ class BuildProgressPage(QWizardPage):
             self.log_text.append("\nSigning AppImage...")
             try:
                 from niruvi.core.signing import sign_appimage
+
                 sig_path = sign_appimage(out_path, self._sign_key)
                 self.log_text.append(f"Signed: {sig_path}")
             except Exception as e:
@@ -591,6 +594,7 @@ class BuildProgressPage(QWizardPage):
         import traceback
 
         from niruvi.utils.sound_manager import play as play_sound
+
         play_sound("error")
         suggestions = ErrorReportDialog.suggest_for_build_error(msg)
         dlg = ErrorReportDialog(
@@ -664,26 +668,34 @@ class BuildWizard(QWizard):
         sha256 = ""
         app_type = ""
         try:
-            with open(out_path, 'rb') as f:
+            with open(out_path, "rb") as f:
                 header = f.read(20)
-                is_elf = header[:4] == b'\x7fELF'
+                is_elf = header[:4] == b"\x7fELF"
                 if is_elf and len(header) >= 20:
                     ei_class = header[4]
                     ei_data = header[5]
                     e_machine_bytes = header[18:20]
-                    arch_map = {0: "None", 3: "i386", 62: "x86_64",
-                                40: "ARM", 183: "AArch64", 20: "PowerPC",
-                                21: "PowerPC64", 43: "SPARC"}
+                    arch_map = {
+                        0: "None",
+                        3: "i386",
+                        62: "x86_64",
+                        40: "ARM",
+                        183: "AArch64",
+                        20: "PowerPC",
+                        21: "PowerPC64",
+                        43: "SPARC",
+                    }
                     arch = "32-bit " if ei_class == 1 else "64-bit " if ei_class == 2 else ""
                     arch += "LE" if ei_data == 1 else "BE" if ei_data == 2 else ""
                     import struct
-                    e_machine = struct.unpack('<H' if ei_data == 1 else '>H', e_machine_bytes)[0]
+
+                    e_machine = struct.unpack("<H" if ei_data == 1 else ">H", e_machine_bytes)[0]
                     arch_name = arch_map.get(e_machine, f"machine={e_machine}")
                     architecture = f"{arch} {arch_name}"
                     if len(header) >= 12:
                         f.seek(8)
                         type_check = f.read(4)
-                        app_type = "Type 2" if type_check[:2] == b'AI' else "Type 1"
+                        app_type = "Type 2" if type_check[:2] == b"AI" else "Type 1"
                 f.seek(0)
                 sha256 = hashlib.sha256(f.read()).hexdigest()
         except Exception:
@@ -716,8 +728,8 @@ class BuildWizard(QWizard):
             warnings.append("AppImage is not executable. Users will need: chmod +x")
         is_elf = False
         try:
-            with open(path, 'rb') as f:
-                is_elf = f.read(4) == b'\x7fELF'
+            with open(path, "rb") as f:
+                is_elf = f.read(4) == b"\x7fELF"
             if not is_elf:
                 warnings.append("File does not have a valid ELF header.")
         except Exception:
@@ -725,7 +737,9 @@ class BuildWizard(QWizard):
         try:
             result = subprocess.run(
                 [path, "--appimage-help"],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             if result.returncode != 0:
                 warnings.append(f"AppImage runtime check failed (exit {result.returncode}).")
@@ -755,14 +769,16 @@ class BuildWizard(QWizard):
             },
         }
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Project", os.path.expanduser("~"),
+            self,
+            "Save Project",
+            os.path.expanduser("~"),
             PROJECT_FILE_FILTER,
         )
         if path:
-            if not path.endswith('.niruviproject') and not path.endswith('.json'):
-                path += '.niruviproject'
+            if not path.endswith(".niruviproject") and not path.endswith(".json"):
+                path += ".niruviproject"
             try:
-                with open(path, 'w') as f:
+                with open(path, "w") as f:
                     json.dump(data, f, indent=2)
                 self._current_project_path = path
                 self.setWindowTitle(f"Build AppImage — {Path(path).name}")
@@ -771,7 +787,9 @@ class BuildWizard(QWizard):
 
     def _load_project(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Load Project", os.path.expanduser("~"),
+            self,
+            "Load Project",
+            os.path.expanduser("~"),
             PROJECT_FILE_FILTER,
         )
         if not path:

@@ -45,11 +45,14 @@ def _extract_squashfs(appimage_path: str, offset: int, dest: str) -> bool:
             squash_path = tmp.name
         subprocess.run(
             ["dd", f"skip={offset}", "iflag=skip_bytes", f"if={appimage_path}", f"of={squash_path}"],
-            capture_output=True, timeout=30, check=True,
+            capture_output=True,
+            timeout=30,
+            check=True,
         )
         proc = subprocess.Popen(
             ["unsquashfs", "-d", dest, "-force", squash_path],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         proc.communicate(timeout=120)
         Path(squash_path).unlink(missing_ok=True)
@@ -70,10 +73,10 @@ def extract_safely(appimage_path: str, dest: str) -> bool:
     try:
         meta = AppImageMetadata(appimage_path)
         offset = meta.payload_offset
-        fs_type = getattr(meta, 'fs_type', 'squashfs')
+        fs_type = getattr(meta, "fs_type", "squashfs")
     except Exception:
         return False
 
-    if fs_type == 'dwarfs':
+    if fs_type == "dwarfs":
         return _extract_dwarfs(appimage_path, offset, dest)
     return _extract_squashfs(appimage_path, offset, dest)

@@ -49,42 +49,47 @@ class TestManifestCreation:
 
     def test_invalid_install_type(self):
         with pytest.raises(ManifestError, match="Invalid install type"):
-            Manifest({
-                "manifest_version": "1.0",
-                "app_id": "test",
-                "app_name": "test",
-                "version": "1.0",
-                "build": {},
-                "installer": {"type": "invalid_type"},
-            })
+            Manifest(
+                {
+                    "manifest_version": "1.0",
+                    "app_id": "test",
+                    "app_name": "test",
+                    "version": "1.0",
+                    "build": {},
+                    "installer": {"type": "invalid_type"},
+                }
+            )
 
     def test_invalid_update_channel(self):
         with pytest.raises(ManifestError, match="Invalid update channel"):
-            Manifest({
-                "manifest_version": "1.0",
-                "app_id": "test",
-                "app_name": "test",
-                "version": "1.0",
-                "build": {},
-                "update": {"channel": "unknown"},
-            })
+            Manifest(
+                {
+                    "manifest_version": "1.0",
+                    "app_id": "test",
+                    "app_name": "test",
+                    "version": "1.0",
+                    "build": {},
+                    "update": {"channel": "unknown"},
+                }
+            )
 
     def test_invalid_category(self):
         with pytest.raises(ManifestError, match="Invalid category"):
-            Manifest({
-                "manifest_version": "1.0",
-                "app_id": "test",
-                "app_name": "test",
-                "version": "1.0",
-                "build": {},
-                "category": "NotARealCategory",
-            })
+            Manifest(
+                {
+                    "manifest_version": "1.0",
+                    "app_id": "test",
+                    "app_name": "test",
+                    "version": "1.0",
+                    "build": {},
+                    "category": "NotARealCategory",
+                }
+            )
 
 
 class TestManifestSerialization:
     def test_to_json_roundtrip(self):
-        m1 = default_manifest("com.example.app", "MyApp", "1.0.0",
-                               publisher="Pub", description="Desc")
+        m1 = default_manifest("com.example.app", "MyApp", "1.0.0", publisher="Pub", description="Desc")
         json_str = m1.to_json()
         m2 = Manifest.from_json(json_str)
         assert m1 == m2
