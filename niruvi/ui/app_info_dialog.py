@@ -1,4 +1,3 @@
-import datetime
 import os
 import shutil
 import tempfile
@@ -35,6 +34,7 @@ from PyQt6.QtWidgets import (
 
 from niruvi._version import __app_name__
 from niruvi.utils import get_icon
+from niruvi.utils.styles import format_date, format_size
 
 _DETAILS_ICONS: dict[str, str] = {
     "Name": "tag",
@@ -59,69 +59,7 @@ from niruvi.core.sandbox import SandboxBackend, ShieldConfig, check_bwrap_availa
 from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils.sound_manager import play as play_sound
-
-_SIDEBAR_STYLE = """
-QListWidget {
-    border: none;
-    background: palette(window);
-    outline: none;
-    padding: 4px 0;
-}
-QListWidget::item {
-    padding: 8px 16px;
-    border-radius: 6px;
-    margin: 1px 4px;
-}
-QListWidget::item:selected {
-    background: palette(highlight);
-    color: palette(highlighted-text);
-}
-QListWidget::item:hover:!selected {
-    background: palette(midlight);
-}
-"""
-
-_TAB_PAGE_STYLE = """
-QGroupBox {
-    font-weight: bold;
-    border: 1px solid palette(mid);
-    border-radius: 8px;
-    margin-top: 10px;
-    padding: 16px 12px 12px 12px;
-    background: palette(window);
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    padding: 2px 10px;
-    background: palette(window);
-    border: none;
-}
-"""
-
-_CARD_STYLE = """
-#card {
-    background: palette(window);
-    border: 1px solid palette(midlight);
-    border-radius: 8px;
-    padding: 16px;
-}
-"""
-
-
-def _format_size(size_bytes: int) -> str:
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024**2:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024**3:
-        return f"{size_bytes / 1024**2:.1f} MB"
-    else:
-        return f"{size_bytes / 1024**3:.2f} GB"
-
-
-def _format_date(timestamp: float) -> str:
-    return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+from niruvi.utils.styles import BTN_STYLE, CARD_STYLE, SIDEBAR_STYLE, TAB_PAGE_STYLE
 
 
 class UpdateCheckWorker(QThread):
@@ -168,8 +106,8 @@ class FileTreeWidget(QTreeWidget):
                     is_dir = os.path.isdir(full)
                     item = QTreeWidgetItem(parent_item if parent_item else self.invisibleRootItem())
                     item.setText(0, name + "/" if is_dir else name)
-                    item.setText(1, _format_size(os.path.getsize(full)) if not is_dir else "")
-                    item.setText(2, _format_date(os.path.getmtime(full)))
+                    item.setText(1, format_size(os.path.getsize(full)) if not is_dir else "")
+                    item.setText(2, format_date(os.path.getmtime(full)))
                     item.setData(0, Qt.ItemDataRole.UserRole, full)
                     if is_dir:
                         add_dir(item, full)
@@ -182,8 +120,8 @@ class FileTreeWidget(QTreeWidget):
                 is_dir = os.path.isdir(full)
                 item = QTreeWidgetItem(self.invisibleRootItem())
                 item.setText(0, name + "/" if is_dir else name)
-                item.setText(1, _format_size(os.path.getsize(full)) if not is_dir else "")
-                item.setText(2, _format_date(os.path.getmtime(full)))
+                item.setText(1, format_size(os.path.getsize(full)) if not is_dir else "")
+                item.setText(2, format_date(os.path.getmtime(full)))
                 item.setData(0, Qt.ItemDataRole.UserRole, full)
                 if is_dir:
                     add_dir(item, full)
@@ -225,7 +163,7 @@ class AppInfoDialog(QDialog):
         # ── Header Card ──
         header_card = QWidget()
         header_card.setObjectName("card")
-        header_card.setStyleSheet(_CARD_STYLE)
+        header_card.setStyleSheet(CARD_STYLE)
         header_layout = QHBoxLayout(header_card)
         header_layout.setContentsMargins(16, 12, 16, 12)
         header_layout.setSpacing(16)
@@ -257,7 +195,7 @@ class AppInfoDialog(QDialog):
 
         version_str = self._info.get("version", "unknown")
         sub = QLabel(f"Version {version_str}  ·  {self._app_name}")
-        sub.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        sub.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
         info_col.addWidget(sub)
 
         header_layout.addLayout(info_col, 1)
@@ -270,7 +208,7 @@ class AppInfoDialog(QDialog):
 
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setStyleSheet(_SIDEBAR_STYLE)
+        self.sidebar.setStyleSheet(SIDEBAR_STYLE)
         self.sidebar.setFixedWidth(160)
         self.sidebar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
@@ -305,7 +243,7 @@ class AppInfoDialog(QDialog):
         # --- Tab 0: Details ---
         details_layout = pages[0][1]
         details_group = QGroupBox("Details")
-        details_group.setStyleSheet(_TAB_PAGE_STYLE)
+        details_group.setStyleSheet(TAB_PAGE_STYLE)
         details_grid = QVBoxLayout(details_group)
         details_grid.setSpacing(6)
 
@@ -323,7 +261,7 @@ class AppInfoDialog(QDialog):
             row.addWidget(icon_lbl)
             lbl = QLabel(label)
             lbl.setFixedWidth(100)
-            lbl.setStyleSheet("font-weight: bold; color: palette(disabled-text); font-size: 12px;")
+            lbl.setStyleSheet("font-weight: bold; color: palette(placeholderText); font-size: 12px;")
             val = QLabel(str(value))
             val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             val.setWordWrap(True)
@@ -335,15 +273,19 @@ class AppInfoDialog(QDialog):
         add_field("Name", self._app_name)
         add_field("Path", app_dir)
         if os.path.isdir(app_dir):
-            total = 0
-            for dirpath, _, files in os.walk(app_dir):
-                for f in files:
-                    try:
-                        total += os.path.getsize(os.path.join(dirpath, f))
-                    except OSError:
-                        pass
-            add_field("Size", _format_size(total))
-            add_field("Installed", _format_date(os.path.getctime(app_dir)))
+            cached_size = (record and record.size) or 0
+            if cached_size > 0:
+                add_field("Size", format_size(cached_size))
+            else:
+                total = 0
+                for dirpath, _, files in os.walk(app_dir):
+                    for f in files:
+                        try:
+                            total += os.path.getsize(os.path.join(dirpath, f))
+                        except OSError:
+                            pass
+                add_field("Size", format_size(total))
+            add_field("Installed", format_date(os.path.getctime(app_dir)))
         arch = (record and record.architecture) or self._info.get("architecture", "")
         if arch:
             add_field("Architecture", arch)
@@ -366,14 +308,14 @@ class AppInfoDialog(QDialog):
         # --- Tab 1: Customization ---
         cust_layout = pages[1][1]
         cust_group = QGroupBox("Customization")
-        cust_group.setStyleSheet(_TAB_PAGE_STYLE)
+        cust_group.setStyleSheet(TAB_PAGE_STYLE)
         cust_grid = QVBoxLayout(cust_group)
         cust_grid.setSpacing(8)
 
         name_row = QHBoxLayout()
         name_label = QLabel("Display name")
         name_label.setFixedWidth(120)
-        name_label.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        name_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
         name_row.addWidget(name_label)
         self.display_name_edit = QLineEdit()
         self.display_name_edit.setPlaceholderText("Override name (leave empty for default)")
@@ -388,7 +330,7 @@ class AppInfoDialog(QDialog):
         icon_row = QHBoxLayout()
         icon_label_2 = QLabel("Custom icon")
         icon_label_2.setFixedWidth(120)
-        icon_label_2.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        icon_label_2.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
         icon_row.addWidget(icon_label_2)
         self.custom_icon_preview = QLabel()
         self.custom_icon_preview.setFixedSize(24, 24)
@@ -406,7 +348,7 @@ class AppInfoDialog(QDialog):
         args_row = QHBoxLayout()
         args_label = QLabel("Run arguments")
         args_label.setFixedWidth(120)
-        args_label.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        args_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
         args_row.addWidget(args_label)
         self.run_args_edit = QLineEdit()
         self.run_args_edit.setPlaceholderText("e.g. --verbose --config=myconfig.conf")
@@ -419,7 +361,7 @@ class AppInfoDialog(QDialog):
         cust_grid.addLayout(args_row)
 
         env_label = QLabel("Environment variables")
-        env_label.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        env_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
         cust_grid.addWidget(env_label)
 
         self.env_table = QTableWidget()
@@ -435,10 +377,10 @@ class AppInfoDialog(QDialog):
 
         env_btn_row = QHBoxLayout()
         self.btn_add_env = QPushButton(get_icon("list-add"), "Add")
-        self.btn_add_env.clicked.connect(self._add_env_row)
+        self.btn_add_env.clicked.connect(lambda: (play_sound("click"), self._add_env_row()))
         env_btn_row.addWidget(self.btn_add_env)
         self.btn_remove_env = QPushButton(get_icon("list-remove"), "Remove Selected")
-        self.btn_remove_env.clicked.connect(self._remove_env_row)
+        self.btn_remove_env.clicked.connect(lambda: (play_sound("click"), self._remove_env_row()))
         env_btn_row.addWidget(self.btn_remove_env)
         self.btn_save_env = QPushButton(get_icon("document-save"), "Save")
         self.btn_save_env.clicked.connect(self._save_env_vars)
@@ -461,7 +403,7 @@ class AppInfoDialog(QDialog):
         # --- Tab 2: Process Isolation ---
         shield_layout = pages[2][1]
         shield_group = QGroupBox("Process Isolation")
-        shield_group.setStyleSheet(_TAB_PAGE_STYLE)
+        shield_group.setStyleSheet(TAB_PAGE_STYLE)
         shield_grid = QVBoxLayout(shield_group)
         shield_grid.setSpacing(6)
 
@@ -496,7 +438,7 @@ class AppInfoDialog(QDialog):
         shield_grid.addLayout(backend_row)
 
         sb_status = QLabel("Process hardening + portable isolation")
-        sb_status.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        sb_status.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         shield_grid.addWidget(sb_status)
 
         sb_btn_row = QHBoxLayout()
@@ -515,17 +457,17 @@ class AppInfoDialog(QDialog):
         # --- Tab 3: Updates ---
         update_layout = pages[3][1]
         update_group = QGroupBox("Updates")
-        update_group.setStyleSheet(_TAB_PAGE_STYLE)
+        update_group.setStyleSheet(TAB_PAGE_STYLE)
         update_grid = QVBoxLayout(update_group)
         update_grid.setSpacing(8)
 
         url_label_row = QHBoxLayout()
         url_lbl = QLabel("Update URL")
         url_lbl.setFixedWidth(120)
-        url_lbl.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        url_lbl.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
         url_label_row.addWidget(url_lbl)
         self.source_type_label = QLabel("")
-        self.source_type_label.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        self.source_type_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         url_label_row.addWidget(self.source_type_label, 1)
         update_grid.addLayout(url_label_row)
 
@@ -594,7 +536,7 @@ class AppInfoDialog(QDialog):
         # --- Tab 4: Files ---
         files_layout = pages[4][1]
         files_group = QGroupBox("Files")
-        files_group.setStyleSheet(_TAB_PAGE_STYLE)
+        files_group.setStyleSheet(TAB_PAGE_STYLE)
         files_inner = QVBoxLayout(files_group)
         if os.path.isdir(app_dir):
             tree = FileTreeWidget(app_dir)
@@ -610,7 +552,7 @@ class AppInfoDialog(QDialog):
         # ── Bottom Action Bar ──
         action_bar = QFrame()
         action_bar.setFrameShape(QFrame.Shape.NoFrame)
-        action_bar.setStyleSheet("background: palette(window); border-top: 1px solid palette(midlight);")
+        action_bar.setStyleSheet("background-color: palette(window); border-top: 1px solid palette(midlight);")
         action_layout = QHBoxLayout(action_bar)
         action_layout.setContentsMargins(20, 10, 20, 10)
         action_layout.setSpacing(8)
@@ -621,25 +563,30 @@ class AppInfoDialog(QDialog):
             f = self.btn_run.font()
             f.setBold(True)
             self.btn_run.setFont(f)
-            self.btn_run.clicked.connect(lambda: self._run_app())
+            self.btn_run.setStyleSheet(BTN_STYLE)
+            self.btn_run.clicked.connect(lambda: (play_sound("click"), self._run_app()))
             action_layout.addWidget(self.btn_run)
 
             self.btn_uninstall = QPushButton(get_icon("edit-delete"), "Uninstall")
-            self.btn_uninstall.clicked.connect(lambda: self._uninstall_app())
+            self.btn_uninstall.setStyleSheet(BTN_STYLE)
+            self.btn_uninstall.clicked.connect(lambda: (play_sound("click"), self._uninstall_app()))
             action_layout.addWidget(self.btn_uninstall)
 
         action_layout.addStretch()
 
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
-        close_btn.clicked.connect(self.accept)
+        close_btn.setStyleSheet(BTN_STYLE)
+        close_btn.clicked.connect(lambda: (play_sound("navigation"), self.accept()))
         action_layout.addWidget(close_btn)
 
         root.addWidget(action_bar)
 
     def _on_tab_changed(self, index: int):
+        play_sound("navigation")
         self.stack.setCurrentIndex(index)
 
     def _save_display_name(self):
+        play_sound("click")
         override = self.display_name_edit.text().strip()
         record = self._get_or_create_record()
         record.display_name_override = override
@@ -664,12 +611,14 @@ class AppInfoDialog(QDialog):
             InstallationRegistry().add(record)
             self._info["custom_icon_path"] = dest
             self._update_icon_preview()
+            play_sound("success")
             self._status(f"Custom icon set for {self._app_name}")
         except OSError as e:
             play_sound("error")
             QMessageBox.critical(self, "Error", f"Could not set custom icon:\n{e}")
 
     def _clear_custom_icon(self):
+        play_sound("click")
         record = self._get_or_create_record()
         record.custom_icon_path = ""
         InstallationRegistry().add(record)
@@ -702,6 +651,7 @@ class AppInfoDialog(QDialog):
         return record
 
     def _save_run_args(self):
+        play_sound("click")
         record = self._get_or_create_record()
         record.run_args = self.run_args_edit.text().strip()
         InstallationRegistry().add(record)
@@ -728,6 +678,7 @@ class AppInfoDialog(QDialog):
             self.env_table.removeRow(row)
 
     def _save_env_vars(self):
+        play_sound("click")
         env_vars = {}
         for i in range(self.env_table.rowCount()):
             key_item = self.env_table.item(i, 0)
@@ -742,6 +693,7 @@ class AppInfoDialog(QDialog):
         self._status(f"Environment variables saved for {self._app_name}")
 
     def _save_update_url(self):
+        play_sound("click")
         url = self.update_url_edit.text().strip()
         normalized = normalize_update_url(url) if url else ""
         record = self._get_or_create_record()
@@ -763,12 +715,14 @@ class AppInfoDialog(QDialog):
     def _auto_detect_source(self):
         url = self.update_url_edit.text().strip()
         if not url:
+            play_sound("warning")
             QMessageBox.information(self, "No URL", "Enter a GitHub or GitLab repository URL first.")
             return
         st = detect_source_type(url)
         if st == "github":
             repo = parse_github_repo(url)
             if repo:
+                play_sound("info")
                 QMessageBox.information(
                     self,
                     "GitHub Repository Detected",
@@ -778,6 +732,7 @@ class AppInfoDialog(QDialog):
         elif st == "gitlab":
             project = parse_gitlab_project(url)
             if project:
+                play_sound("info")
                 QMessageBox.information(
                     self,
                     "GitLab Project Detected",
@@ -785,10 +740,12 @@ class AppInfoDialog(QDialog):
                 )
             self._update_source_type_label()
         else:
+            play_sound("info")
             QMessageBox.information(self, "Direct URL", "This URL will be used as a direct download link for updates.")
         self._save_update_url()
 
     def _save_channel(self, channel: str):
+        play_sound("click")
         record = self._get_or_create_record()
         record.update_channel = channel
         InstallationRegistry().add(record)
@@ -805,9 +762,11 @@ class AppInfoDialog(QDialog):
             return
         prev_dir = self._info.get("path", "") + ".prev"
         if not os.path.isdir(prev_dir):
+            play_sound("info")
             QMessageBox.information(self, "No Backup", "No previous version found to revert to.")
             self.btn_revert.setEnabled(False)
             return
+        play_sound("warning")
         reply = QMessageBox.question(
             self,
             "Revert Version",
@@ -825,6 +784,7 @@ class AppInfoDialog(QDialog):
             os.rename(prev_dir, app_dir)
             shutil.rmtree(temp_dir, ignore_errors=True)
             self.btn_revert.setEnabled(os.path.isdir(app_dir + ".prev"))
+            play_sound("success")
             QMessageBox.information(self, "Reverted", f"{app_name} has been reverted to the previous version.")
         except OSError as e:
             play_sound("error")
@@ -833,6 +793,7 @@ class AppInfoDialog(QDialog):
     def _check_for_updates(self):
         url = self.update_url_edit.text().strip()
         if not url:
+            play_sound("warning")
             QMessageBox.information(
                 self,
                 "No Update URL",
@@ -841,6 +802,7 @@ class AppInfoDialog(QDialog):
             return
         current_version = self._info.get("version", "")
         if not current_version or current_version == "unknown":
+            play_sound("warning")
             QMessageBox.information(
                 self, "Unknown Version", "Current version is unknown. Update check requires a known version string."
             )
@@ -857,6 +819,7 @@ class AppInfoDialog(QDialog):
         self.btn_check_update.setEnabled(True)
         self.btn_check_update.setText("Check for Updates")
         if available:
+            play_sound("notification")
             msg = f"Version {latest} is available for {self._app_name}.\n\nCurrent: {self._info.get('version', 'unknown')}\nNew: {latest}\n"
             if changelog:
                 msg += f"\nWhat's new:\n{changelog[:500]}"
@@ -870,6 +833,7 @@ class AppInfoDialog(QDialog):
             if reply == QMessageBox.StandardButton.Yes:
                 self._download_and_update(download_url, latest)
         else:
+            play_sound("info")
             QMessageBox.information(
                 self,
                 "Up to Date",
@@ -895,8 +859,8 @@ class AppInfoDialog(QDialog):
         progress.setAutoClose(True)
         progress.setValue(0)
 
-        worker = DownloadWorker(download_url, temp_path, "", self)
-        worker.progress_updated.connect(progress.setValue)
+        self._download_worker = DownloadWorker(download_url, temp_path, "", self)
+        self._download_worker.progress_updated.connect(progress.setValue)
         loop = QEventLoop()
         error_msg = [None]
 
@@ -907,12 +871,15 @@ class AppInfoDialog(QDialog):
             error_msg[0] = e
             loop.quit()
 
-        worker.finished.connect(on_finished)
-        worker.error.connect(on_error)
-        worker.start()
-        progress.canceled.connect(worker.cancel)
+        self._download_worker.finished.connect(on_finished)
+        self._download_worker.error.connect(on_error)
+        self._download_worker.start()
+        progress.canceled.connect(self._download_worker.cancel)
         loop.exec()
         progress.close()
+        if self._download_worker.isRunning():
+            self._download_worker.wait(5000)
+        self._download_worker = None
 
         if error_msg[0]:
             play_sound("error")
@@ -948,6 +915,7 @@ class AppInfoDialog(QDialog):
         if record:
             record.version = version
             registry.add(record)
+        play_sound("success")
         QMessageBox.information(self, "Update Complete", f"{self._app_name} has been updated to version {version}.")
         self._status(f"Updated {self._app_name} to version {version}")
 
@@ -973,6 +941,7 @@ class AppInfoDialog(QDialog):
                 break
 
     def _save_shield_config(self):
+        play_sound("click")
         record = self._get_or_create_record()
         sc = {
             "enabled": self.sb_enabled_cb.isChecked(),
@@ -991,6 +960,7 @@ class AppInfoDialog(QDialog):
         self._status(f"Shield config saved for {self._app_name}")
 
     def _reset_shield_defaults(self):
+        play_sound("click")
         sc = ShieldConfig(enabled=True)
         record = self._get_or_create_record()
         new_config = sc.to_dict()
@@ -1013,6 +983,7 @@ class AppInfoDialog(QDialog):
             parent._uninstall_app(self._app_name)
 
     def _reset_app_defaults(self):
+        play_sound("warning")
         reply = QMessageBox.question(
             self,
             "Reset to Defaults",
@@ -1049,6 +1020,7 @@ class AppInfoDialog(QDialog):
         self._load_shield_ui()
         self._update_source_type_label()
         self._info["custom_icon_path"] = ""
+        play_sound("success")
         self._status(f"All settings reset to defaults for {self._app_name}")
 
     def _status(self, msg: str):

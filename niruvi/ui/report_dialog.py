@@ -1,10 +1,13 @@
 """Error and problem report dialogs with detailed human-readable explanations."""
 
+import logging
 import os
 import subprocess
 import sys
 
 from PyQt6.QtGui import QFont
+
+logger = logging.getLogger(__name__)
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -18,6 +21,8 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.utils import get_icon
+from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.styles import format_size
 from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING
 
 
@@ -160,13 +165,13 @@ class ErrorReportDialog(QDialog):
         btn_layout = QHBoxLayout()
 
         copy_btn = QPushButton(get_icon("edit-copy"), "Copy Report")
-        copy_btn.clicked.connect(self._copy_report)
+        copy_btn.clicked.connect(lambda: (play_sound("click"), self._copy_report()))
         btn_layout.addWidget(copy_btn)
 
         btn_layout.addStretch()
 
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
-        close_btn.clicked.connect(self.accept)
+        close_btn.clicked.connect(lambda: (play_sound("navigation"), self.accept()))
         close_btn.setStyleSheet("QPushButton { padding: 6px 20px; }")
         btn_layout.addWidget(close_btn)
 
@@ -183,8 +188,8 @@ class ErrorReportDialog(QDialog):
                     if line.startswith("PRETTY_NAME="):
                         lines.append(f"Distro: {line.split('=', 1)[1].strip().strip(chr(34))}")
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to read os-release for system info: %s", e, exc_info=True)
         lines.append(f"Python: {sys.version}")
         lines.append(f"Python executable: {sys.executable}")
         lines.append(f"PyQt6: {_get_pyqt_version()}")
@@ -273,7 +278,8 @@ def _get_pyqt_version() -> str:
         from PyQt6.QtCore import QT_VERSION_STR
 
         return QT_VERSION_STR
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to get PyQt version: %s", e, exc_info=True)
         return "unknown"
 
 
@@ -286,7 +292,8 @@ def _check_fuse() -> str:
         if "fuse" in r2.stdout:
             return "module loaded"
         return "not detected"
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to check FUSE status: %s", e, exc_info=True)
         return "unknown"
 
 
@@ -398,7 +405,7 @@ class BuildSummaryDialog(QDialog):
         elif not self._is_executable:
             stat, col = "Not executable (run chmod +x)", COLOR_WARNING
         _row(icon_ok if self._is_elf and self._is_executable else icon_warn, f"<span style='color:{col}'>{stat}</span>")
-        _row(None, f"Size: {self._format_size(self._file_size)}")
+        _row(None, f"Size: {format_size(self._file_size)}")
         if self._architecture:
             _row(None, f"Architecture: {self._architecture}")
         if self._app_type:
@@ -409,7 +416,7 @@ class BuildSummaryDialog(QDialog):
         if self._file_count:
             _row(None, f"Files bundled: {self._file_count}")
         if self._bundle_size:
-            _row(None, f"Bundle content: {self._format_size(self._bundle_size)}")
+            _row(None, f"Bundle content: {format_size(self._bundle_size)}")
 
         layout.addWidget(details_w)
 
@@ -468,19 +475,8 @@ class BuildSummaryDialog(QDialog):
         # Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        close_btn = QPushButton(get_icon("dialog-close"), "Done")
-        close_btn.setStyleSheet("QPushButton{padding:6px 20px}")
-        close_btn.clicked.connect(self.accept)
+        close_btn = QPushButton(get_icon("dialog-close"), "Close")
+        close_btn.setStyleSheet("QPushButton { padding: 6px 20px; }")
+        close_btn.clicked.connect(lambda: (play_sound("navigation"), self.accept()))
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
-
-    @staticmethod
-    def _format_size(bytes_val: int) -> str:
-        if bytes_val < 1024:
-            return f"{bytes_val} B"
-        elif bytes_val < 1024 * 1024:
-            return f"{bytes_val / 1024:.1f} KB"
-        elif bytes_val < 1024 * 1024 * 1024:
-            return f"{bytes_val / (1024 * 1024):.1f} MB"
-        else:
-            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"

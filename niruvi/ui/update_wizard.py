@@ -4,6 +4,7 @@ Pages: VersionCheck → Changelog → Download → Install → Finish
        + Rollback on failure.
 """
 
+import logging
 import os
 import shutil
 import tempfile
@@ -11,6 +12,8 @@ import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
+
+logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -18,6 +21,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QProgressBar,
+    QPushButton,
     QRadioButton,
     QTextEdit,
     QVBoxLayout,
@@ -73,7 +77,7 @@ class ChangelogPage(QWizardPage):
         self.changelog_text = QTextEdit()
         self.changelog_text.setReadOnly(True)
         self.changelog_text.setStyleSheet(
-            "background: palette(base); border: 1px solid palette(mid); border-radius: 4px;"
+            "background-color: palette(base); border: 1px solid palette(mid); border-radius: 2px;"
         )
         layout.addWidget(self.changelog_text, 1)
 
@@ -176,12 +180,23 @@ class UpdateInstallPage(QWizardPage):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(180)
+        self.log_text.setVisible(False)
         mono = QFont()
         mono.setFamily("monospace")
         mono.setStyleHint(QFont.StyleHint.TypeWriter)
         mono.setPointSize(9)
         self.log_text.setFont(mono)
         layout.addWidget(self.log_text)
+
+        self.btn_toggle = QPushButton(get_icon("format-justify-left"), "Show Details")
+        self.btn_toggle.setCheckable(True)
+        self.btn_toggle.toggled.connect(
+            lambda c: (
+                self.log_text.setVisible(c),
+                self.btn_toggle.setText("Hide Details" if c else "Show Details"),
+            )
+        )
+        layout.addWidget(self.btn_toggle)
 
         layout.addStretch()
 
@@ -340,8 +355,8 @@ class UpdateInstallWorker(QThread):
                 if os.path.isdir(self.dest_dir):
                     shutil.rmtree(self.dest_dir, ignore_errors=True)
                 shutil.copytree(self._backup_dir, self.dest_dir)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Rollback failed: %s", e, exc_info=True)
 
 
 class UpdateWizard(QWizard):
@@ -350,7 +365,8 @@ class UpdateWizard(QWizard):
     ):
         super().__init__(parent)
         self.setWindowTitle(f"Update {app_name}")
-        self.setFixedSize(620, 540)
+        self.setMinimumSize(560, 480)
+        self.resize(620, 540)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
 
         self.app_name = app_name
@@ -375,6 +391,8 @@ class UpdateWizard(QWizard):
 
         self._build_pages()
         self._configure_buttons()
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        self.setFixedSize(620, 540)
         self.currentIdChanged.connect(self._on_page_changed)
 
     def _build_pages(self):
@@ -416,6 +434,7 @@ class UpdateWizard(QWizard):
         self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
 
     def _on_page_changed(self, idx):
+        play_sound("navigation")
         if idx == self._page_ids.get("check"):
             QTimer.singleShot(0, self._run_update_check)
         elif idx == self._page_ids.get("download"):
@@ -452,6 +471,7 @@ class UpdateWizard(QWizard):
                     self.button(QWizard.WizardButton.NextButton).setEnabled(True)
                     self.next()
                     return
+            play_sound("info")
             QMessageBox.information(
                 self, "Up to Date", f"{self.app_name} ({self.current_version}) is already the latest version."
             )
@@ -493,7 +513,8 @@ class UpdateWizard(QWizard):
             total = int(resp.headers.get("Content-Length", 0))
             self._download_total = total
             resp.close()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to get download content length: %s", e, exc_info=True)
             self._download_total = 0
         self._download_page.update_downloaded(0, self._download_total)
         self._download_worker.start()
@@ -516,13 +537,14 @@ class UpdateWizard(QWizard):
                 else:
                     eta_str = f"{eta_secs:.0f}s"
                 self._download_page.update_eta(eta_str)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update download ETA: %s", e, exc_info=True)
 
     def _on_download_finished(self, path: str):
         self._download_timer.stop()
         self._download_page.status_label.setText("Download complete!")
         self._download_page.progress_bar.setValue(100)
+        play_sound("progress")
         self.button(QWizard.WizardButton.NextButton).setEnabled(True)
         self.button(QWizard.WizardButton.NextButton).setText("Install")
         self.next()
@@ -549,6 +571,13 @@ class UpdateWizard(QWizard):
         self._install_worker.start()
 
     def _on_install_finished(self):
+        from niruvi.utils.sound_manager import play as play_sound
+
+        play_sound("success")
+        try:
+            refresh_desktop_database()
+        except Exception:
+            pass
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).show()
         version = get_version(self.app_dir) or self._update_info.version if self._update_info else ""
@@ -571,6 +600,7 @@ class UpdateWizard(QWizard):
             self.next()
 
     def reject(self):
+        play_sound("navigation")
         if self._download_worker and self._download_worker.isRunning():
             self._download_worker.cancel()
             self._download_worker.wait()
@@ -584,8 +614,8 @@ class UpdateWizard(QWizard):
         if self._downloaded_path and os.path.isfile(self._downloaded_path):
             try:
                 Path(self._downloaded_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to clean up downloaded file: %s", e, exc_info=True)
 
     def accept(self):
         self._cleanup()

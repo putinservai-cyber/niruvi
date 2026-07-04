@@ -1,10 +1,16 @@
 import datetime
+import logging
 import os
 import stat
 import subprocess
 import time
 
+logger = logging.getLogger(__name__)
+
 HEALTH_DAYS_THRESHOLD = 60
+
+_fuse_available: bool | None = None
+_namespace_available: bool | None = None
 
 
 def check_single_appimage_mount(path: str) -> dict:
@@ -128,6 +134,9 @@ def check_app_health(app_name: str, app_dir: str, record) -> dict:
 
 
 def check_fuse_available() -> bool:
+    global _fuse_available
+    if _fuse_available is not None:
+        return _fuse_available
     try:
         result = subprocess.run(
             ["fusermount3", "--version"],
@@ -135,7 +144,9 @@ def check_fuse_available() -> bool:
             text=True,
             timeout=5,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            _fuse_available = True
+            return True
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     try:
@@ -145,7 +156,9 @@ def check_fuse_available() -> bool:
             text=True,
             timeout=5,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            _fuse_available = True
+            return True
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     try:
@@ -155,12 +168,17 @@ def check_fuse_available() -> bool:
             text=True,
             timeout=5,
         )
-        return bool(result.stdout.strip())
+        _fuse_available = bool(result.stdout.strip())
+        return _fuse_available
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        _fuse_available = False
         return False
 
 
 def check_namespace_available() -> bool:
+    global _namespace_available
+    if _namespace_available is not None:
+        return _namespace_available
     try:
         result = subprocess.run(
             ["unshare", "--user", "--mount", "true"],
@@ -168,9 +186,40 @@ def check_namespace_available() -> bool:
             text=True,
             timeout=5,
         )
-        return result.returncode == 0
+        _namespace_available = result.returncode == 0
+        return _namespace_available
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        _namespace_available = False
         return False
+
+
+APPIMAGE_MAGIC = b"AI\x02"
+APPIMAGE_MAGIC_ALT = b"AI\x01"
+
+
+def check_appimage_magic(path: str) -> dict:
+    """Validate AppImage magic bytes at offset 8 (type-2) or offset 0 (type-1)."""
+    result = {"valid": False, "type": None, "error": ""}
+    if not os.path.isfile(path):
+        result["error"] = "File not found"
+        return result
+    try:
+        with open(path, "rb") as f:
+            header = f.read(12)
+        if header[0:3] == APPIMAGE_MAGIC:
+            result["valid"] = True
+            result["type"] = "type2"
+        elif header[0:3] == APPIMAGE_MAGIC_ALT:
+            result["valid"] = True
+            result["type"] = "type1"
+        elif len(header) >= 8 and header[8:11] == APPIMAGE_MAGIC:
+            result["valid"] = True
+            result["type"] = "type2"
+        else:
+            result["error"] = "No AppImage magic header found"
+    except OSError as e:
+        result["error"] = str(e)
+    return result
 
 
 def check_system_compatibility() -> dict:
@@ -183,7 +232,8 @@ def check_system_compatibility() -> dict:
                 if line.startswith("PRETTY_NAME="):
                     info["distro"] = line.split("=", 1)[1].strip().strip('"')
                     break
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to read /etc/os-release: %s", e, exc_info=True)
         info["distro"] = "unknown"
     info["kernel"] = os.uname().version
     info["python"] = __import__("platform").python_version()
@@ -191,16 +241,16 @@ def check_system_compatibility() -> dict:
         r = subprocess.run(["rpm", "-q", "glibc", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
         if r.returncode == 0:
             info["glibc"] = r.stdout.strip()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to query glibc version: %s", e, exc_info=True)
     try:
         r = subprocess.run(
             ["rpm", "-q", "mesa-dri-drivers", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5
         )
         if r.returncode == 0:
             info["mesa"] = r.stdout.strip()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to query mesa version: %s", e, exc_info=True)
     return {"issues": issues, "info": info, "healthy": len(issues) == 0}
 
 

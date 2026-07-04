@@ -46,7 +46,8 @@ class BackgroundUpdater(QObject):
         self._auto_update = auto_update
         self._interval_seconds = interval_seconds
         if interval_seconds > 0:
-            self._timer.start(interval_seconds * 1000)
+            ms = min(interval_seconds * 1000, 2147483647)
+            self._timer.start(ms)
             self._running = True
 
     def stop(self):
@@ -56,7 +57,8 @@ class BackgroundUpdater(QObject):
     def set_interval(self, interval_seconds: int):
         self._interval_seconds = interval_seconds
         if self._running:
-            self._timer.setInterval(interval_seconds * 1000)
+            ms = min(interval_seconds * 1000, 2147483647)
+            self._timer.setInterval(ms)
 
     def is_running(self) -> bool:
         return self._running

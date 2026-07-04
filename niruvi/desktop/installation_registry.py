@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import tempfile
 import threading
 from datetime import datetime
 

@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import subprocess
 from pathlib import Path
@@ -28,23 +29,10 @@ from niruvi.ui.report_dialog import BuildSummaryDialog, ErrorReportDialog
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.styles import SECTION_STYLE, format_size
 from niruvi.utils.theme_engine import COLOR_ERROR
 
-_SECTION_STYLE = """
-QGroupBox {{
-    font-weight: bold;
-    border: 1px solid palette(mid);
-    border-radius: 6px;
-    margin-top: 8px;
-    padding-top: 14px;
-}}
-QGroupBox::title {{
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    padding: 2px 8px;
-    background: palette(window);
-}}
-"""
+logger = logging.getLogger(__name__)
 
 
 class BuildDialog(QDialog):
@@ -69,7 +57,7 @@ class BuildDialog(QDialog):
 
         # ── Source Section ──
         src_group = QGroupBox("Source")
-        src_group.setStyleSheet(_SECTION_STYLE)
+        src_group.setStyleSheet(SECTION_STYLE)
         src_form = QFormLayout(src_group)
         src_form.setSpacing(4)
         src_form.setContentsMargins(8, 12, 8, 8)
@@ -93,7 +81,7 @@ class BuildDialog(QDialog):
         self.source_edit.setReadOnly(True)
         pkg_row.addWidget(self.source_edit)
         self.browse_pkg_btn = QPushButton("Browse...")
-        self.browse_pkg_btn.clicked.connect(self._browse_source)
+        self.browse_pkg_btn.clicked.connect(lambda: (play_sound("click"), self._browse_source()))
         pkg_row.addWidget(self.browse_pkg_btn)
         src_form.addRow("File:", self._pkg_widget)
 
@@ -106,13 +94,13 @@ class BuildDialog(QDialog):
         self.folder_edit.setReadOnly(True)
         folder_row.addWidget(self.folder_edit)
         self.browse_folder_btn = QPushButton("Browse...")
-        self.browse_folder_btn.clicked.connect(self._browse_folder)
+        self.browse_folder_btn.clicked.connect(lambda: (play_sound("click"), self._browse_folder()))
         folder_row.addWidget(self.browse_folder_btn)
         src_form.addRow("Folder:", self._folder_widget)
 
         self.folder_info_label = QLabel()
         self.folder_info_label.setWordWrap(True)
-        self.folder_info_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        self.folder_info_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
         self.folder_info_label.setVisible(False)
         src_form.addRow(self.folder_info_label)
 
@@ -129,7 +117,7 @@ class BuildDialog(QDialog):
 
         # ── Output Section ──
         out_group = QGroupBox("Output")
-        out_group.setStyleSheet(_SECTION_STYLE)
+        out_group.setStyleSheet(SECTION_STYLE)
         out_layout = QVBoxLayout(out_group)
         out_layout.setSpacing(4)
         out_layout.setContentsMargins(8, 12, 8, 8)
@@ -140,7 +128,7 @@ class BuildDialog(QDialog):
         self.output_edit.setReadOnly(True)
         out_row.addWidget(self.output_edit)
         out_browse = QPushButton("Browse...")
-        out_browse.clicked.connect(self._browse_output)
+        out_browse.clicked.connect(lambda: (play_sound("click"), self._browse_output()))
         out_row.addWidget(out_browse)
         out_layout.addLayout(out_row)
 
@@ -152,7 +140,7 @@ class BuildDialog(QDialog):
 
         # ── Signing (compact) ──
         sign_group = QGroupBox("Code Signing")
-        sign_group.setStyleSheet(_SECTION_STYLE)
+        sign_group.setStyleSheet(SECTION_STYLE)
         sign_layout = QVBoxLayout(sign_group)
         sign_layout.setSpacing(4)
         sign_layout.setContentsMargins(8, 12, 8, 8)
@@ -167,7 +155,7 @@ class BuildDialog(QDialog):
         sign_row.addWidget(self.sign_key_combo, 1)
         refresh_keys_btn = QPushButton(get_icon("view-refresh"), "")
         refresh_keys_btn.setToolTip("Refresh available GPG keys")
-        refresh_keys_btn.clicked.connect(self._refresh_signing_keys)
+        refresh_keys_btn.clicked.connect(lambda: (play_sound("click"), self._refresh_signing_keys()))
         sign_row.addWidget(refresh_keys_btn)
         sign_layout.addLayout(sign_row)
         self._refresh_signing_keys()
@@ -193,12 +181,12 @@ class BuildDialog(QDialog):
         btn_layout = QHBoxLayout()
         self.build_btn = QPushButton("Build AppImage")
         self.build_btn.setIcon(get_icon("emblem-system"))
-        self.build_btn.clicked.connect(self._start_build)
+        self.build_btn.clicked.connect(lambda: (play_sound("click"), self._start_build()))
         btn_layout.addStretch()
         btn_layout.addWidget(self.build_btn)
 
         self.close_btn = QPushButton("Close")
-        self.close_btn.clicked.connect(self.reject)
+        self.close_btn.clicked.connect(lambda: (play_sound("navigation"), self.reject()))
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
 
@@ -274,7 +262,7 @@ class BuildDialog(QDialog):
                         has_python = True
                     if os.access(fp, os.X_OK) and os.path.isfile(fp):
                         has_executable = True
-            info = f"{file_count} files, {self._format_size(total)}, {max_depth} directory levels"
+            info = f"{file_count} files, {format_size(total)}, {max_depth} directory levels"
             if has_apprun:
                 info += " — has AppRun entry point"
             elif has_python:
@@ -282,7 +270,8 @@ class BuildDialog(QDialog):
             elif has_executable:
                 info += " — has executable files"
             self.folder_info_label.setText(info)
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to update folder info: %s", e, exc_info=True)
             self.folder_info_label.setText("")
 
     def _browse_output(self):
@@ -303,7 +292,7 @@ class BuildDialog(QDialog):
             if size == 0:
                 return f"The source file is empty:\n{src}"
             if size > 2 * 1024 * 1024 * 1024:
-                return f"The source file is very large ({self._format_size(size)}). AppImage builds may fail with files over 2 GB."
+                return f"The source file is very large ({format_size(size)}). AppImage builds may fail with files over 2 GB."
             low = src.lower()
             if not any(
                 low.endswith(e)
@@ -329,9 +318,9 @@ class BuildDialog(QDialog):
             return False, ["File not found after build."]
         size = os.path.getsize(path)
         if size < 1024:
-            warnings.append(f"AppImage is very small ({self._format_size(size)}). It may not be valid.")
+            warnings.append(f"AppImage is very small ({format_size(size)}). It may not be valid.")
         if size > 4 * 1024 * 1024 * 1024:
-            warnings.append(f"AppImage is very large ({self._format_size(size)}). Some systems may not run it.")
+            warnings.append(f"AppImage is very large ({format_size(size)}). Some systems may not run it.")
         is_exec = os.access(path, os.X_OK)
         if not is_exec:
             warnings.append("AppImage is not executable. Users will need to run: chmod +x")
@@ -342,7 +331,8 @@ class BuildDialog(QDialog):
                 is_elf = header == b"\x7fELF"
             if not is_elf:
                 warnings.append("File does not have a valid ELF header. It may not run.")
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to read file header for validation: %s", e, exc_info=True)
             warnings.append("Could not read file header for validation.")
 
         # Try --appimage-help (handled by runtime, won't launch the app)
@@ -420,6 +410,7 @@ class BuildDialog(QDialog):
         self.progress_bar.setValue(value)
 
     def _on_finished(self, out_path: str):
+        play_sound("success")
         self.log_text.append(f"\n<b>Build successful: {out_path}</b>")
         self.progress_bar.setValue(100)
         self.build_btn.setEnabled(True)
@@ -495,8 +486,8 @@ class BuildDialog(QDialog):
                 # SHA256
                 f.seek(0)
                 sha256 = hashlib.sha256(f.read()).hexdigest()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to read AppImage metadata for summary: %s", e, exc_info=True)
 
         # Count files in extracted squashfs if available
         try:
@@ -506,8 +497,8 @@ class BuildDialog(QDialog):
             if result.returncode == 0:
                 size_str = result.stdout.split()[0]
                 bundle_size = int(size_str)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to get bundle size: %s", e, exc_info=True)
 
         summary = BuildSummaryDialog(
             self,
@@ -526,7 +517,7 @@ class BuildDialog(QDialog):
         self.accept()
 
     def _on_error(self, msg: str):
-        self.log_text.append(f"\n<b style='color: red;'>ERROR: {msg}</b>")
+        self.log_text.append(f"\n<b style='color: {COLOR_ERROR};'>ERROR: {msg}</b>")
         self.progress_bar.setValue(0)
         self.build_btn.setEnabled(True)
         self.close_btn.setEnabled(True)
@@ -556,13 +547,3 @@ class BuildDialog(QDialog):
             self.log_text.append(f"Copied to managed directory: {dest}")
         except OSError as e:
             self.log_text.append(f"Warning: could not copy to managed directory: {e}")
-
-    @staticmethod
-    def _format_size(bytes_val: int) -> str:
-        if bytes_val < 1024:
-            return f"{bytes_val} B"
-        if bytes_val < 1024 * 1024:
-            return f"{bytes_val / 1024:.1f} KB"
-        if bytes_val < 1024 * 1024 * 1024:
-            return f"{bytes_val / (1024 * 1024):.1f} MB"
-        return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"

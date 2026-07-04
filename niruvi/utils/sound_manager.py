@@ -14,21 +14,8 @@ import tempfile
 import time
 import wave
 
-from PyQt6.QtCore import QObject, QUrl, QTimer
-
-_silence_fd: int | None = None
-_null = os.open(os.devnull, os.O_WRONLY)
-_silence_fd = os.dup(2)
-os.dup2(_null, 2)
-os.close(_null)
-
+from PyQt6.QtCore import QObject, QTimer, QUrl
 from PyQt6.QtMultimedia import QSoundEffect
-
-if _silence_fd is not None:
-    os.dup2(_silence_fd, 2)
-    os.close(_silence_fd)
-    _silence_fd = None
-
 from PyQt6.QtWidgets import QMenu
 
 from niruvi.config import _settings

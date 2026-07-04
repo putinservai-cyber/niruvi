@@ -21,7 +21,6 @@ import ctypes.util
 import logging
 import os
 import shutil
-import stat
 import subprocess
 import tempfile
 import threading
@@ -470,9 +469,6 @@ def _build_seccomp_filter() -> bytes:
     BPF_ABS = 0x20
     BPF_JMP = 0x05
     BPF_JEQ = 0x10
-    BPF_JGT = 0x20
-    BPF_JGE = 0x30
-    BPF_JSET = 0x40
     BPF_RET = 0x06
     SECCOMP_RET_KILL = 0x00000000
     SECCOMP_RET_ALLOW = 0x7FFF0000

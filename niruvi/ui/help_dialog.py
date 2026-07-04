@@ -6,15 +6,19 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QSplitter,
     QTextBrowser,
     QVBoxLayout,
+    QWidget,
 )
 
 from niruvi._version import __app_name__
 from niruvi.utils import get_icon
+from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.styles import SIDEBAR_STYLE
 
 _GPL3_TEXT = """                    GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
@@ -728,7 +732,7 @@ class LicenseDialog(QDialog):
         layout.addWidget(browser, 1)
 
         btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn.rejected.connect(self.accept)
+        btn.rejected.connect(lambda: (play_sound("navigation"), self.accept()))
         layout.addWidget(btn)
 
 
@@ -748,14 +752,22 @@ class HelpDialog(QDialog):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # ── Sidebar navigation ──
-        nav = QListWidget()
-        nav.setFixedWidth(180)
-        nav.setCurrentRow(0)
-        nav.setStyleSheet(
-            "QListWidget { border: none; }"
-            "QListWidget::item { padding: 8px 12px; }"
-            "QListWidget::item:selected { background: palette(highlight); color: palette(highlighted-text); }"
-        )
+        sidebar_widget = QWidget()
+        sidebar_layout = QVBoxLayout(sidebar_widget)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(4)
+
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText("Search topics...")
+        self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.addAction(get_icon("edit-find"), QLineEdit.ActionPosition.LeadingPosition)
+        self._search_edit.textChanged.connect(self._filter_sidebar)
+        sidebar_layout.addWidget(self._search_edit)
+
+        self._nav = QListWidget()
+        self._nav.setFixedWidth(180)
+        self._nav.setCurrentRow(0)
+        self._nav.setStyleSheet(SIDEBAR_STYLE)
 
         pages = [
             ("Welcome", self._page_welcome, "go-home"),
@@ -765,18 +777,20 @@ class HelpDialog(QDialog):
             ("Updates", self._page_updates, "emblem-downloads"),
             ("Removing Apps", self._page_uninstall, "edit-delete"),
             ("Building AppImages", self._page_build, "applications-utilities"),
-            ("Self-Installing Format", self._page_selfinstall, "package-x-generic"),
+
             ("Silent / CLI Mode", self._page_cli, "utilities-terminal"),
             ("Settings", self._page_settings, "preferences-system"),
-            ("Security Scanner", self._page_security, "dialog-warning"),
+            ("Safety & Security", self._page_security, "dialog-warning"),
             ("Troubleshooting", self._page_trouble, "dialog-information"),
             ("License", self._page_license, "emblem-documents"),
         ]
         self._page_map = pages
         for title, _, icon_name in pages:
-            nav.addItem(QListWidgetItem(get_icon(icon_name, "help-contents"), title))
-        nav.currentRowChanged.connect(self._on_page_changed)
-        splitter.addWidget(nav)
+            self._nav.addItem(QListWidgetItem(get_icon(icon_name, "help-contents"), title))
+        self._nav.currentRowChanged.connect(self._on_page_changed)
+        sidebar_layout.addWidget(self._nav, 1)
+        sidebar_widget.setFixedWidth(190)
+        splitter.addWidget(sidebar_widget)
 
         # ── Content pane ──
         self.content = QTextBrowser()
@@ -790,18 +804,26 @@ class HelpDialog(QDialog):
         layout.addWidget(splitter, 1)
 
         btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn.rejected.connect(self.accept)
+        btn.rejected.connect(lambda: (play_sound("navigation"), self.accept()))
         layout.addWidget(btn)
 
         if initial_page:
             for i, (title, _, _) in enumerate(pages):
                 if title == initial_page:
-                    nav.setCurrentRow(i)
+                    self._nav.setCurrentRow(i)
                     self._show_page(i)
                     return
         self._show_page(0)
 
+    def _filter_sidebar(self, text: str):
+        text_lower = text.lower()
+        for i in range(self._nav.count()):
+            item = self._nav.item(i)
+            if item:
+                item.setHidden(text_lower not in item.text().lower())
+
     def _on_page_changed(self, idx: int):
+        play_sound("navigation")
         self._show_page(idx)
 
     def _show_page(self, idx: int):
@@ -812,420 +834,321 @@ class HelpDialog(QDialog):
     @staticmethod
     def _page_welcome():
         return """<h2>Welcome to Niruvi</h2>
-<p>Niruvi is a universal Linux AppImage manager that lets you <b>install</b>, <b>update</b>,
-<b>uninstall</b>, and <b>build</b> AppImage applications through a clean graphical interface.</p>
+<p>Niruvi is a Linux app manager made for <b>AppImage</b> files. You can <b>install</b>,
+<b>update</b>, <b>remove</b>, and even <b>build</b> your own AppImages &mdash; all from
+a single clean window.</p>
 
-<h3>Key capabilities</h3>
+<h3>What you can do</h3>
 <ul>
-<li><b>Install</b> &mdash; Drag-and-drop or browse for an AppImage to install it into a managed directory with desktop integration.</li>
-<li><b>Updates</b> &mdash; Per-app update URL configuration with automatic detection from GitHub and GitLab repository URLs. Background auto-update checks with desktop notifications.</li>
-<li><b>Build</b> &mdash; Create AppImages from DEB, RPM, tar archives, or project folders with optional self-installing wizard.</li>
-<li><b>Desktop integration</b> &mdash; Automatic .desktop entries, shortcuts, and icon theme installation.</li>
-<li><b>Safety</b> &mdash; Backup/rollback on updates, SHA256 verification, and built-in security scanning.</li>
-<li><b>Per-app customization</b> &mdash; Override display names, custom icons, environment variables, and command-line arguments per application.</li>
-<li><b>Side-by-side installs</b> &mdash; Install multiple versions of the same app alongside each other.</li>
-<li><b>Import/Export</b> &mdash; Export and import your app list as JSON.</li>
+<li><b>Install</b> &mdash; Drag an AppImage onto the window, or browse for one. Niruvi sets
+it up with desktop icons and launcher entries automatically.</li>
+<li><b>Update</b> &mdash; Tell Niruvi where to check for new versions (GitHub, GitLab, or a
+direct link). It can even check in the background and notify you.</li>
+<li><b>Build</b> &mdash; Turn DEB, RPM, tar files, or project folders into AppImages. You can
+also create self-installing AppImages with a setup wizard.</li>
+<li><b>Stay safe</b> &mdash; Every app is scanned for suspicious patterns before install.
+Updates are verified by SHA256 hash before they're applied.</li>
+<li><b>Customize</b> &mdash; Change display names, pick custom icons, set launch arguments,
+or add environment variables for each app.</li>
 </ul>
 
-<h3>Quick start</h3>
+<h3>First time here?</h3>
 <ol>
-<li>Launch Niruvi from your application menu or run <code>niruvi</code> in a terminal.</li>
-<li>Drop an <code>.AppImage</code> file onto the window, or click <b>Install AppImage</b>.</li>
-<li>Follow the on-screen wizard to complete installation.</li>
-<li>The app appears in your launcher and on the installed list.</li>
-</ol>
-
-<p>For command-line usage, see the <b>Silent / CLI Mode</b> section.</p>"""
+<li>Launch Niruvi from your app menu or run <code>niruvi</code> in a terminal.</li>
+<li>Drop an <code>.AppImage</code> file onto the window, or click <b>Install</b>.</li>
+<li>Follow the simple wizard &mdash; Niruvi takes care of the rest.</li>
+<li>Your app appears in the system menu and on the installed list.</li>
+</ol>"""
 
     @staticmethod
     def _page_install():
         return """<h2>Installing Apps</h2>
 
+<p>There are two easy ways to install an AppImage with Niruvi:</p>
+
 <h3>Drag and drop</h3>
-<p>Drag an <code>.AppImage</code> file from your file manager onto Niruvi's main window.
-A drop zone appears &mdash; release to start installation.</p>
+<p>Grab an <code>.AppImage</code> file from your file manager and drop it onto Niruvi's
+main window. A highlighted drop zone appears &mdash; let go to start installing.</p>
 
 <h3>Using the Install button</h3>
 <ol>
-<li>Click <b>Install AppImage</b> on the main window.</li>
-<li>Browse to the <code>.AppImage</code> file and select it.</li>
-<li>The installation wizard shows you metadata about the app (name, icon, description).</li>
-<li>Choose installation options such as desktop entry creation, shortcut, portable folders, and icon theme integration.</li>
-<li>Click <b>Install</b> &mdash; the AppImage is extracted under <code>~/Applications/APPNAME/</code>.</li>
+<li>Click <b>Install</b> in the toolbar.</li>
+<li>Pick the <code>.AppImage</code> file you want to install.</li>
+<li>Niruvi reads the app's metadata (name, icon, description) and shows you a preview.</li>
+<li>Choose options like creating a desktop entry, shortcut, or portable folders.</li>
+<li>Click <b>Install</b> &mdash; the app is extracted to <code>~/Applications/APPNAME/</code>.</li>
 </ol>
 
-<h3>AppImage validation</h3>
-<p>Every AppImage is validated before installation to ensure it has a valid format and proper metadata.</p>
+<h3>Safety check</h3>
+<p>Before installing, Niruvi validates the AppImage format and scans for anything
+suspicious. If something doesn't look right, you'll get a warning.</p>
 
 <h3>Already installed?</h3>
-<p>If an app is already installed, you are offered options to <b>Re-integrate</b> or <b>Remove</b> the existing installation first.</p>"""
+<p>If an app is already on the list, Niruvi asks what you'd like to do:</p>
+<ul>
+<li><b>Re-integrate</b> &mdash; refresh the desktop entry and icons.</li>
+<li><b>Install Side-by-Side</b> &mdash; keep both versions with different names.</li>
+<li><b>Remove &amp; Install</b> &mdash; delete the old version and install the new one.</li>
+</ul>"""
 
     @staticmethod
     def _page_manage():
-        return """<h2>Managing Apps</h2>
+        return """<h2>Managing Your Apps</h2>
 
-<h3>App list</h3>
-<p>Installed apps appear in the main list with name, version, and icon. Use the <b>Search</b> box
-to filter by name, and the <b>Sort</b> dropdown to order by name, version, size, or install date.</p>
+<h3>The app list</h3>
+<p>Every installed app shows up in the main list with its icon, name, and version badge.
+You can <b>search</b> to filter the list, or <b>sort</b> by name, size, or install date.</p>
 
-<h3>Right-click context menu</h3>
+<h3>Right-click menu</h3>
+<p>Right-click any app to see what you can do with it:</p>
 <ul>
-<li><b>App Info</b> &mdash; Open the detailed App Info dialog to view metadata and customize the app.</li>
-<li><b>Run</b> &mdash; Launch the application immediately.</li>
-<li><b>Update</b> &mdash; Replace the app with a newer AppImage file. A backup is created automatically.</li>
-<li><b>Check for Updates</b> &mdash; Check the configured update URL for newer versions.</li>
-<li><b>Uninstall</b> &mdash; Remove the app and all its files (desktop entry, shortcut, data).</li>
-<li><b>Open Folder</b> &mdash; Open the app's install directory in your file manager.</li>
-<li><b>Create / Remove Desktop Shortcut</b> &mdash; Toggle a desktop launcher icon.</li>
+<li><b>App Info</b> &mdash; view details, customize settings, check health.</li>
+<li><b>Run</b> &mdash; launch the app right away.</li>
+<li><b>Update</b> &mdash; replace it with a newer AppImage file (backup is automatic).</li>
+<li><b>Check for Updates</b> &mdash; look for a newer version online.</li>
+<li><b>Uninstall</b> &mdash; remove the app and all associated files.</li>
+<li><b>Open Folder</b> &mdash; browse the app's install directory.</li>
+<li><b>Create/Remove Shortcut</b> &mdash; toggle a desktop launcher icon.</li>
 </ul>
 
-<h3>Side-by-side installs</h3>
-<p>When you install an app that is already installed, you can choose <b>Install Side-by-Side</b>
-to keep both versions. The new copy gets a numbered suffix (e.g. <code>MyApp-2</code>).</p>
+<h3>Keeping multiple versions</h3>
+<p>If you install an app you already have, choose <b>Install Side-by-Side</b> to
+keep both. Niruvi adds a number to the new copy (like <code>MyApp-2</code>).</p>
 
-<h3>Import / Export</h3>
-<p>Use <b>File &rarr; Export App List</b> to save your installation registry as a JSON file.
-Use <b>File &rarr; Import App List</b> to restore apps from a previously exported file.
-Duplicate apps are skipped during import.</p>
+<h3>Import and export</h3>
+<p>Go to <b>File &rarr; Export App List</b> to save your installed apps as a JSON file.
+Use <b>File &rarr; Import App List</b> to restore from a backup. Duplicates are skipped.</p>
 
 <h3>Desktop integration</h3>
-<p>Niruvi automatically creates a <code>.desktop</code> entry on install so the app appears in your
-system application menu. Icons are installed into the XDG icon theme for cross-desktop compatibility.</p>"""
+<p>Niruvi creates a <code>.desktop</code> entry when you install an app, so it shows up in
+your system launcher. Icons are placed in the right theme folders automatically.</p>"""
 
     @staticmethod
     def _page_appinfo():
         return """<h2>App Info</h2>
-<p>Double-click an app or select <b>App Info</b> from the right-click menu to open the
-App Info dialog. This is the central place to view and customize your installed apps.</p>
+<p>Double-click any app (or right-click and pick <b>App Info</b>) to open its detail
+dialog. This is where you see everything about an app and tweak how it works.</p>
 
-<h3>Sections</h3>
+<h3>What you'll find</h3>
 <ul>
-<li><b>Details</b> &mdash; App name, path, size, install date, architecture, SHA256 hash, desktop entry path.</li>
-<li><b>Customization</b> &mdash; Override the display name, choose a custom icon, set command-line arguments, and manage environment variables.</li>
-<li><b>Updates</b> &mdash; Configure an update URL (GitHub repo, GitLab project, or direct download), choose update channel (stable/beta/nightly), enable background auto-updates.</li>
-<li><b>Files</b> &mdash; Browse the app's install directory in a file tree.</li>
+<li><b>Details</b> &mdash; name, install path, size, date, architecture, and SHA256 hash.</li>
+<li><b>Customization</b> &mdash; change the display name, pick a custom icon, set launch
+arguments, or add environment variables.</li>
+<li><b>Updates</b> &mdash; set an update URL (GitHub, GitLab, or direct link), choose a
+release channel (stable/beta/nightly), and enable background updates.</li>
+<li><b>Files</b> &mdash; browse the app's install directory in a file tree.</li>
 </ul>
 
-<h3>Customizing per-app behavior</h3>
+<h3>Per-app settings in a nutshell</h3>
 <ul>
-<li><b>Display name</b> &mdash; Override how the app appears in the list.</li>
-<li><b>Custom icon</b> &mdash; Pick a PNG/SVG/XPM file to use as the app's icon.</li>
-<li><b>Run arguments</b> &mdash; Arguments passed to the app when launched from Niruvi (e.g. <code>--verbose</code>).</li>
-<li><b>Environment variables</b> &mdash; Set variables that are exported before launching the app (e.g. <code>LANG=en_US.UTF-8</code>).</li>
+<li><b>Display name</b> &mdash; change how it appears in the list.</li>
+<li><b>Custom icon</b> &mdash; use your own PNG/SVG/XPM file.</li>
+<li><b>Run arguments</b> &mdash; flags passed to the app at launch (like <code>--verbose</code>).</li>
+<li><b>Environment variables</b> &mdash; set things like <code>LANG=en_US.UTF-8</code> before launch.</li>
 </ul>
 
-<h3>Actions bar</h3>
-<p>At the bottom of the dialog, you can <b>Run</b> or <b>Uninstall</b> the app directly.</p>"""
+<p>At the bottom of the dialog, you can <b>Run</b> or <b>Uninstall</b> directly.</p>"""
 
     @staticmethod
     def _page_updates():
         return """<h2>Updates</h2>
-<p>Niruvi supports update checking for both itself and installed apps.</p>
+<p>Niruvi can check for updates &mdash; both for itself and for your installed apps.</p>
 
-<h3>Niruvi self-update</h3>
-<p>Use <b>Tools &rarr; Check for Niruvi Updates</b> to check if a new version of Niruvi is
-available. Updates are downloaded from the GitHub releases page and verified by SHA256.</p>
+<h3>Updating Niruvi itself</h3>
+<p>Go to <b>Tools &rarr; Check for Niruvi Updates</b>. If a new version is available,
+it's downloaded and verified by SHA256 before installation.</p>
 
-<h3>Per-app update URLs</h3>
-<p>Each installed app can have an update URL configured in its App Info dialog.
-Niruvi supports three types of update sources:</p>
+<h3>Setting up app updates</h3>
+<p>Each app can have an update source configured in its App Info dialog.
+Three types are supported:</p>
 
 <ul>
-<li><b>GitHub repository</b> &mdash; Paste a GitHub repo URL (e.g. <code>https://github.com/user/repo</code>).
-Niruvi automatically queries the GitHub API to find the latest release and download
-the AppImage asset matching your system architecture.</li>
-<li><b>GitLab project</b> &mdash; Paste a GitLab project URL. Niruvi uses the GitLab API to
-find the latest release.</li>
-<li><b>Direct URL</b> &mdash; A direct download link to an AppImage. Niruvi checks for
-filename-based version detection.</li>
+<li><b>GitHub</b> &mdash; paste a repo URL like <code>https://github.com/user/repo</code>.
+Niruvi looks up the latest release and finds the right AppImage for your system.</li>
+<li><b>GitLab</b> &mdash; paste a project URL. Same idea, using GitLab's API.</li>
+<li><b>Direct URL</b> &mdash; a direct download link. Version is detected from the filename.</li>
 </ul>
 
-<h3>Checking for updates</h3>
-<p>Use <b>Check for Updates</b> in the App Info dialog to manually check a single app.
-Use <b>Tools &rarr; Check All Apps for Updates</b> to check all configured apps at once.
-If a newer version is found, you'll be prompted to download and install it.</p>
+<h3>Checking manually</h3>
+<p>Use <b>Tools &rarr; Check All Apps for Updates</b> to check everything at once.
+You can also check a single app from its right-click menu or App Info dialog.
+If something newer is found, Niruvi asks if you'd like to download and install it.</p>
 
-<h3>Background auto-updates</h3>
-<p>When enabled in Settings, Niruvi periodically checks all apps that have
-<b>Auto-update in background</b> enabled (configured per-app in the App Info dialog).
-On finding an update, a desktop notification is shown (if the system supports it),
-or a dialog prompts you to install.</p>
+<h3>Background updates</h3>
+<p>When enabled in Settings, Niruvi periodically checks apps that have
+<b>Auto-update in background</b> turned on. If an update is found, you'll get
+a desktop notification (or a dialog on systems that don't support notifications).</p>
 
-<h3>Update channels</h3>
-<p>Each app can be assigned an update channel: <b>stable</b> (default), <b>beta</b>, or
-<b>nightly</b>. This affects which release GitHub/GitLab resolves to when the
-API supports it.</p>"""
+<h3>Release channels</h3>
+<p>You can set an app to follow <b>stable</b> (default), <b>beta</b>, or <b>nightly</b>
+releases. This works with GitHub and GitLab sources when the API supports it.</p>"""
 
     @staticmethod
     def _page_uninstall():
         return """<h2>Removing Apps</h2>
 
-<h3>Via the app list</h3>
+<h3>From the app list</h3>
 <ol>
-<li>Right-click the app in the list.</li>
-<li>Choose <b>Uninstall</b> from the context menu.</li>
-<li>Confirm the uninstall dialog.</li>
+<li>Right-click the app and choose <b>Uninstall</b>.</li>
+<li>Confirm in the dialog that appears.</li>
+<li>Niruvi removes everything &mdash; clean and complete.</li>
 </ol>
 
-<h3>Via the command line</h3>
+<h3>From the command line</h3>
 <pre>niruvi --uninstall APP_NAME</pre>
 
-<h3>What gets removed</h3>
+<h3>What gets cleaned up</h3>
 <ul>
-<li>The app directory under <code>~/Applications/APP_NAME/</code></li>
-<li>The <code>.desktop</code> file in <code>~/.local/share/applications/</code></li>
-<li>The desktop shortcut file</li>
-<li>Portable <code>.home</code> and <code>.config</code> folders if they exist</li>
+<li>The app's folder in <code>~/Applications/</code></li>
+<li>The <code>.desktop</code> file and desktop shortcut</li>
+<li>Any portable <code>.home</code> or <code>.config</code> folders</li>
 <li>The installation registry entry</li>
 </ul>
 
-<p>⚠ Data in user folders such as <code>~/Documents</code> is not affected.</p>"""
+<p>Your personal files (documents, downloads, etc.) are never touched.</p>"""
 
     @staticmethod
     def _page_build():
         return """<h2>Building AppImages</h2>
 
-<p>Niruvi can build AppImage packages from DEB, RPM, tar archives, or project folders.
-This is useful for repackaging traditional Linux packages into portable AppImages.</p>
+<p>Niruvi can <b>build</b> AppImages from existing packages or project folders.
+This is a great way to turn traditional Linux software into portable AppImages.</p>
 
-<h3>Source types</h3>
-<p>Choose between two source types:</p>
+<h3>What you can build from</h3>
 <ul>
-<li><b>Package file</b> &mdash; Extract a DEB, RPM, or tar archive and repackage it as an AppImage.</li>
-<li><b>Project folder</b> &mdash; Select a local project directory. Contents are copied directly into the AppDir, making it easy to package your own applications.</li>
+<li><b>Package file</b> &mdash; a DEB, RPM, or tar archive gets extracted and repackaged.</li>
+<li><b>Project folder</b> &mdash; pick any local directory. Its contents go straight into
+the AppDir &mdash; handy for packaging your own applications.</li>
 </ul>
 
-<h3>Basic build</h3>
+<h3>How to build</h3>
 <ol>
-<li>Click <b>Build AppImage</b> in the Tools menu or on the toolbar.</li>
-<li>Select a source type: <b>Package file</b> or <b>Project folder</b>.</li>
-<li>Browse to select the source file or folder.</li>
-<li>Set the app name and version (auto-detected if left empty).</li>
-<li>Choose an output directory.</li>
-<li>Click <b>Build AppImage</b>.</li>
+<li>Click <b>Build</b> in the toolbar or go to <b>Tools &rarr; Build AppImage</b>.</li>
+<li>Choose the source type (<b>Package file</b> or <b>Project folder</b>).</li>
+<li>Select the file or folder to package.</li>
+<li>Set a name and version (Niruvi tries to auto-detect these).</li>
+<li>Pick where to save the result.</li>
+<li>Click <b>Build AppImage</b> and wait for the process to finish.</li>
 </ol>
 
-<h3>Post-build verification</h3>
-<p>After building, Niruvi verifies the output AppImage — checks the ELF header, confirms
-it's executable, runs <code>--version</code>, and shows a detailed build summary.</p>
-
-<h3>Self-Installing AppImages</h3>
-<p>Enable <b>Self-Installing AppImage</b> to create an AppImage that installs itself
-on first run — ideal for applications that need desktop integration.</p>
-
-<p>When self-installing is enabled, these options are available:</p>
-<ul>
-<li><b>Brand name</b> &mdash; Display name in installer dialogs.</li>
-<li><b>License file</b> &mdash; EULA shown during installation.</li>
-<li><b>Pre/Post-install scripts</b> &mdash; Shell scripts run before/after extraction.</li>
-<li><b>Components</b> &mdash; Optional feature sets users can choose.</li>
-<li><b>Update URL</b> &mdash; Remote JSON manifest for automatic updates.</li>
-<li><b>Welcome / Finish text</b> &mdash; Custom installer messages.</li>
-<li><b>Rollback, Silent mode, Launch prompt</b> &mdash; Installer behavior options.</li>
-</ul>"""
-
-    @staticmethod
-    def _page_selfinstall():
-        return """<h2>Self-Installing Format</h2>
-
-<p>Standard AppImages are fully portable &mdash; they run anywhere without installation.
-A <b>Self-Installing AppImage</b> prompts the user to install it on first run, then
-behaves like a traditionally installed application with desktop integration.</p>
-
-<h3>How it works</h3>
-<ol>
-<li>User downloads the AppImage and makes it executable (<code>chmod +x</code>).</li>
-<li>Running the AppImage presents a welcome screen with <b>Install</b> and <b>Cancel</b> options.</li>
-<li>Upon install, the AppImage extracts itself to <code>~/Applications/APP_NAME/</code>.</li>
-<li>A <code>.desktop</code> entry is created so the app appears in the system launcher.</li>
-<li>The AppImage can optionally be hidden or removed after installation.</li>
-</ol>
-
-<h3>CLI flags for self-installing AppImages</h3>
-<pre>MyApp.AppImage --help           Show CLI usage
-MyApp.AppImage --install        Interactive install
-MyApp.AppImage --unattended     Silent install with defaults</pre>
-
-<p>Niruvi itself is distributed as a self-installing AppImage.</p>"""
+<h3>After building</h3>
+<p>Niruvi checks the output automatically &mdash; verifies the ELF header, makes sure
+it's executable, and shows a summary with file size and validation status.</p>"""
 
     @staticmethod
     def _page_cli():
-        return """<h2>Silent / CLI Mode</h2>
+        return """<h2>Command-Line / Silent Mode</h2>
 
-<p>Niruvi supports command-line operations for scripting and headless environments.</p>
+<p>You can use Niruvi from the terminal too &mdash; handy for scripting or servers
+without a display.</p>
 
-<h3>Commands</h3>
+<h3>Available commands</h3>
 <pre>niruvi                          Launch the GUI
-niruvi --install PATH           Silent install (no GUI)
-niruvi --uninstall APP_NAME     Remove an installed app
-niruvi --list                   List all installed apps
-niruvi --update-all             Check all apps for updates in terminal
-niruvi --update-check APP       Check a specific app for updates
-niruvi --is-installed PATH      Check if an AppImage is installed
-niruvi --version                Show version
-niruvi PATH.AppImage            Launch and open a specific AppImage</pre>
+niruvi --install PATH           Install silently (no window)
+niruvi --uninstall APP_NAME     Remove an app
+niruvi --list                   Show all installed apps
+niruvi --update-all             Check every app for updates
+niruvi --update-check APP       Check a single app
+niruvi --is-installed PATH      Check if a file is already installed
+niruvi --version                Print version and exit
+niruvi PATH.AppImage            Open a specific AppImage in the GUI</pre>
 
 <h3>Examples</h3>
 <pre>niruvi --install MyApp.AppImage
 niruvi --uninstall MyApp
 niruvi --list
-niruvi --update-all
-niruvi --update-check MyApp
-niruvi --is-installed /path/to/MyApp.AppImage</pre>
-
-<h3>Self-installing silent mode</h3>
-<p>AppImages built with the self-installing format support:</p>
-<pre>MyApp.AppImage --help           Show CLI usage
-MyApp.AppImage --install        Interactive install
-MyApp.AppImage --unattended     Silent install with defaults
-MyApp.AppImage --update         Check for and apply updates
-MyApp.AppImage --check-updates  Silently check for updates</pre>
-
-<p>The <code>--unattended</code> flag installs to the default directory (<code>~/Applications/APP_NAME</code>),
-accepts the license if present, and skips all interactive prompts.</p>"""
+niruvi --update-all</pre>"""
 
     @staticmethod
     def _page_settings():
         return """<h2>Settings</h2>
 
-<p>Configure Niruvi via <b>File &rarr; Settings</b>. Settings are saved to
-<code>~/.config/niruvi/settings.json</code>.</p>
+<p>Open <b>File &rarr; Settings</b> to adjust how Niruvi works. Changes are saved
+automatically to <code>~/.config/niruvi/settings.json</code>.</p>
 
-<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
-<tr style="background: palette(highlight); color: palette(highlighted-text);">
-<th>Setting</th><th>Default</th><th>Description</th>
-</tr>
-<tr>
-<td><code>install_dir</code></td><td><code>~/Applications</code></td>
-<td>Directory where apps are installed</td>
-</tr>
-<tr>
-<td><code>create_desktop</code></td><td><code>true</code></td>
-<td>Create .desktop entry on install</td>
-</tr>
-<tr>
-<td><code>create_shortcut</code></td><td><code>false</code></td>
-<td>Create desktop shortcut on install</td>
-</tr>
-<tr>
-<td><code>portable_home</code></td><td><code>false</code></td>
-<td>Create <code>.home</code> folder on install</td>
-</tr>
-<tr>
-<td><code>portable_config</code></td><td><code>false</code></td>
-<td>Create <code>.config</code> folder on install</td>
-</tr>
-<tr>
-<td><code>icon_in_theme</code></td><td><code>true</code></td>
-<td>Install icon to XDG theme directory</td>
-</tr>
-<tr>
-<td><code>auto_scan_before_install</code></td><td><code>true</code></td>
-<td>Run security scan before every install</td>
-</tr>
-<tr>
-<td><code>update_check_interval</code></td><td><code>weekly</code></td>
-<td>How often to check for app updates in background (daily/weekly/monthly)</td>
-</tr>
-<tr>
-<td><code>auto_update_apps</code></td><td><code>false</code></td>
-<td>Enable background auto-update checks for apps with per-app auto-update enabled</td>
-</tr>
-</table>
+<h3>Installation defaults</h3>
+<ul>
+<li><b>Install directory</b> &mdash; where apps are stored (default: <code>~/Applications</code>).</li>
+<li><b>Desktop entry</b> &mdash; automatically create a launcher entry on install.</li>
+<li><b>Desktop shortcut</b> &mdash; add a shortcut icon on your desktop.</li>
+<li><b>Portable folders</b> &mdash; create <code>.home</code> and <code>.config</code> folders to keep app data self-contained.</li>
+<li><b>Icon in theme</b> &mdash; install app icons to your system's icon theme.</li>
+<li><b>Security scan</b> &mdash; scan every AppImage for suspicious patterns before install.</li>
+</ul>
 
-<h3>Background Updates</h3>
-<p>The <b>Background Updates</b> section controls periodic update checking. When enabled,
-Niruvi checks all apps that have <b>Auto-update in background</b> turned on in their
-App Info page. The check interval can be set to daily, weekly, or monthly.</p>
-<p>When an update is found, Niruvi attempts to show a desktop notification. If the
-system doesn't support tray notifications, a standard dialog is shown instead.</p>"""
+<h3>Background updates</h3>
+<p>Niruvi can periodically check for app updates in the background. When enabled,
+apps with <b>Auto-update in background</b> turned on (in their App Info) will be
+checked. You can set the interval to daily, weekly, or monthly.</p>
+<p>If an update is found, Niruvi shows a desktop notification. On systems without
+notifications, a dialog appears instead.</p>"""
 
     @staticmethod
     def _page_security():
-        return """<h2>AppImage Validation</h2>
+        return """<h2>Safety &amp; Security</h2>
 
-<p>Niruvi validates each AppImage before installation to verify the format,
-architecture compatibility, and metadata integrity.</p>
+<p>Niruvi takes a few steps to keep you safe when installing and updating apps.</p>
 
-<h3>What is checked</h3>
+<h3>Before installation</h3>
 <ul>
-<li><b>Format</b> &mdash; Verifies the AppImage uses a valid Type 1 or Type 2 format.</li>
-<li><b>Architecture</b> &mdash; Confirms the binary architecture matches your system.</li>
-<li><b>Metadata</b> &mdash; Reads embedded desktop file and icon data for proper integration.</li>
+<li><b>Format check</b> &mdash; verifies the AppImage is a valid Type 1 or Type 2 file.</li>
+<li><b>Architecture check</b> &mdash; makes sure the app works on your system.</li>
+<li><b>Security scan</b> &mdash; checks the AppImage contents for suspicious patterns
+like hidden binaries, backdoor indicators, unsafe permissions, or injection code.
+<em>The scan never executes the AppImage.</em></li>
+<li><b>SHA256 hash</b> &mdash; every download is verified against its expected hash.</li>
 </ul>
 
-<h3>What is checked</h3>
+<h3>After installation</h3>
 <ul>
-<li>Embedded binaries or scripts in unexpected locations</li>
-<li>Reverse shell or backdoor indicators</li>
-<li>Suspicious network connections (hardcoded IPs, known malicious domains)</li>
-<li>Unsafe file permissions</li>
-<li>Unexpected SUID/setuid binaries</li>
-<li>Fork bombs, <code>dd</code> overwrites, <code>exec</code> injection patterns</li>
+<li><b>Backup before update</b> &mdash; old versions are backed up automatically.
+If an update fails, the previous version is restored.</li>
+<li><b>Verify installation</b> &mdash; you can check an installed app's integrity
+from the right-click menu.</li>
 </ul>
 
-<h3>Self-scan</h3>
-<p>Use <b>Help &rarr; Security Self-Check</b> to run a security scan on Niruvi's own
-AppImage. This is useful after downloading a new version to verify its integrity.</p>
-
-<h3>SHA256 verification</h3>
-<p>Every AppImage is verified by SHA256 hash during installation and when applying
-updates via the auto-updater. The hash is displayed in the security scan dialog.</p>"""
+<p>Niruvi does not collect any usage data, send analytics, or call home.</p>"""
 
     @staticmethod
     def _page_trouble():
         return """<h2>Troubleshooting</h2>
 
-<h3>AppImage won't run</h3>
+<h3>App won't run</h3>
 <ul>
-<li>Make sure it is executable: <code>chmod +x MyApp.AppImage</code></li>
-<li>FUSE must be installed. Try: <code>sudo apt install fuse</code> or equivalent.</li>
-<li>Check if it requires a specific library not present on your system.</li>
+<li>Make sure the file is executable: <code>chmod +x MyApp.AppImage</code></li>
+<li>FUSE needs to be installed. Try <code>sudo apt install fuse</code> (or your distro's equivalent).</li>
+<li>Some apps need specific system libraries &mdash; check the error dialog for hints.</li>
 </ul>
 
-<h3>AppImage extraction fails</h3>
+<h3>Installation fails</h3>
 <ul>
-<li>Ensure you have write permission to the install directory (<code>~/Applications</code> by default).</li>
-<li>Try running <code>niruvi --install PATH</code> for a retry with verbose output.</li>
-<li>Check disk space: <code>df -h ~</code></li>
+<li>Check that you have write permission to the install directory.</li>
+<li>Make sure there's enough disk space: <code>df -h ~</code></li>
+<li>Try running <code>niruvi --install PATH</code> from the terminal for more details.</li>
 </ul>
 
-<h3>GUI doesn't appear</h3>
+<h3>Desktop entry or icon missing</h3>
 <ul>
-<li>Install PyQt6: <code>pip install PyQt6</code></li>
-<li>On headless systems (no display), use CLI mode or forward your display (<code>export DISPLAY=:0</code>).</li>
-<li>Check that the DISPLAY environment variable is set correctly.</li>
-</ul>
-
-<h3>Desktop entry not created</h3>
-<ul>
-<li>Check Settings: <b>create_desktop</b> must be <code>true</code>.</li>
-<li>Verify <code>~/.local/share/applications/</code> exists and is writable.</li>
-<li>Run <code>update-desktop-database ~/.local/share/applications/</code> to refresh.</li>
-</ul>
-
-<h3>Icon not showing in launcher</h3>
-<ul>
-<li>Ensure <b>icon_in_theme</b> is enabled in Settings.</li>
-<li>Run <code>gtk-update-icon-cache</code> or log out and back in.</li>
-<li>Some desktop environments cache icons aggressively; a reboot may help.</li>
+<li>Check that <b>Desktop entry</b> and <b>Icon in theme</b> are enabled in Settings.</li>
+<li>Refresh the desktop database: <code>update-desktop-database ~/.local/share/applications/</code></li>
+<li>Refresh the icon cache: <code>gtk-update-icon-cache ~/.local/share/icons/hicolor</code></li>
+<li>Some desktop environments cache aggressively &mdash; a logout/login may help.</li>
 </ul>
 
 <h3>Build fails</h3>
 <ul>
-<li>Verify the source package is a valid DEB, RPM, or tar archive.</li>
-<li>Check that required tools (<code>ar</code>, <code>rpm2cpio</code>, <code>cpio</code>, <code>tar</code>) are installed.</li>
-<li>Ensure the output directory is writable and has enough free space.</li>
-<li>Look at the build log in the dialog for specific error messages.</li>
+<li>Make sure the source file is a valid DEB, RPM, or tar archive.</li>
+<li>Check that required tools are installed (<code>ar</code>, <code>rpm2cpio</code>, <code>cpio</code>, <code>tar</code>).</li>
+<li>Ensure the output directory is writable and has free space.</li>
+<li>Check the build log in the dialog for specific error messages.</li>
 </ul>
 
-<h3>Reporting bugs</h3>
-<p>Use <b>Help &rarr; Report Issue</b> to open the GitHub issues page and submit a bug report
-or feature request. Before reporting:</p>
+<h3>Reporting a bug</h3>
+<p>Go to <b>Help &rarr; Report Issue</b> to open the GitHub issues page. Before you submit:</p>
 <ol>
-<li>Check the error dialog's Technical Details tab for diagnostic information.</li>
-<li>Click <b>Copy Report</b> in the error dialog to capture system info and logs.</li>
-<li>Include the copied report in your GitHub issue for faster debugging.</li>
+<li>Open the error dialog and check the <b>Technical Details</b> tab.</li>
+<li>Click <b>Copy Report</b> to capture system info and logs.</li>
+<li>Paste the report into your GitHub issue &mdash; it helps a lot.</li>
 </ol>"""
 
     @staticmethod

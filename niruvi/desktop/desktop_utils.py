@@ -6,8 +6,10 @@ import subprocess
 
 from PyQt6.QtWidgets import QMessageBox
 
-from niruvi.ui.settings import DESKTOP_DIR, get_settings
-from niruvi.utils.sound_manager import play as play_sound
+from niruvi.config import DESKTOP_DIR, get_settings
+from niruvi.utils.icon_search import find_icon_in_dir as _find_icon_in_dir_impl
+
+logger = logging.getLogger(__name__)
 
 
 def get_version(app_dir: str) -> str:
@@ -38,32 +40,7 @@ def get_version(app_dir: str) -> str:
 
 
 def find_icon_in_appdir(app_dir: str, icon_name: str) -> str | None:
-    if not icon_name:
-        return None
-    if os.path.isabs(icon_name) and os.path.exists(icon_name):
-        return icon_name
-    extensions = [".png", ".svg", ".xpm", ".ico"]
-    search_dirs = [
-        app_dir,
-        os.path.join(app_dir, "usr", "share", "icons"),
-        os.path.join(app_dir, "usr", "share", "pixmaps"),
-        os.path.join(app_dir, "usr", "local", "share", "icons"),
-    ]
-    for base in search_dirs:
-        if not os.path.isdir(base):
-            continue
-        for ext in extensions:
-            candidate = os.path.join(base, icon_name + ext)
-            if os.path.exists(candidate):
-                return candidate
-        candidate = os.path.join(base, icon_name)
-        if os.path.exists(candidate):
-            return candidate
-        for root, _, files in os.walk(base):
-            for f in files:
-                if f == icon_name or any(f == icon_name + ext for ext in extensions):
-                    return os.path.join(root, f)
-    return None
+    return _find_icon_in_dir_impl(app_dir, icon_name)
 
 
 _ICON_SIZE_DIRS = {
@@ -188,6 +165,8 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
         return dest_desktop
     except OSError as e:
         if parent:
+            from niruvi.utils.sound_manager import play as play_sound
+
             play_sound("error")
             QMessageBox.critical(parent, "Error", f"Failed to write desktop file: {e}")
         return None
@@ -256,10 +235,17 @@ def _create_generic_desktop(app_dir: str, app_name: str) -> str | None:
 
 
 def find_desktop_for_app(app_name: str) -> str | None:
-    install_dir = get_settings()["install_dir"]
     desktop_file = os.path.join(DESKTOP_DIR, f"{app_name}.desktop")
     if os.path.exists(desktop_file):
         return desktop_file
+    try:
+        from niruvi.desktop.installation_registry import InstallationRegistry
+        record = InstallationRegistry().get(app_name)
+        if record and record.desktop_file and os.path.exists(record.desktop_file):
+            return record.desktop_file
+    except Exception:
+        pass
+    install_dir = get_settings()["install_dir"]
     for f in os.listdir(DESKTOP_DIR):
         if f.endswith(".desktop"):
             path = os.path.join(DESKTOP_DIR, f)
@@ -294,15 +280,16 @@ def refresh_desktop_database() -> bool:
         try:
             subprocess.run(cmd, capture_output=True, timeout=10)
             any_success = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to run desktop DB command %s: %s", cmd[0], e, exc_info=True)
 
     for kde_cmd in [["kbuildsycoca6"], ["kbuildsycoca5"]]:
         try:
             subprocess.run(kde_cmd, capture_output=True, timeout=30)
             any_success = True
             break
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to run KDE command %s: %s", kde_cmd[0], e, exc_info=True)
             continue
 
     return any_success
@@ -381,8 +368,8 @@ def register_mime_handler(app_name: str, desktop_name: str | None = None) -> boo
                 timeout=10,
             )
             any_success = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to set MIME handler for %s: %s", mt, e, exc_info=True)
 
     mimeapps = os.path.expanduser("~/.config/mimeapps.list")
     try:

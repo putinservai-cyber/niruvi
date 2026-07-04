@@ -4,12 +4,15 @@ Pages: Welcome → RemoveOptions → Confirmation → Remove → Finish
        + Error handling for locked files.
 """
 
+import logging
 import os
 import shutil
 import subprocess
 import traceback
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+
+logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -35,6 +38,7 @@ from niruvi.desktop.desktop_utils import (
 from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.styles import format_dir_size
 
 
 def _unmount_if_fuse(path: str):
@@ -42,32 +46,8 @@ def _unmount_if_fuse(path: str):
         return
     try:
         subprocess.run(["fusermount", "-u", path], capture_output=True, timeout=10)
-    except Exception:
-        pass
-
-
-def _format_size(path: str) -> str:
-    try:
-        total = 0
-        if os.path.isfile(path):
-            total = os.path.getsize(path)
-        elif os.path.isdir(path):
-            for dirpath, _, filenames in os.walk(path):
-                for f in filenames:
-                    fp = os.path.join(dirpath, f)
-                    try:
-                        total += os.path.getsize(fp)
-                    except OSError:
-                        pass
-        if total >= 1024**3:
-            return f"{total / (1024**3):.1f} GB"
-        if total >= 1024**2:
-            return f"{total / (1024**2):.0f} MB"
-        if total >= 1024:
-            return f"{total / 1024:.0f} KB"
-        return f"{total} B"
-    except Exception:
-        return "Unknown"
+    except Exception as e:
+        logger.debug("Failed to unmount FUSE path %s: %s", path, e, exc_info=True)
 
 
 class UninstallWelcomePage(QWizardPage):
@@ -86,7 +66,7 @@ class UninstallWelcomePage(QWizardPage):
         info_col = QVBoxLayout()
         info_col.addWidget(QLabel(f"<b>{app_name}</b>"))
         info_col.addWidget(QLabel(f"Installation: <code>{app_dir}</code>"))
-        info_col.addWidget(QLabel(f"Application Size: {_format_size(app_dir)}"))
+        info_col.addWidget(QLabel(f"Application Size: {format_dir_size(app_dir)}"))
         info_row.addLayout(info_col, 1)
         layout.addLayout(info_row)
 
@@ -185,7 +165,7 @@ class UninstallConfirmPage(QWizardPage):
         layout.addWidget(self.items_label)
 
         self.size_label = QLabel()
-        self.size_label.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        self.size_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         layout.addWidget(self.size_label)
 
         layout.addStretch()
@@ -210,7 +190,7 @@ class UninstallConfirmPage(QWizardPage):
             lines.append("<li>Cache <i>(optional)</i></li>")
         lines.append("</ul>")
         self.items_label.setText("".join(lines))
-        self.size_label.setText(f"Estimated Space: {_format_size(app_dir)}")
+        self.size_label.setText(f"Estimated Space: {format_dir_size(app_dir)}")
 
 
 class UninstallProgressPage(QWizardPage):
@@ -238,6 +218,7 @@ class UninstallProgressPage(QWizardPage):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(160)
+        self.log_text.setVisible(False)
         mono = QFont()
         mono.setFamily("monospace")
         mono.setStyleHint(QFont.StyleHint.TypeWriter)
@@ -302,7 +283,7 @@ class UninstallFinishPage(QWizardPage):
         if ok_icon and not ok_icon.isNull():
             self.icon_label.setPixmap(ok_icon)
         self.title_label.setText(f"{app_name} has been removed")
-        freed = _format_size(app_dir)
+        freed = format_dir_size(app_dir)
         self.size_label.setText(f"Freed Space: {freed}")
 
 
@@ -409,8 +390,8 @@ class UninstallWorker(QThread):
             self.step_changed.emit("Refreshing desktop database...", 95)
             try:
                 refresh_desktop_database()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to refresh desktop database: %s", e, exc_info=True)
 
             self.step_changed.emit("Done", 100)
             self.finished.emit()
@@ -422,35 +403,35 @@ class UninstallWizard(QWizard):
     def __init__(self, app_name, app_dir, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Uninstall {app_name}")
-        self.setFixedSize(600, 500)
+        self.setMinimumSize(520, 420)
+        self.resize(600, 500)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setStyleSheet("""
-            QWizardPage { background: palette(window); }
-            QLabel { font-size: 12px; }
+            QWizardPage { background-color: palette(window); }
             QProgressBar {
                 border: 1px solid palette(mid);
-                border-radius: 6px;
+                border-radius: 2px;
                 text-align: center;
-                height: 22px;
-                background: palette(base);
+                height: 6px;
+                background-color: palette(base);
             }
             QProgressBar::chunk {
-                background: palette(highlight);
-                border-radius: 5px;
+                background-color: palette(highlight);
+                border-radius: 1px;
             }
             QPushButton {
                 padding: 6px 16px;
                 border: 1px solid palette(mid);
-                border-radius: 5px;
-                background: palette(button);
+                border-radius: 2px;
+                background-color: palette(button);
                 font-size: 12px;
             }
             QPushButton:hover {
-                background: palette(light);
+                background-color: palette(light);
                 border-color: palette(highlight);
             }
             QPushButton:pressed {
-                background: palette(midlight);
+                background-color: palette(midlight);
             }
             QCheckBox {
                 spacing: 8px;
@@ -459,11 +440,11 @@ class UninstallWizard(QWizard):
             QCheckBox::indicator {
                 width: 18px;
                 height: 18px;
-                border-radius: 3px;
+                border-radius: 4px;
                 border: 1px solid palette(mid);
             }
             QCheckBox::indicator:checked {
-                background: palette(highlight);
+                background-color: palette(highlight);
                 border-color: palette(highlight);
             }
         """)
@@ -476,6 +457,8 @@ class UninstallWizard(QWizard):
 
         self._build_pages()
         self._configure_buttons()
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        self.setFixedSize(600, 500)
         self.currentIdChanged.connect(self._on_page_changed)
 
     def _build_pages(self):
@@ -498,8 +481,6 @@ class UninstallWizard(QWizard):
         self._finish_page = UninstallFinishPage(self.app_name, self)
         pid = self.addPage(self._finish_page)
         self._page_finish = pid
-
-        self.currentIdChanged.connect(self._on_page_changed)
 
     def _configure_buttons(self):
         self.setButtonText(QWizard.WizardButton.CancelButton, "Cancel")
@@ -541,6 +522,7 @@ class UninstallWizard(QWizard):
                 self._start_uninstall()
 
     def _on_page_changed(self, idx):
+        play_sound("navigation")
         if idx == self._page_progress:
             self.button(QWizard.WizardButton.BackButton).hide()
             self.button(QWizard.WizardButton.NextButton).hide()
@@ -599,6 +581,7 @@ class UninstallWizard(QWizard):
             self._finish_page.size_label.hide()
             self._finish_page.restart_check.hide()
             self._finish_page.logs_check.hide()
+        play_sound("success")
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).show()
         self.button(QWizard.WizardButton.CancelButton).hide()
@@ -608,6 +591,10 @@ class UninstallWizard(QWizard):
         play_sound("error")
         QMessageBox.critical(self, "Uninstall Error", msg.split("\n")[0])
         self.reject()
+
+    def reject(self):
+        play_sound("navigation")
+        super().reject()
 
     def accept(self):
         p = self.parent()

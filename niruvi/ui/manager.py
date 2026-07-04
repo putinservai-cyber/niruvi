@@ -8,8 +8,6 @@ import tempfile
 from pathlib import Path
 
 from PyQt6.QtCore import QEventLoop, QSize, Qt, QThread, QTimer, pyqtSignal
-
-logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QIcon, QPalette, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
@@ -70,9 +68,12 @@ from niruvi.ui.settings import (
 from niruvi.ui.uninstall_dialog import UninstallWizard
 from niruvi.ui.wizard import InstallWizard
 from niruvi.utils import get_icon
-from niruvi.utils.sound_manager import play as play_sound, cleanup as sound_cleanup
+from niruvi.utils.sound_manager import cleanup as sound_cleanup
+from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.styles import FONT_MD, FONT_SM, format_size
 from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING, ThemeMode, get_theme_engine
+
+logger = logging.getLogger(__name__)
 
 _DETACHED: list[subprocess.Popen] = []
 

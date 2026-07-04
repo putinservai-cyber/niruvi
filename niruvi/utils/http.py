@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import ssl
 import urllib.request
 

@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
 
 from PyQt6.QtCore import QBuffer, QIODevice, QSize, Qt
 from PyQt6.QtGui import QImage, QPainter, QPixmap
+
+logger = logging.getLogger(__name__)
 
 try:
     from PyQt6.QtSvg import QSvgRenderer
@@ -50,8 +53,8 @@ def get_pixmap_from_file(path: str, size: int = 64) -> QPixmap | None:
             return pixmap.scaled(
                 size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to load pixmap from %s: %s", path, e, exc_info=True)
     return None
 
 
@@ -96,8 +99,8 @@ def _svg_to_png(data: bytes, target_size: int = 256) -> bytes | None:
             result = bytes(buf.data())
             if result[:4] == b"\x89PNG":
                 return result
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("SVG-to-PNG via Qt failed: %s", e, exc_info=True)
 
     try:
         import subprocess
@@ -110,8 +113,8 @@ def _svg_to_png(data: bytes, target_size: int = 256) -> bytes | None:
         )
         if rsvg.returncode == 0 and rsvg.stdout[:4] == b"\x89PNG":
             return rsvg.stdout
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("SVG-to-PNG via rsvg-convert failed: %s", e, exc_info=True)
 
     return data
 
@@ -120,5 +123,6 @@ def _is_svg_data(data: bytes) -> bool:
     try:
         head = data[:200].decode("utf-8", errors="ignore").strip().lower()
         return head.startswith("<?xml") or head.startswith("<svg")
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to detect SVG data: %s", e, exc_info=True)
         return False

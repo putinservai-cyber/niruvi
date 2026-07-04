@@ -1,14 +1,13 @@
-"""Theme Engine — modern light/dark themes using Fusion style + QPalette + QSS.
+"""Theme Engine — native KDE Breeze look via Fusion style + exact Breeze palette.
 
-Fusion style provides consistent cross-platform rendering. The palette defines
-colors and a minimal QSS overlay polishes widgets (rounded buttons, focus rings,
-tree/list highlighting, scroll bars, group boxes, tab widgets, menus, tooltips).
+Strategy: Set Fusion style + exact Breeze QPalette colors. Fusion renders
+everything natively from the palette. QSS is MINIMAL — only adds what
+Fusion cannot do (selection alpha, hover states, thin scrollbar, tab underline).
 """
 
 import logging
 from enum import Enum, auto
 
-from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
@@ -23,538 +22,194 @@ class ThemeMode(Enum):
 
 # ── Semantic colors (always visible on both light and dark backgrounds) ──
 
-COLOR_SUCCESS = "#16a34a"
-COLOR_ERROR = "#dc2626"
-COLOR_WARNING = "#d97706"
-COLOR_INFO = "#2563eb"
+COLOR_SUCCESS = "#27AE60"
+COLOR_ERROR = "#DA4453"
+COLOR_WARNING = "#F67400"
+COLOR_INFO = "#2980B9"
 
 
-# ── Light palette (modern blue-accent) ───────────────────────────────────
+def disabled_text_color() -> str:
+    """Return the current palette's disabled text color as hex string."""
+    app = QApplication.instance()
+    if app is None:
+        return "#707D8A"
+    return app.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
+
+
+# ── Breeze Light palette (exact values from BreezeLight.colors) ──────────
 
 
 def _light_palette() -> QPalette:
     p = QPalette()
-    p.setColor(QPalette.ColorRole.Window, QColor(246, 247, 249))
-    p.setColor(QPalette.ColorRole.WindowText, QColor(25, 25, 25))
-    p.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.AlternateBase, QColor(241, 243, 246))
-    p.setColor(QPalette.ColorRole.Text, QColor(25, 25, 25))
-    p.setColor(QPalette.ColorRole.Button, QColor(241, 243, 246))
-    p.setColor(QPalette.ColorRole.ButtonText, QColor(25, 25, 25))
-    p.setColor(QPalette.ColorRole.Highlight, QColor(59, 130, 246))
-    p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.ToolTipText, QColor(25, 25, 25))
-    p.setColor(QPalette.ColorRole.Link, QColor(59, 130, 246))
-    p.setColor(QPalette.ColorRole.PlaceholderText, QColor(156, 163, 175))
-    p.setColor(QPalette.ColorRole.BrightText, QColor(220, 38, 38))
-    p.setColor(QPalette.ColorRole.Dark, QColor(209, 213, 219))
-    p.setColor(QPalette.ColorRole.Mid, QColor(229, 231, 235))
-    p.setColor(QPalette.ColorRole.Midlight, QColor(243, 244, 246))
-    p.setColor(QPalette.ColorRole.Light, QColor(249, 250, 251))
-    p.setColor(QPalette.ColorRole.Shadow, QColor(156, 163, 175))
-    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(156, 163, 175))
-    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(156, 163, 175))
+    # Window
+    p.setColor(QPalette.ColorRole.Window, QColor(239, 240, 241))  # #EFF0F1
+    p.setColor(QPalette.ColorRole.WindowText, QColor(35, 38, 41))  # #232629
+    p.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))  # #FFFFFF
+    p.setColor(QPalette.ColorRole.AlternateBase, QColor(247, 247, 247))  # #F7F7F7
+    p.setColor(QPalette.ColorRole.Text, QColor(35, 38, 41))  # #232629
+    p.setColor(QPalette.ColorRole.Button, QColor(252, 252, 252))  # #FCFCFC
+    p.setColor(QPalette.ColorRole.ButtonText, QColor(35, 38, 41))  # #232629
+    p.setColor(QPalette.ColorRole.Highlight, QColor(61, 174, 233))  # #3DAEE9
+    p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))  # #FFFFFF
+    p.setColor(QPalette.ColorRole.ToolTipBase, QColor(247, 247, 247))  # #F7F7F7
+    p.setColor(QPalette.ColorRole.ToolTipText, QColor(35, 38, 41))  # #232629
+    p.setColor(QPalette.ColorRole.Link, QColor(41, 128, 185))  # #2980B9
+    p.setColor(QPalette.ColorRole.LinkVisited, QColor(155, 89, 182))  # #9B59B6
+    p.setColor(QPalette.ColorRole.PlaceholderText, QColor(112, 125, 138))  # #707D8A
+    p.setColor(QPalette.ColorRole.BrightText, QColor(218, 68, 83))  # #DA4453
+    p.setColor(QPalette.ColorRole.Light, QColor(255, 255, 255))  # #FFFFFF
+    p.setColor(QPalette.ColorRole.Midlight, QColor(247, 247, 247))  # #F7F7F7
+    p.setColor(QPalette.ColorRole.Dark, QColor(209, 213, 219))  # #D1D5DB (computed)
+    p.setColor(QPalette.ColorRole.Mid, QColor(227, 229, 231))  # #E3E5E7
+    p.setColor(QPalette.ColorRole.Shadow, QColor(156, 163, 175))  # #9CA3AF
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(112, 125, 138))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(112, 125, 138))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(112, 125, 138))
     return p
 
 
-# ── Dark palette (modern slate-accent) ───────────────────────────────────
+# ── Breeze Dark palette (exact values from BreezeDark.colors) ────────────
 
 
 def _dark_palette() -> QPalette:
     p = QPalette()
-    p.setColor(QPalette.ColorRole.Window, QColor(24, 25, 28))
-    p.setColor(QPalette.ColorRole.WindowText, QColor(229, 231, 235))
-    p.setColor(QPalette.ColorRole.Base, QColor(31, 33, 37))
-    p.setColor(QPalette.ColorRole.AlternateBase, QColor(38, 40, 45))
-    p.setColor(QPalette.ColorRole.Text, QColor(229, 231, 235))
-    p.setColor(QPalette.ColorRole.Button, QColor(38, 40, 45))
-    p.setColor(QPalette.ColorRole.ButtonText, QColor(229, 231, 235))
-    p.setColor(QPalette.ColorRole.Highlight, QColor(59, 130, 246))
-    p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    p.setColor(QPalette.ColorRole.ToolTipBase, QColor(38, 40, 45))
-    p.setColor(QPalette.ColorRole.ToolTipText, QColor(229, 231, 235))
-    p.setColor(QPalette.ColorRole.Link, QColor(96, 165, 250))
-    p.setColor(QPalette.ColorRole.PlaceholderText, QColor(107, 114, 128))
-    p.setColor(QPalette.ColorRole.BrightText, QColor(248, 113, 113))
-    p.setColor(QPalette.ColorRole.Dark, QColor(55, 58, 64))
-    p.setColor(QPalette.ColorRole.Mid, QColor(55, 58, 64))
-    p.setColor(QPalette.ColorRole.Midlight, QColor(68, 71, 78))
-    p.setColor(QPalette.ColorRole.Light, QColor(75, 78, 85))
-    p.setColor(QPalette.ColorRole.Shadow, QColor(0, 0, 0))
-    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(107, 114, 128))
-    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(107, 114, 128))
+    # Window
+    p.setColor(QPalette.ColorRole.Window, QColor(32, 35, 38))  # #202326
+    p.setColor(QPalette.ColorRole.WindowText, QColor(252, 252, 252))  # #FCFCFC
+    p.setColor(QPalette.ColorRole.Base, QColor(20, 22, 24))  # #141618
+    p.setColor(QPalette.ColorRole.AlternateBase, QColor(29, 31, 34))  # #1D1F22
+    p.setColor(QPalette.ColorRole.Text, QColor(252, 252, 252))  # #FCFCFC
+    p.setColor(QPalette.ColorRole.Button, QColor(41, 44, 48))  # #292C30
+    p.setColor(QPalette.ColorRole.ButtonText, QColor(252, 252, 252))  # #FCFCFC
+    p.setColor(QPalette.ColorRole.Highlight, QColor(61, 174, 233))  # #3DAEE9
+    p.setColor(QPalette.ColorRole.HighlightedText, QColor(252, 252, 252))  # #FCFCFC
+    p.setColor(QPalette.ColorRole.ToolTipBase, QColor(41, 44, 48))  # #292C30
+    p.setColor(QPalette.ColorRole.ToolTipText, QColor(252, 252, 252))  # #FCFCFC
+    p.setColor(QPalette.ColorRole.Link, QColor(29, 153, 243))  # #1D99F3
+    p.setColor(QPalette.ColorRole.LinkVisited, QColor(155, 89, 182))  # #9B59B6
+    p.setColor(QPalette.ColorRole.PlaceholderText, QColor(161, 169, 177))  # #A1A9B1
+    p.setColor(QPalette.ColorRole.BrightText, QColor(248, 113, 113))  # #F87171
+    p.setColor(QPalette.ColorRole.Light, QColor(75, 78, 85))  # #4B4E55 (computed)
+    p.setColor(QPalette.ColorRole.Midlight, QColor(68, 71, 78))  # #44474E
+    p.setColor(QPalette.ColorRole.Dark, QColor(55, 58, 64))  # #373A40
+    p.setColor(QPalette.ColorRole.Mid, QColor(41, 44, 48))  # #292C30
+    p.setColor(QPalette.ColorRole.Shadow, QColor(0, 0, 0))  # #000000
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(161, 169, 177))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(161, 169, 177))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(161, 169, 177))
     return p
 
 
-# ── QSS overlays ─────────────────────────────────────────────────────────
+# ── Minimal QSS — only what Fusion cannot do natively ────────────────────
+# Fusion handles: buttons, combos, inputs, progress bars, checkboxes, radios,
+# tree/list/table, tabs, menus, tooltips, splitters, groupboxes, sliders.
+# We only add: selection alpha, hover states, scrollbar thinning, tab underline.
 
-_LIGHT_QSS = """
-QGroupBox {
-    font-weight: bold;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding: 16px 12px 12px 12px;
-    background: transparent;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    padding: 2px 8px;
-    color: #6b7280;
-}
-QPushButton {
-    padding: 6px 16px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: #f9fafb;
-    color: #1f2937;
-    min-height: 22px;
-}
-QPushButton:hover {
-    background: #f3f4f6;
-    border-color: #9ca3af;
-}
-QPushButton:pressed {
-    background: #e5e7eb;
-}
-QPushButton:focus {
-    outline: none;
-    border-color: #3b82f6;
-}
-QPushButton:disabled {
-    color: #9ca3af;
-}
-QComboBox {
-    padding: 5px 10px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: #ffffff;
-    color: #1f2937;
-    min-height: 22px;
-}
-QComboBox:hover {
-    border-color: #9ca3af;
-}
-QComboBox::drop-down {
-    border: none;
-    width: 24px;
-}
-QLineEdit {
-    padding: 5px 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: #ffffff;
-    color: #1f2937;
-    selection-background-color: #3b82f6;
-}
-QLineEdit:focus {
-    border-color: #3b82f6;
-}
+_QSS = """
+/* ── Tree/List/Table: selection + hover ── */
 QTreeView, QListView, QTableView {
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    background: #ffffff;
-    alternate-background-color: #f9fafb;
     outline: none;
 }
 QTreeView::item, QListView::item, QTableView::item {
-    padding: 4px 6px;
-    color: #1f2937;
+    padding: 2px 4px;
 }
 QTreeView::item:selected, QListView::item:selected, QTableView::item:selected {
-    background: #3b82f6;
-    color: #ffffff;
+    background-color: rgba(61, 174, 233, 0.33);
+    color: #FCFCFC;
 }
-QTreeView::item:hover, QListView::item:hover, QTableView::item:hover {
-    background: #f3f4f6;
+QTreeView::item:!selected:hover, QListView::item:!selected:hover, QTableView::item:!selected:hover {
+    background-color: rgba(61, 174, 233, 0.15);
 }
-QHeaderView::section {
-    background: #f9fafb;
-    border: none;
-    border-bottom: 1px solid #e5e7eb;
-    border-right: 1px solid #e5e7eb;
-    padding: 6px 8px;
-    font-weight: bold;
-    color: #6b7280;
+QTreeView::item:!selected:hover:alternate, QListView::item:!selected:hover:alternate {
+    background-color: rgba(61, 174, 233, 0.15);
 }
+
+/* ── Scrollbar: thin + minimal ── */
 QScrollBar:vertical {
+    width: 8px;
     background: transparent;
-    width: 10px;
     margin: 0;
 }
 QScrollBar::handle:vertical {
-    background: #d1d5db;
-    border-radius: 5px;
-    min-height: 30px;
+    min-height: 20px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.15);
 }
 QScrollBar::handle:vertical:hover {
-    background: #9ca3af;
+    background: rgba(0, 0, 0, 0.25);
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
+    background: transparent;
 }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
     background: transparent;
 }
 QScrollBar:horizontal {
+    height: 8px;
     background: transparent;
-    height: 10px;
     margin: 0;
 }
 QScrollBar::handle:horizontal {
-    background: #d1d5db;
-    border-radius: 5px;
-    min-width: 30px;
+    min-width: 20px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.15);
 }
 QScrollBar::handle:horizontal:hover {
-    background: #9ca3af;
+    background: rgba(0, 0, 0, 0.25);
 }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0;
+    background: transparent;
 }
-QProgressBar {
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    background: #f3f4f6;
-    text-align: center;
-    color: #1f2937;
-    min-height: 16px;
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
 }
-QProgressBar::chunk {
-    background: #3b82f6;
-    border-radius: 5px;
-}
-QTabWidget::pane {
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    background: white;
-}
-QTabBar::tab {
-    padding: 6px 16px;
-    border: 1px solid transparent;
-    border-bottom: 2px solid transparent;
-    color: #6b7280;
-}
-QTabBar::tab:selected {
-    color: #3b82f6;
-    border-bottom: 2px solid #3b82f6;
-}
-QTabBar::tab:hover:!selected {
-    color: #374151;
-    background: #f9fafb;
-}
-QMenu {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 4px;
-    color: #1f2937;
-}
-QMenu::item {
-    padding: 6px 24px;
-    border-radius: 4px;
-}
-QMenu::item:selected {
-    background: #3b82f6;
-    color: white;
-}
-QMenu::separator {
-    height: 1px;
-    background: #e5e7eb;
-    margin: 4px 8px;
-}
-QToolTip {
-    background: #1f2937;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
-}
-QStatusBar {
-    background: #f9fafb;
-    border-top: 1px solid #e5e7eb;
-    color: #6b7280;
-}
-QSplitter::handle {
-    background: #e5e7eb;
-}
-QSplitter::handle:hover {
-    background: #9ca3af;
-}
-QCheckBox::indicator {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #d1d5db;
-    border-radius: 4px;
-    background: white;
-}
-QCheckBox::indicator:checked {
-    background: #3b82f6;
-    border-color: #3b82f6;
-}
-QRadioButton::indicator {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #d1d5db;
-    border-radius: 9px;
-    background: white;
-}
-QRadioButton::indicator:checked {
-    background: #3b82f6;
-    border-color: #3b82f6;
-}
-QTextEdit, QPlainTextEdit {
-    background: #ffffff;
-    color: #1f2937;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    selection-background-color: #3b82f6;
-    selection-color: #ffffff;
-}
-"""
 
-_DARK_QSS = """
-QGroupBox {
-    font-weight: bold;
-    border: 1px solid #374151;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding: 16px 12px 12px 12px;
-    background: transparent;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    padding: 2px 8px;
-    color: #9ca3af;
-}
-QPushButton {
-    padding: 6px 16px;
-    border: 1px solid #4b5563;
-    border-radius: 6px;
-    background: #2d3139;
-    color: #e5e7eb;
-    min-height: 22px;
-}
-QPushButton:hover {
-    background: #384050;
-    border-color: #6b7280;
-}
-QPushButton:pressed {
-    background: #374151;
-}
-QPushButton:focus {
-    outline: none;
-    border-color: #60a5fa;
-}
-QPushButton:disabled {
-    color: #6b7280;
-}
-QComboBox {
-    padding: 5px 10px;
-    border: 1px solid #4b5563;
-    border-radius: 6px;
-    background: #2d3139;
-    color: #e5e7eb;
-    min-height: 22px;
-}
-QComboBox:hover {
-    border-color: #6b7280;
-}
-QComboBox::drop-down {
-    border: none;
-    width: 24px;
-}
-QComboBox QAbstractItemView {
-    background: #1f2128;
-    color: #e5e7eb;
-    border: 1px solid #4b5563;
-    border-radius: 6px;
-    selection-background-color: #3b82f6;
-    selection-color: #ffffff;
-}
-QLineEdit {
-    padding: 5px 8px;
-    border: 1px solid #4b5563;
-    border-radius: 6px;
-    background: #1f2128;
-    color: #e5e7eb;
-    selection-background-color: #3b82f6;
-    selection-color: #ffffff;
-}
-QLineEdit:focus {
-    border-color: #60a5fa;
-}
-QTreeView, QListView, QTableView {
-    border: 1px solid #374151;
-    border-radius: 6px;
-    background: #1f2128;
-    alternate-background-color: #252830;
-    outline: none;
-}
-QTreeView::item, QListView::item, QTableView::item {
-    padding: 4px 6px;
-    color: #e5e7eb;
-}
-QTreeView::item:selected, QListView::item:selected, QTableView::item:selected {
-    background: #3b82f6;
-    color: #ffffff;
-}
-QTreeView::item:hover, QListView::item:hover, QTableView::item:hover {
-    background: #2d3139;
-}
-QHeaderView::section {
-    background: #252830;
-    border: none;
-    border-bottom: 1px solid #374151;
-    border-right: 1px solid #374151;
-    padding: 6px 8px;
-    font-weight: bold;
-    color: #9ca3af;
-}
-QScrollBar:vertical {
-    background: transparent;
-    width: 10px;
-    margin: 0;
-}
-QScrollBar::handle:vertical {
-    background: #4b5563;
-    border-radius: 5px;
-    min-height: 30px;
-}
-QScrollBar::handle:vertical:hover {
-    background: #6b7280;
-}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    height: 0;
-}
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-    background: transparent;
-}
-QScrollBar:horizontal {
-    background: transparent;
-    height: 10px;
-    margin: 0;
-}
-QScrollBar::handle:horizontal {
-    background: #4b5563;
-    border-radius: 5px;
-    min-width: 30px;
-}
-QScrollBar::handle:horizontal:hover {
-    background: #6b7280;
-}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-    width: 0;
-}
-QProgressBar {
-    border: 1px solid #374151;
-    border-radius: 6px;
-    background: #2d3139;
-    text-align: center;
-    color: #e5e7eb;
-    min-height: 16px;
-}
-QProgressBar::chunk {
-    background: #3b82f6;
-    border-radius: 5px;
-}
-QTabWidget::pane {
-    border: 1px solid #374151;
-    border-radius: 6px;
-    background: #1f2128;
-}
+/* ── Tab bar: underline indicator on selected tab ── */
 QTabBar::tab {
-    padding: 6px 16px;
-    border: 1px solid transparent;
-    border-bottom: 2px solid transparent;
-    color: #9ca3af;
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
 }
 QTabBar::tab:selected {
-    color: #60a5fa;
-    border-bottom: 2px solid #60a5fa;
+    border-bottom: 3px solid #3DAEE9;
 }
 QTabBar::tab:hover:!selected {
-    color: #e5e7eb;
-    background: #2d3139;
+    background: rgba(61, 174, 233, 0.1);
 }
+
+/* ── Menu: no visible frame, minimal padding ── */
 QMenu {
-    background: #1f2128;
-    border: 1px solid #374151;
-    border-radius: 8px;
-    padding: 4px;
-    color: #e5e7eb;
+    padding: 4px 0;
 }
 QMenu::item {
-    padding: 6px 24px;
-    border-radius: 4px;
+    padding: 6px 24px 6px 12px;
 }
 QMenu::item:selected {
-    background: #3b82f6;
-    color: white;
+    background-color: #3DAEE9;
+    color: #FFFFFF;
 }
 QMenu::separator {
     height: 1px;
-    background: #374151;
     margin: 4px 8px;
 }
+
+/* ── Tooltip: Breeze style ── */
 QToolTip {
-    background: #374151;
-    color: #e5e7eb;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
+    border: 1px solid rgba(35, 38, 41, 0.2);
+    padding: 2px;
 }
-QStatusBar {
-    background: #252830;
-    border-top: 1px solid #374151;
-    color: #9ca3af;
-}
-QSplitter::handle {
-    background: #374151;
-}
-QSplitter::handle:hover {
-    background: #6b7280;
-}
-QCheckBox::indicator {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #4b5563;
-    border-radius: 4px;
-    background: #1f2128;
-}
-QCheckBox::indicator:checked {
-    background: #3b82f6;
-    border-color: #3b82f6;
-}
-QRadioButton::indicator {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #4b5563;
-    border-radius: 9px;
-    background: #1f2128;
-}
-QRadioButton::indicator:checked {
-    background: #3b82f6;
-    border-color: #3b82f6;
-}
-QTextEdit, QPlainTextEdit {
-    background: #1f2128;
-    color: #e5e7eb;
-    border: 1px solid #4b5563;
-    border-radius: 6px;
-    selection-background-color: #3b82f6;
-    selection-color: #ffffff;
+
+/* ── Focus ring ── */
+QPushButton:focus, QComboBox:focus, QLineEdit:focus, QTextEdit:focus {
+    border-color: #3DAEE9;
 }
 """
 
 
 class ThemeEngine:
-    """Applies light/dark Fusion theme with system detection for auto mode."""
+    """Applies Breeze-accurate light/dark theme via Fusion style + palette."""
 
     def __init__(self):
         self._mode = ThemeMode.AUTO
@@ -590,6 +245,11 @@ class ThemeEngine:
                 logger.warning("Theme listener error: %s", e)
 
     def _detect_system_theme(self) -> ThemeMode:
+        import time
+
+        now = time.monotonic()
+        if hasattr(self, "_theme_cache") and now - self._theme_cache_time < 60:
+            return self._theme_cache
         try:
             import subprocess
 
@@ -600,9 +260,11 @@ class ThemeEngine:
                 timeout=5,
             )
             if "dark" in result.stdout.lower():
+                self._theme_cache = ThemeMode.DARK
+                self._theme_cache_time = now
                 return ThemeMode.DARK
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("gsettings color-scheme detection failed: %s", e, exc_info=True)
         try:
             result = subprocess.run(
                 ["kreadconfig6", "--group", "General", "--key", "ColorScheme", "--default", "Breeze"],
@@ -611,23 +273,30 @@ class ThemeEngine:
                 timeout=5,
             )
             if "dark" in result.stdout.lower():
+                self._theme_cache = ThemeMode.DARK
+                self._theme_cache_time = now
                 return ThemeMode.DARK
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("kreadconfig6 color-scheme detection failed: %s", e, exc_info=True)
+        self._theme_cache = ThemeMode.LIGHT
+        self._theme_cache_time = now
         return ThemeMode.LIGHT
 
     def apply(self):
         app = QApplication.instance()
         if app is None:
             return
-        app.setStyle("Fusion")
+        # Set Fusion style first — it renders everything from the palette
+        if app.style().name() != "Fusion":
+            app.setStyle("Fusion")
+        # Set the exact Breeze palette — Fusion reads all colors from this
         mode = self.effective_mode
         if mode == ThemeMode.DARK:
             app.setPalette(_dark_palette())
-            app.setStyleSheet(_DARK_QSS)
         else:
             app.setPalette(_light_palette())
-            app.setStyleSheet(_LIGHT_QSS)
+        # Minimal QSS — only things Fusion cannot do natively
+        app.setStyleSheet(_QSS)
 
 
 _engine: ThemeEngine | None = None
@@ -644,4 +313,3 @@ def init_theme(app: QApplication):
     """Initialize theme engine and apply system-aware theme."""
     engine = get_theme_engine()
     engine.mode = ThemeMode.AUTO
-    QTimer.singleShot(0, engine.apply)

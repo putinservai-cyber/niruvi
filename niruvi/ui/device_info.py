@@ -1,8 +1,11 @@
+import logging
 import os
 import platform
 import subprocess
 
 from PyQt6.QtCore import Qt
+
+logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QDialog,
@@ -24,7 +27,6 @@ _ICON_MAP = {
     "Kernel": "code",
     "Architecture": "cpu",
     "Hostname": "identification-card",
-    "Processor": "cpu",
     "CPU": "cpu",
     "CPU Cores": "cpu",
     "Memory": "hard-drive",
@@ -46,8 +48,8 @@ def _collect_system_info() -> dict[str, str]:
                     if line.startswith("PRETTY_NAME="):
                         distro = line.split("=", 1)[1].strip().strip('"')
                         break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to read os-release: %s", e, exc_info=True)
     info["Operating System"] = distro
     info["Kernel"] = platform.release()
     info["Architecture"] = platform.machine()
@@ -60,12 +62,11 @@ def _collect_system_info() -> dict[str, str]:
                 if line.startswith("model name"):
                     cpu_model = line.split(":", 1)[1].strip()
                     break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to read /proc/cpuinfo: %s", e, exc_info=True)
     proc = platform.processor()
     if not proc:
         proc = cpu_model if cpu_model != "Unknown" else platform.machine()
-    info["Processor"] = proc
     info["CPU"] = cpu_model
     cpu_count = os.cpu_count()
     info["CPU Cores"] = str(cpu_count) if cpu_count else "Unknown"
@@ -78,7 +79,8 @@ def _collect_system_info() -> dict[str, str]:
                     gb = kb / 1024 / 1024
                     info["Memory"] = f"{gb:.1f} GiB"
                     break
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to read /proc/meminfo: %s", e, exc_info=True)
         info["Memory"] = "Unknown"
 
     gpu_lines = []
@@ -122,8 +124,8 @@ def _collect_system_info() -> dict[str, str]:
         )
         if r.returncode == 0:
             info["Mesa"] = r.stdout.strip()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to query Mesa via rpm: %s", e, exc_info=True)
     if "Mesa" not in info:
         try:
             r = subprocess.run(
@@ -131,8 +133,8 @@ def _collect_system_info() -> dict[str, str]:
             )
             if r.returncode == 0:
                 info["Mesa"] = r.stdout.strip()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to query Mesa via dpkg: %s", e, exc_info=True)
     if "Mesa" not in info:
         try:
             r = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5)
@@ -144,15 +146,15 @@ def _collect_system_info() -> dict[str, str]:
                         lib = parts[1].strip()
                         info["Mesa"] = os.path.basename(lib).replace("libGL.so.", "")
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to query Mesa via ldconfig: %s", e, exc_info=True)
     # glibc version — try rpm, then dpkg, then ldd --version
     try:
         r = subprocess.run(["rpm", "-q", "glibc", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
         if r.returncode == 0:
             info["glibc"] = r.stdout.strip()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to query glibc via rpm: %s", e, exc_info=True)
     if "glibc" not in info:
         try:
             r = subprocess.run(
@@ -160,8 +162,8 @@ def _collect_system_info() -> dict[str, str]:
             )
             if r.returncode == 0:
                 info["glibc"] = r.stdout.strip()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to query glibc via dpkg: %s", e, exc_info=True)
     if "glibc" not in info:
         try:
             r = subprocess.run(["/usr/bin/ldd", "--version"], capture_output=True, text=True, timeout=5)
@@ -172,8 +174,8 @@ def _collect_system_info() -> dict[str, str]:
                     if len(parts) == 2:
                         info["glibc"] = parts[1]
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to query glibc via ldd: %s", e, exc_info=True)
 
     return info
 
@@ -289,6 +291,6 @@ class DeviceInfoDialog(QDialog):
         btn_layout.setContentsMargins(12, 8, 12, 8)
         btn_layout.addStretch()
         close_btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        close_btn.rejected.connect(lambda: (play_sound("click"), self.accept()))
+        close_btn.rejected.connect(lambda: (play_sound("navigation"), self.accept()))
         btn_layout.addWidget(close_btn)
         layout.addWidget(btn_bar)

@@ -1,10 +1,11 @@
-import json
 import logging
 import os
 import re
 import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 GITHUB_API = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 GITHUB_API_ALL = "https://api.github.com/repos/{owner}/{repo}/releases?per_page=5"
@@ -48,9 +49,9 @@ def parse_gitlab_project(url: str) -> str | None:
 
 
 def _fetch_json(url: str, timeout: int = 15) -> dict:
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    resp = urllib.request.urlopen(req, timeout=timeout)
-    return json.loads(resp.read().decode("utf-8"))
+    from niruvi.utils.http import fetch_json
+
+    return fetch_json(url, timeout)
 
 
 def _get_arch_filter() -> str:
@@ -159,8 +160,8 @@ def resolve_github(url: str, channel: str = "stable", timeout: int = 15) -> Upda
                 sha_part = content.split()[0] if content else ""
                 if len(sha_part) == 64:
                     asset_sha256 = sha_part
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to fetch SHA256 for asset %s: %s", best_asset["name"], e, exc_info=True)
 
     return UpdateInfo(
         version=version,

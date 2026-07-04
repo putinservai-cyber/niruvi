@@ -41,7 +41,6 @@ ICON_MAP = {
     "application-exit": "door",
     "scroll": "scroll",
     "archive": "archive",
-
     # Dialogs
     "dialog-cancel": "x",
     "dialog-close": "x-circle",
@@ -54,7 +53,6 @@ ICON_MAP = {
     "help-contents": "book-open",
     "bug": "bug",
     "tools-report-bug": "bug",
-
     # Emblems / status
     "emblem-system": "gear",
     "emblem-downloads": "download",
@@ -62,12 +60,10 @@ ICON_MAP = {
     "emblem-default": "star",
     "emblem-documents": "file-text",
     "download": "download",
-
     # MIME types
     "package-x-generic": "package",
     "application-x-archive": "archive",
     "application-x-executable": "cube",
-
     # Misc
     "computer": "monitor",
     "clock": "clock",
@@ -82,7 +78,6 @@ ICON_MAP = {
     "dialog-password": "lock",
     "video-display": "monitor",
     "system-search": "magnifying-glass",
-
     # Device Info icons
     "identification-card": "identification-card",
     "hard-drive": "hard-drive",
@@ -154,9 +149,8 @@ def main():
             continue
         target_path = os.path.join(SVG_DIR, f"{target_name}.svg")
         if os.path.exists(target_path):
-            with open(link_path, "w") as f:
-                with open(target_path) as src:
-                    f.write(src.read())
+            with open(link_path, "w") as f, open(target_path) as src:
+                f.write(src.read())
             print(f"  LINK {link_name}.svg -> {target_name}.svg")
 
     # Write index.theme

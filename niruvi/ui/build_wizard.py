@@ -5,11 +5,13 @@ Supports project file save/load and DwarFS toggle.
 """
 
 import json
+import logging
 import os
 import shutil
 import subprocess
 from pathlib import Path
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -34,9 +36,13 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.build.page import BuildWorker, _flatten_appdir
-from niruvi.ui.report_dialog import BuildSummaryDialog, ErrorReportDialog
+from niruvi.ui.report_dialog import ErrorReportDialog
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
+from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.styles import MONO_FONT_STYLE, format_size
+
+logger = logging.getLogger(__name__)
 
 PROJECT_FILE_FILTER = "Niruvi Project (*.niruviproject);;JSON (*.json)"
 
@@ -83,7 +89,7 @@ class ProjectSetupPage(QWizardPage):
         self.source_edit.setReadOnly(True)
         pkg_row.addWidget(self.source_edit)
         browse_pkg_btn = QPushButton(get_icon("document-open"), "Browse...")
-        browse_pkg_btn.clicked.connect(self._browse_source)
+        browse_pkg_btn.clicked.connect(lambda: (play_sound("click"), self._browse_source()))
         pkg_row.addWidget(browse_pkg_btn)
         src_form.addRow("File:", self._pkg_widget)
 
@@ -96,13 +102,13 @@ class ProjectSetupPage(QWizardPage):
         self.folder_edit.setReadOnly(True)
         folder_row.addWidget(self.folder_edit)
         browse_folder_btn = QPushButton(get_icon("folder-open"), "Browse...")
-        browse_folder_btn.clicked.connect(self._browse_folder)
+        browse_folder_btn.clicked.connect(lambda: (play_sound("click"), self._browse_folder()))
         folder_row.addWidget(browse_folder_btn)
         src_form.addRow("Folder:", self._folder_widget)
 
         self.folder_info_label = QLabel()
         self.folder_info_label.setWordWrap(True)
-        self.folder_info_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        self.folder_info_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
         self.folder_info_label.setVisible(False)
         src_form.addRow(self.folder_info_label)
 
@@ -131,7 +137,7 @@ class ProjectSetupPage(QWizardPage):
         self.icon_edit.setReadOnly(True)
         icon_row.addWidget(self.icon_edit)
         browse_icon_btn = QPushButton(get_icon("document-open"), "Browse...")
-        browse_icon_btn.clicked.connect(self._browse_icon)
+        browse_icon_btn.clicked.connect(lambda: (play_sound("click"), self._browse_icon()))
         icon_row.addWidget(browse_icon_btn)
         info_form.addRow("Icon:", icon_row)
 
@@ -221,9 +227,10 @@ class ProjectSetupPage(QWizardPage):
                     fp = os.path.join(root, f)
                     total += os.path.getsize(fp)
                     file_count += 1
-            info = f"{file_count} files, {self._format_size(total)}"
+            info = f"{file_count} files, {format_size(total)}"
             self.folder_info_label.setText(info)
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to update folder info: %s", e, exc_info=True)
             self.folder_info_label.setText("")
 
     def _browse_icon(self):
@@ -235,15 +242,6 @@ class ProjectSetupPage(QWizardPage):
         )
         if path:
             self.icon_edit.setText(path)
-
-    def _format_size(self, bytes_val: int) -> str:
-        if bytes_val < 1024:
-            return f"{bytes_val} B"
-        if bytes_val < 1024 * 1024:
-            return f"{bytes_val / 1024:.1f} KB"
-        if bytes_val < 1024 * 1024 * 1024:
-            return f"{bytes_val / (1024 * 1024):.1f} MB"
-        return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
 
     def get_source_path(self) -> str:
         return self.source_edit.text() if self.pkg_radio.isChecked() else self.folder_edit.text()
@@ -260,12 +258,12 @@ class DependenciesPage(QWizardPage):
         layout = QVBoxLayout(self)
 
         self.scan_btn = QPushButton(get_icon("emblem-system"), "Scan Dependencies")
-        self.scan_btn.clicked.connect(self._scan)
+        self.scan_btn.clicked.connect(lambda: (play_sound("click"), self._scan()))
         layout.addWidget(self.scan_btn)
 
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.result_text.setStyleSheet(MONO_FONT_STYLE)
         layout.addWidget(self.result_text, 1)
 
         self.status_label = QLabel("Click 'Scan Dependencies' to analyze the AppDir.")
@@ -312,8 +310,8 @@ class DependenciesPage(QWizardPage):
                                 header = fh.read(4)
                             if header == b"\x7fELF":
                                 binaries.add(fp)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Failed to read binary header %s: %s", fp, e, exc_info=True)
 
             if not binaries:
                 self.result_text.setPlainText("No ELF binaries found in source.")
@@ -394,7 +392,7 @@ class BuildConfigPage(QWizardPage):
         self.output_edit.setReadOnly(True)
         out_row.addWidget(self.output_edit)
         out_browse = QPushButton(get_icon("folder-open"), "Browse...")
-        out_browse.clicked.connect(self._browse_output)
+        out_browse.clicked.connect(lambda: (play_sound("click"), self._browse_output()))
         out_row.addWidget(out_browse)
         dest_form.addRow("Output folder:", out_row)
 
@@ -416,7 +414,7 @@ class BuildConfigPage(QWizardPage):
         sign_row.addWidget(self.sign_key_combo)
         refresh_btn = QPushButton(get_icon("view-refresh"), "")
         refresh_btn.setToolTip("Refresh available GPG keys")
-        refresh_btn.clicked.connect(self._refresh_signing_keys)
+        refresh_btn.clicked.connect(lambda: (play_sound("click"), self._refresh_signing_keys()))
         sign_row.addWidget(refresh_btn)
         sign_row.addStretch()
         sign_form.addRow("GPG Key:", sign_row)
@@ -464,7 +462,7 @@ class BuildProgressPage(QWizardPage):
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.log_text.setStyleSheet(MONO_FONT_STYLE)
         layout.addWidget(self.log_text, 1)
 
         self.progress_bar = QProgressBar()
@@ -474,11 +472,11 @@ class BuildProgressPage(QWizardPage):
 
         btn_row = QHBoxLayout()
         self.cancel_btn = QPushButton(get_icon("process-stop"), "Cancel")
-        self.cancel_btn.clicked.connect(self._cancel_build)
+        self.cancel_btn.clicked.connect(lambda: (play_sound("click"), self._cancel_build()))
         btn_row.addWidget(self.cancel_btn)
         btn_row.addStretch()
         self.launch_btn = QPushButton(get_icon("media-playback-start"), "Launch")
-        self.launch_btn.clicked.connect(self._launch)
+        self.launch_btn.clicked.connect(lambda: (play_sound("click"), self._launch()))
         self.launch_btn.setVisible(False)
         btn_row.addWidget(self.launch_btn)
         layout.addLayout(btn_row)
@@ -511,6 +509,7 @@ class BuildProgressPage(QWizardPage):
             try:
                 subprocess.Popen([self._out_path], start_new_session=True)
             except Exception as e:
+                play_sound("warning")
                 QMessageBox.warning(self, "Launch Failed", str(e))
 
     def start_build(self, wizard: "BuildWizard"):
@@ -566,6 +565,7 @@ class BuildProgressPage(QWizardPage):
         self.progress_bar.setValue(100)
         self.cancel_btn.setEnabled(False)
         self.launch_btn.setVisible(True)
+        play_sound("success")
         self.setSubTitle("Build complete!")
         self.log_text.append(f"\nBuild successful: {out_path}")
 
@@ -592,8 +592,6 @@ class BuildProgressPage(QWizardPage):
         self.setSubTitle("Build failed")
 
         import traceback
-
-        from niruvi.utils.sound_manager import play as play_sound
 
         play_sound("error")
         suggestions = ErrorReportDialog.suggest_for_build_error(msg)
@@ -641,7 +639,10 @@ class BuildWizard(QWizard):
 
         self.customButtonClicked.connect(self._on_custom_button)
 
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
+        self.setFixedSize(720, 580)
         self.currentIdChanged.connect(self._on_page_changed)
+        self.rejected.connect(lambda: play_sound("navigation"))
 
     def _on_custom_button(self, which: int):
         if which == QWizard.WizardButton.CustomButton1:
@@ -650,6 +651,7 @@ class BuildWizard(QWizard):
             self._save_project()
 
     def _on_page_changed(self, page_id: int):
+        play_sound("navigation")
         if page_id == 3:
             self._start_build()
 
@@ -660,13 +662,10 @@ class BuildWizard(QWizard):
     def _build_complete(self, out_path: str):
         import hashlib
 
-        _is_valid, warnings = self._verify_appimage(out_path)
-        file_size = os.path.getsize(out_path) if os.path.isfile(out_path) else 0
+        _is_valid, _warnings = self._verify_appimage(out_path)
+        os.path.getsize(out_path) if os.path.isfile(out_path) else 0
         is_elf = False
-        is_exec = os.access(out_path, os.X_OK)
-        architecture = ""
-        sha256 = ""
-        app_type = ""
+        os.access(out_path, os.X_OK)
         try:
             with open(out_path, "rb") as f:
                 header = f.read(20)
@@ -690,29 +689,15 @@ class BuildWizard(QWizard):
                     import struct
 
                     e_machine = struct.unpack("<H" if ei_data == 1 else ">H", e_machine_bytes)[0]
-                    arch_name = arch_map.get(e_machine, f"machine={e_machine}")
-                    architecture = f"{arch} {arch_name}"
+                    arch_map.get(e_machine, f"machine={e_machine}")
                     if len(header) >= 12:
                         f.seek(8)
                         type_check = f.read(4)
-                        app_type = "Type 2" if type_check[:2] == b"AI" else "Type 1"
+                        "Type 2" if type_check[:2] == b"AI" else "Type 1"
                 f.seek(0)
-                sha256 = hashlib.sha256(f.read()).hexdigest()
-        except Exception:
-            pass
-
-        summary = BuildSummaryDialog(
-            self,
-            appimage_path=out_path,
-            file_size=file_size,
-            is_elf=is_elf,
-            is_executable=is_exec,
-            validation_warnings=warnings,
-            architecture=architecture,
-            sha256=sha256,
-            app_type=app_type,
-        )
-        summary.exec()
+                hashlib.sha256(f.read()).hexdigest()
+        except Exception as e:
+            logger.debug("Failed to read AppImage metadata for summary: %s", e, exc_info=True)
 
     def _verify_appimage(self, path: str):
         warnings = []
@@ -732,7 +717,8 @@ class BuildWizard(QWizard):
                 is_elf = f.read(4) == b"\x7fELF"
             if not is_elf:
                 warnings.append("File does not have a valid ELF header.")
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to read file header for validation: %s", e, exc_info=True)
             warnings.append("Could not read file header for validation.")
         try:
             result = subprocess.run(
@@ -782,7 +768,9 @@ class BuildWizard(QWizard):
                     json.dump(data, f, indent=2)
                 self._current_project_path = path
                 self.setWindowTitle(f"Build AppImage — {Path(path).name}")
+                play_sound("success")
             except Exception as e:
+                play_sound("error")
                 QMessageBox.warning(self, "Save Failed", str(e))
 
     def _load_project(self):
@@ -798,6 +786,7 @@ class BuildWizard(QWizard):
             with open(path) as f:
                 data = json.load(f)
         except Exception as e:
+            play_sound("error")
             QMessageBox.warning(self, "Load Failed", f"Could not read project file:\n{e}")
             return
 

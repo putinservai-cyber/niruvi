@@ -68,7 +68,7 @@ MimeType={MIME_TYPES}
 
 
 def _write_helper_script():
-    content = '#!/bin/sh\nexec python3 -m niruvi.thumbnailer "$@"\n'
+    content = '#!/bin/sh\nexec python3 -m niruvi.desktop.thumbnailer "$@"\n'
     tmp = HELPER_PATH + ".tmp"
     with open(tmp, "w") as f:
         f.write(content)
@@ -82,8 +82,11 @@ def _is_appimage(path: str) -> bool:
         return False
     try:
         with open(path, "rb") as f:
-            header = f.read(8)
-        return header[:4] == b"\x7fELF" and header[4:8] == b"\x41\x49\x02\x01"
+            header = f.read(11)
+        if len(header) < 11 or header[:4] != b"\x7fELF":
+            return False
+        ai_magic = header[8:11]
+        return ai_magic in (b"AI\x01", b"AI\x02")
     except OSError:
         return False
 

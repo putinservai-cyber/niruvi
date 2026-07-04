@@ -30,8 +30,8 @@ def check_appimageupdate_available() -> dict:
                     timeout=10,
                 )
                 result["version"] = (r.stdout or r.stderr or "").strip()[:80]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to get %s version: %s", tool, e, exc_info=True)
             break
     return result
 
@@ -50,8 +50,8 @@ def get_update_info_from_appimage(appimage_path: str) -> str | None:
         for text in (out, err):
             if text and not text.startswith("Warning"):
                 return text
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to get update info from %s: %s", appimage_path, e, exc_info=True)
     return None
 
 

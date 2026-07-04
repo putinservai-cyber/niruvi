@@ -15,6 +15,12 @@ _DETACHED: list[subprocess.Popen] = []
 
 _log = logging.getLogger(__name__)
 
+try:
+    from niruvi.utils.sound_manager import play as play_sound
+except ImportError:
+    def play_sound(_name):
+        pass
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
@@ -24,28 +30,9 @@ from PyQt6.QtWidgets import (
 
 
 def _fix_qt_platform_path():
-    """Ensure Qt can find its platform plugins when running from an AppImage."""
-    old = os.environ.get("LD_LIBRARY_PATH", "")
-    if old:
-        cleaned = [p for p in old.split(":") if p and not p.startswith("/tmp/.mount_")]
-        if cleaned:
-            os.environ["LD_LIBRARY_PATH"] = ":".join(cleaned)
-        else:
-            os.environ.pop("LD_LIBRARY_PATH", None)
-    cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
-    if cur and os.path.isdir(cur):
-        return
-    candidates = [
-        "/usr/lib64/qt6/plugins",
-        "/usr/lib/x86_64-linux-gnu/qt6/plugins",
-        "/usr/lib64/qt6/plugins/platforms/..",
-    ]
-    for p in candidates:
-        platforms = os.path.join(p, "platforms")
-        if os.path.isdir(platforms) and any(f.startswith("libq") for f in os.listdir(platforms) if f.endswith(".so")):
-            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
-            return
-    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+    from niruvi.utils.qt_compat import fix_qt_platform_path
+
+    fix_qt_platform_path()
 
 
 def _copy_tree_resilient(src: str, dst: str) -> None:
@@ -180,6 +167,11 @@ def run_self_install():
         app.setApplicationName(__app_name__)
         app.setApplicationVersion(__version__)
 
+        try:
+            from niruvi.utils.sound_manager import play as play_sound
+            play_sound("interface")
+        except ImportError:
+            pass
         reply = QMessageBox.question(
             None,
             f"Install {__app_name__}",
@@ -212,7 +204,7 @@ def run_self_install():
                 _create_self_desktop_entry()
 
                 progress.close()
-
+                play_sound("success")
                 QMessageBox.information(
                     None,
                     "Installation Complete",
@@ -232,6 +224,7 @@ def run_self_install():
                 if p.poll() is not None and p.returncode != 0:
                     # Installed launch failed — show AppManager from here
                     progress.close()
+                    play_sound("warning")
                     QMessageBox.warning(
                         None,
                         "Launch Issue",
@@ -243,22 +236,20 @@ def run_self_install():
                     sys.exit(0)
             except Exception as e:
                 progress.close()
-                try:
-                    from niruvi.utils.sound_manager import play as play_sound
-
-                    play_sound("error")
-                except ImportError:
-                    pass
+                play_sound("error")
                 QMessageBox.critical(
                     None,
                     "Installation Failed",
                     f"Could not install {__app_name__}:<br><code>{e}</code><br><br>"
                     f"The AppImage will run in portable mode instead.",
                 )
+        else:
+            app.quit()
+            os._exit(0)
 
         # Reuse the existing QApplication — do NOT quit and recreate
+        from niruvi.config import DEFAULT_INSTALL_DIR, DESKTOP_DIR, get_data_dir, load_settings
         from niruvi.ui.manager import AppManager
-        from niruvi.ui.settings import DEFAULT_INSTALL_DIR, DESKTOP_DIR, get_data_dir, load_settings
 
         os.makedirs(get_data_dir(), exist_ok=True)
         os.makedirs(DEFAULT_INSTALL_DIR, exist_ok=True)
@@ -267,7 +258,10 @@ def run_self_install():
 
         window = AppManager()
         window.show()
-        sys.exit(app.exec())
+        exit_code = app.exec()
+        window.close()
+        app.quit()
+        os._exit(exit_code)
 
     from niruvi.main import main
 

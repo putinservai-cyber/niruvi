@@ -5,6 +5,7 @@ Pages: Welcome → License → InstallType → Destination (Custom only)
 """
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -12,6 +13,8 @@ import tempfile
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
+
+logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -90,7 +93,7 @@ class WelcomePage(QWizardPage):
 
         hint = QLabel("This wizard will install the AppImage to your system.\nClick Next to continue.")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        hint.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         layout.addWidget(hint)
 
     def set_app_info(self, name: str, desc: str, icon_pixmap, size_mb: float, arch: str):
@@ -149,7 +152,7 @@ class InstallTypePage(QWizardPage):
         rec_layout.addWidget(self.rec_radio)
         rec_desc = QLabel("Install to the default location with standard settings. Recommended for most users.")
         rec_desc.setWordWrap(True)
-        rec_desc.setStyleSheet("color: palette(disabled-text); font-size: 11px; padding-left: 24px;")
+        rec_desc.setStyleSheet("color: palette(placeholderText); font-size: 11px; padding-left: 24px;")
         rec_layout.addWidget(rec_desc)
         layout.addLayout(rec_layout)
 
@@ -159,7 +162,7 @@ class InstallTypePage(QWizardPage):
         cust_layout.addWidget(self.cust_radio)
         cust_desc = QLabel("Choose a custom installation location and configure advanced options.")
         cust_desc.setWordWrap(True)
-        cust_desc.setStyleSheet("color: palette(disabled-text); font-size: 11px; padding-left: 24px;")
+        cust_desc.setStyleSheet("color: palette(placeholderText); font-size: 11px; padding-left: 24px;")
         cust_layout.addWidget(cust_desc)
         layout.addLayout(cust_layout)
 
@@ -215,7 +218,7 @@ class DestinationPage(QWizardPage):
         layout.addStretch()
 
         space_label = QLabel("Required space: <b>--</b> &nbsp;|&nbsp; Available: <b>--</b>")
-        space_label.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        space_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         layout.addWidget(space_label)
         self.space_label = space_label
 
@@ -261,7 +264,8 @@ class DestinationPage(QWizardPage):
             self.space_label.setText(
                 f"Required space: <b>{size_mb:.0f} MB</b> &nbsp;|&nbsp; Available: <b>{avail_gb:.1f} GB</b>"
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to get disk usage info: %s", e, exc_info=True)
             self.space_label.setText(f"Required space: <b>{size_mb:.0f} MB</b>")
 
 
@@ -317,6 +321,7 @@ class ComponentsPage(QWizardPage):
 
     def validate(self) -> bool:
         if not self.cb_desktop_file.isChecked() and not self.cb_desktop_shortcut.isChecked():
+            play_sound("warning")
             reply = QMessageBox.question(
                 self,
                 "No Integration",
@@ -346,7 +351,7 @@ class ProgressPage(QWizardPage):
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet("color: palette(disabled-text);")
+        self.status_label.setStyleSheet("color: palette(placeholderText);")
         layout.addWidget(self.status_label)
 
         self.progress_bar = QProgressBar()
@@ -357,13 +362,13 @@ class ProgressPage(QWizardPage):
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 border: 1px solid palette(mid);
-                border-radius: 6px;
+                border-radius: 2px;
                 text-align: center;
-                background: palette(base);
+                background-color: palette(base);
             }
             QProgressBar::chunk {
-                background: palette(highlight);
-                border-radius: 5px;
+                background-color: palette(highlight);
+                border-radius: 1px;
             }
         """)
         layout.addWidget(self.progress_bar)
@@ -371,12 +376,23 @@ class ProgressPage(QWizardPage):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(140)
+        self.log_text.setVisible(False)
         mono = QFont()
         mono.setFamily("monospace")
         mono.setStyleHint(QFont.StyleHint.TypeWriter)
         mono.setPointSize(9)
         self.log_text.setFont(mono)
         layout.addWidget(self.log_text)
+
+        self.btn_toggle = QPushButton(get_icon("format-justify-left"), "Show Details")
+        self.btn_toggle.setCheckable(True)
+        self.btn_toggle.toggled.connect(
+            lambda c: (
+                self.log_text.setVisible(c),
+                self.btn_toggle.setText("Hide Details" if c else "Show Details"),
+            )
+        )
+        layout.addWidget(self.btn_toggle)
 
     def set_task(self, task: str, status: str = ""):
         self.task_label.setText(task)
@@ -427,7 +443,7 @@ class FinishPage(QWizardPage):
 
         hint = QLabel("The application has been installed and is ready to use.")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        hint.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
         layout.addWidget(hint)
 
     def set_completed(self, app_name: str, icon_pixmap, detail: str = ""):
@@ -447,35 +463,35 @@ class FinishPage(QWizardPage):
 class InstallWizard(QWizard):
     def __init__(self, appimage_path=None, parent=None, appimage_info=None, icon_data=None):
         super().__init__(parent)
-        self.setFixedSize(620, 540)
+        self.setMinimumSize(560, 480)
+        self.resize(620, 540)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setStyleSheet("""
-            QWizardPage { background: palette(window); }
-            QLabel { font-size: 12px; }
+            QWizardPage { background-color: palette(window); }
             QProgressBar {
                 border: 1px solid palette(mid);
-                border-radius: 6px;
+                border-radius: 2px;
                 text-align: center;
-                height: 22px;
-                background: palette(base);
+                height: 6px;
+                background-color: palette(base);
             }
             QProgressBar::chunk {
-                background: palette(highlight);
-                border-radius: 5px;
+                background-color: palette(highlight);
+                border-radius: 1px;
             }
             QPushButton {
                 padding: 6px 16px;
                 border: 1px solid palette(mid);
-                border-radius: 5px;
-                background: palette(button);
+                border-radius: 2px;
+                background-color: palette(button);
                 font-size: 12px;
             }
             QPushButton:hover {
-                background: palette(light);
+                background-color: palette(light);
                 border-color: palette(highlight);
             }
             QPushButton:pressed {
-                background: palette(midlight);
+                background-color: palette(midlight);
             }
             QRadioButton {
                 spacing: 6px;
@@ -488,7 +504,7 @@ class InstallWizard(QWizard):
                 border: 2px solid palette(mid);
             }
             QRadioButton::indicator:checked {
-                background: palette(highlight);
+                background-color: palette(highlight);
                 border-color: palette(highlight);
             }
             QCheckBox {
@@ -498,11 +514,11 @@ class InstallWizard(QWizard):
             QCheckBox::indicator {
                 width: 18px;
                 height: 18px;
-                border-radius: 3px;
+                border-radius: 4px;
                 border: 1px solid palette(mid);
             }
             QCheckBox::indicator:checked {
-                background: palette(highlight);
+                background-color: palette(highlight);
                 border-color: palette(highlight);
             }
         """)
@@ -544,6 +560,8 @@ class InstallWizard(QWizard):
         if appimage_path:
             self._select_file(appimage_path)
 
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        self.setFixedSize(620, 540)
         self.currentIdChanged.connect(self._on_page_changed)
 
     def _build_pages(self):
@@ -576,6 +594,8 @@ class InstallWizard(QWizard):
         self._finish_page = FinishPage(self)
         pid = self.addPage(self._finish_page)
         self._page_ids["finish"] = pid
+
+        self.currentIdChanged.connect(lambda _: play_sound("navigation"))
 
     def _configure_buttons(self):
         self.setButtonText(QWizard.WizardButton.CancelButton, "Cancel")
@@ -626,8 +646,8 @@ class InstallWizard(QWizard):
         try:
             meta = AppImageMetadata(self.appimage_path)
             self._architecture = meta.architecture
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to load AppImage metadata: %s", e, exc_info=True)
         if self._icon_pixmap:
             return
         try:
@@ -653,8 +673,8 @@ class InstallWizard(QWizard):
                 if license_path and os.path.isfile(license_path):
                     self._license_text = Path(license_path).read_text(encoding="utf-8", errors="ignore")
                     self._license_page.set_license_text(self._license_text)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to extract icon and metadata: %s", e, exc_info=True)
 
     def set_appimage(self, path: str):
         self._select_file(path)
@@ -700,6 +720,7 @@ class InstallWizard(QWizard):
                 return False
             self.dest_dir = dest
             if os.path.exists(self.dest_dir):
+                play_sound("warning")
                 reply = QMessageBox.question(
                     self,
                     "Overwrite?",
@@ -715,6 +736,7 @@ class InstallWizard(QWizard):
                 return False
             dest = self.dest_dir or os.path.join(get_settings()["install_dir"], self.app_name or "app")
             if os.path.exists(dest):
+                play_sound("warning")
                 reply = QMessageBox.question(
                     self,
                     "Overwrite?",
@@ -806,6 +828,7 @@ class InstallWizard(QWizard):
     def _on_extraction_finished(self, dest_dir: str, app_name: str):
         self._stop_progress_animation()
         self._set_real_progress(100)
+        play_sound("progress")
         self._progress_page.set_task("Verifying...")
 
         valid, diag_warnings = self._validate_installation(dest_dir)
@@ -833,7 +856,7 @@ class InstallWizard(QWizard):
 
         self._progress_page.set_task("Configuring desktop integration...")
         self._progress_page.append_log("Installation complete!")
-        play_sound("click")
+        play_sound("success")
         self.button(QWizard.WizardButton.NextButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).show()
@@ -911,11 +934,10 @@ class InstallWizard(QWizard):
             self._progress_page.append_log(f"Warning: desktop database refresh failed ({e})")
 
         try:
-            import hashlib
-
             source_sha256 = ""
             if self.appimage_path and os.path.isfile(self.appimage_path):
-                source_sha256 = hashlib.sha256(Path(self.appimage_path).read_bytes()).hexdigest()
+                from niruvi.core.verification import sha256_file
+                source_sha256 = sha256_file(self.appimage_path)
             sandbox_config = {
                 "enabled": self._components_page.cb_hardening.isChecked(),
                 "hardening": self._components_page.cb_hardening.isChecked(),
@@ -1068,11 +1090,13 @@ class InstallWizard(QWizard):
                     import subprocess
 
                     subprocess.Popen([apprun], start_new_session=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to launch app after install: %s", e, exc_info=True)
 
     def reject(self):
+        play_sound("navigation")
         if self.worker and self.worker.isRunning():
+            play_sound("warning")
             reply = QMessageBox.question(
                 self,
                 "Cancel Installation?",

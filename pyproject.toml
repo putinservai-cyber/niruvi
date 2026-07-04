@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "niruvi"
-version = "3.1.1"
+dynamic = ["version"]
 description = "Niruvi — Universal Linux AppImage Manager"
 license = {text = "GPL-3.0-only"}
 requires-python = ">=3.10"
@@ -18,6 +18,9 @@ dev = ["pytest>=7.0", "pytest-mock>=3.10", "pytest-qt>=4.0", "ruff>=0.4", "mypy>
 
 [project.scripts]
 niruvi = "niruvi.main:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "niruvi._version.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["niruvi*"]

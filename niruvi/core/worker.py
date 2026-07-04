@@ -1,5 +1,6 @@
 import atexit
 import hashlib
+import logging
 import os
 import shutil
 import subprocess
@@ -9,6 +10,8 @@ import urllib.request
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from niruvi.core.scanner import extract_safely
+
+logger = logging.getLogger(__name__)
 
 _REMOVABLE_PREFIXES = ("mtp:", "gvfs", "/media/", "/run/media/", "/mnt/")
 
@@ -94,7 +97,8 @@ def _atomic_install(extracted_dir: str, dest_dir: str):
         if os.path.exists(dest_dir):
             shutil.rmtree(dest_dir)
         os.replace(staging, dest_dir)
-    except Exception:
+    except Exception as e:
+        logger.debug("Atomic install copy failed, rolling back staging dir: %s", e, exc_info=True)
         if os.path.exists(staging):
             shutil.rmtree(staging, ignore_errors=True)
         raise
@@ -165,8 +169,8 @@ class ExtractionWorker(QThread):
             try:
                 self._process.terminate()
                 self._process.wait(5)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to terminate extraction process: %s", e, exc_info=True)
         staging = self.dest_dir + ".staging"
         if os.path.exists(staging):
             shutil.rmtree(staging, ignore_errors=True)

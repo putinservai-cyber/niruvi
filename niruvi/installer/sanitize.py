@@ -3,15 +3,17 @@ import re
 
 logger = logging.getLogger(__name__)
 
-_SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9 ._+\-@%/=:,]+$")
+_SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9 ._+\-]+$")
+_IDENTIFIER_RE = re.compile(r"[^a-zA-Z0-9._-]")
 
 
 def sanitize_bash_string(value: str, field_name: str = "value") -> str:
+    """Sanitize a string for safe use in bash double-quoted contexts."""
     if not value:
         logger.warning("sanitize_bash_string: %s is empty", field_name)
         return ""
     if not _SAFE_NAME_RE.match(value):
-        safe = re.sub(r"[^a-zA-Z0-9 ._+\-@%/=:,]", "", value)
+        safe = re.sub(r"[^a-zA-Z0-9 ._+\-]", "", value)
         safe = safe[:200]
         stripped = value != safe
         if stripped:
@@ -29,3 +31,11 @@ def sanitize_bash_string(value: str, field_name: str = "value") -> str:
             )
         return safe
     return value[:200]
+
+
+def sanitize_identifier(value: str, field_name: str = "value") -> str:
+    """Strict sanitization for values used as filenames/identifiers."""
+    safe = _IDENTIFIER_RE.sub("", value)[:200]
+    if not safe:
+        logger.error("sanitize_identifier: %s is empty after cleaning: %r", field_name, value)
+    return safe

@@ -77,13 +77,13 @@ def _refresh_desktop_db():
                 capture_output=True,
                 timeout=30,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to run %s: %s", cmd, e, exc_info=True)
     for kde in ("kbuildsycoca6", "kbuildsycoca5"):
         try:
             subprocess.run([kde], capture_output=True, timeout=30)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to run %s: %s", kde, e, exc_info=True)
 
 
 def repair_apprun(app_dir: str) -> RepairAction:
@@ -155,7 +155,8 @@ def repair_registry_entry(app_name: str, app_dir: str, version: str = "", update
             )
             registry.add(record)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to register %s in Niruvi: %s", app_name, e, exc_info=True)
             return False
 
     return RepairAction(f"Register {app_name} in Niruvi", _do)
@@ -174,7 +175,8 @@ def repair_manifest(app_dir: str) -> RepairAction:
                 m = default_manifest(app_id=name, app_name=name)
                 m.to_file(str(manifest_path))
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to generate manifest for %s: %s", app_dir, e, exc_info=True)
             return False
 
     return RepairAction(f"Generate manifest for {os.path.basename(app_dir)}", _do)

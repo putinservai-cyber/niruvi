@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 
 from niruvi.constants import REPORT_ISSUES_URL
 from niruvi.utils import get_icon
+from niruvi.utils.sound_manager import play as play_sound
 
 
 class ReportPage(QWidget):
@@ -64,4 +65,4 @@ class ReportPage(QWidget):
 
         main_layout.addStretch()
 
-        self.btn_github.clicked.connect(lambda: webbrowser.open(REPORT_ISSUES_URL))
+        self.btn_github.clicked.connect(lambda: (play_sound("click"), webbrowser.open(REPORT_ISSUES_URL)))

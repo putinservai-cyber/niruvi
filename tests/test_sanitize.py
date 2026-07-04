@@ -1,6 +1,6 @@
 """Tests for the input sanitizer module."""
 
-from niruvi.installer.sanitize import sanitize_bash_string
+from niruvi.installer.sanitize import sanitize_bash_string, sanitize_identifier
 
 
 class TestSanitizeBashString:
@@ -44,11 +44,29 @@ class TestSanitizeBashString:
         assert "\n" not in result
 
     def test_safe_chars_preserved(self):
-        safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ._+-@%/:=,"
+        safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ._+-"
         result = sanitize_bash_string(safe, "safe")
         assert result == safe
+
+    def test_unsafe_chars_stripped(self):
+        result = sanitize_bash_string("hello@world/test", "test")
+        assert "@" not in result
+        assert "/" not in result
 
     def test_quotes_stripped(self):
         result = sanitize_bash_string('echo "hello"', "quotes")
         assert '"' not in result
         assert "'" not in result
+
+
+class TestSanitizeIdentifier:
+    def test_clean_identifier_passes(self):
+        assert sanitize_identifier("myapp-2.0") == "myapp-2.0"
+
+    def test_strips_special_chars(self):
+        result = sanitize_identifier("hello world@#$", "test")
+        assert " " not in result
+        assert "@" not in result
+
+    def test_empty_returns_empty(self):
+        assert sanitize_identifier("", "empty") == ""

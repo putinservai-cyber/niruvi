@@ -13,6 +13,7 @@ Usage:
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -21,6 +22,8 @@ import tempfile
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon
@@ -40,6 +43,19 @@ from PyQt6.QtWidgets import (
     QWizard,
     QWizardPage,
 )
+
+from niruvi.utils.sound_manager import play as play_sound
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _fix_qt_platform_path():
@@ -129,7 +145,8 @@ def installed_version(config):
             with open(m) as f:
                 data = json.load(f)
             return data.get("version", "")
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to read installed version: %s", e, exc_info=True)
             return ""
     return ""
 
@@ -159,10 +176,15 @@ class InstallWorker(QThread):
         try:
             with open(path, "rb") as f:
                 magic = f.read(12)
-            if magic[:4] != b"\x7fELF":
+            # Type1: AI\x01 at offset 0, ELF at offset 8
+            if magic[:3] == b"AI\x01":
+                return True
+            # Type2: ELF at offset 0, AI\x02 at offset 8
+            if magic[:4] == b"\x7fELF" and magic[8:11] == b"AI\x02":
                 return False
-            return magic[8:10] != b"AI"  # Type2 has "AI" at offset 8
-        except Exception:
+            return False
+        except Exception as e:
+            logger.debug("Failed to check AppImage type: %s", e, exc_info=True)
             return False
 
     def _extract_appimage(self):
@@ -252,9 +274,8 @@ class InstallWorker(QThread):
                         _target = os.path.join(self.dest, _m.group(1))
                         if not os.path.exists(_target):
                             self.log.emit(f"Warning: AppRun target not found: {_target}")
-                except Exception:
-                    pass
-
+                except Exception as e:
+                    logger.debug("Failed to validate AppRun target: %s", e, exc_info=True)
             version = self.config.get("app_version", "1.0.0")
             meta = {"version": version, "install_date": str(int(os.path.getctime(self.self_appimage)))}
             with open(meta_file(self.dest), "w") as f:
@@ -269,7 +290,6 @@ class InstallWorker(QThread):
             if POST_INSTALL_PATH.exists():
                 self.log.emit("Running post-install script...")
                 subprocess.run(["/bin/bash", post], cwd=self.dest, check=True)
-                self.progress.emit(90)
 
             self._install_desktop()
             self.progress.emit(90)
@@ -369,7 +389,7 @@ class InstallWorker(QThread):
             os.makedirs(data_dir, exist_ok=True)
             sha256 = ""
             if self.self_appimage and os.path.isfile(self.self_appimage):
-                sha256 = hashlib.sha256(open(self.self_appimage, "rb").read(65536)).hexdigest()
+                sha256 = _sha256_file(self.self_appimage)
             record = {
                 "name": app_name,
                 "path": install_dir,
@@ -407,15 +427,22 @@ class InstallWorker(QThread):
             self.log.emit(f"Note: could not register in Niruvi: {e}")
 
     def _refresh_desktop_db(self):
-        for cmd in ("update-desktop-database", "gtk-update-icon-cache"):
-            try:
-                subprocess.run(
-                    [cmd, os.path.expanduser("~/.local/share/applications")],
-                    capture_output=True,
-                    timeout=30,
-                )
-            except Exception:
-                pass
+        apps_dir = os.path.expanduser("~/.local/share/applications")
+        icons_dir = os.path.expanduser("~/.local/share/icons/hicolor")
+        try:
+            subprocess.run(
+                ["update-desktop-database", apps_dir],
+                capture_output=True, timeout=30,
+            )
+        except Exception as e:
+            logger.debug("Failed to run update-desktop-database: %s", e, exc_info=True)
+        try:
+            subprocess.run(
+                ["gtk-update-icon-cache", "-f", "-t", icons_dir],
+                capture_output=True, timeout=30,
+            )
+        except Exception as e:
+            logger.debug("Failed to run gtk-update-icon-cache: %s", e, exc_info=True)
 
 
 class UninstallWorker(QThread):
@@ -450,8 +477,8 @@ class UninstallWorker(QThread):
             with open(tmp, "w") as f:
                 json.dump(records, f, indent=2)
             os.replace(tmp, registry_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to unregister from Niruvi: %s", e, exc_info=True)
 
     def run(self):
         try:
@@ -483,15 +510,22 @@ class UninstallWorker(QThread):
 
             self._unregister_from_niruvi(conf["app_name"])
 
-            for cmd in ("update-desktop-database", "gtk-update-icon-cache"):
-                try:
-                    subprocess.run(
-                        [cmd, os.path.expanduser("~/.local/share/applications")],
-                        capture_output=True,
-                        timeout=30,
-                    )
-                except Exception:
-                    pass
+            apps_dir = os.path.expanduser("~/.local/share/applications")
+            icons_dir = os.path.expanduser("~/.local/share/icons/hicolor")
+            try:
+                subprocess.run(
+                    ["update-desktop-database", apps_dir],
+                    capture_output=True, timeout=30,
+                )
+            except Exception as e:
+                logger.debug("Failed to run update-desktop-database: %s", e, exc_info=True)
+            try:
+                subprocess.run(
+                    ["gtk-update-icon-cache", "-f", "-t", icons_dir],
+                    capture_output=True, timeout=30,
+                )
+            except Exception as e:
+                logger.debug("Failed to run gtk-update-icon-cache: %s", e, exc_info=True)
             self.progress.emit(100)
             self.log.emit("Uninstall complete")
             self.finished.emit()
@@ -553,9 +587,7 @@ class UpdateWorker(QThread):
 
             expected_sha = manifest.get("sha256", "")
             if expected_sha:
-                import hashlib
-
-                actual = hashlib.sha256(open(tmp_path, "rb").read()).hexdigest()
+                actual = _sha256_file(tmp_path)
                 if actual != expected_sha:
                     os.unlink(tmp_path)
                     self.error.emit("SHA256 mismatch")
@@ -669,10 +701,12 @@ class LicensePage(QWizardPage):
         layout.addLayout(btn_row)
 
     def _on_accept(self):
+        play_sound("click")
         self._accepted = True
         self.completeChanged.emit()
 
     def _on_decline(self):
+        play_sound("click")
         self._accepted = False
         self.completeChanged.emit()
 
@@ -691,7 +725,7 @@ class DirectoryPage(QWizardPage):
         row = QHBoxLayout()
         row.addWidget(self.dir_edit, 1)
         btn = QPushButton("Browse...")
-        btn.clicked.connect(self._browse)
+        btn.clicked.connect(lambda: (play_sound("click"), self._browse()))
         row.addWidget(btn)
         layout.addLayout(row)
         layout.addStretch()
@@ -773,19 +807,19 @@ class FinishPage(QWizardPage):
         details.addWidget(self._path_label)
 
         self._version_label = QLabel()
-        self._version_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        self._version_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
         details.addWidget(self._version_label)
 
         self._size_label = QLabel()
-        self._size_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        self._size_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
         details.addWidget(self._size_label)
 
         self._desktop_label = QLabel()
-        self._desktop_label.setStyleSheet("color: palette(disabled-text); font-size: 9pt;")
+        self._desktop_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
         details.addWidget(self._desktop_label)
 
         self._registry_label = QLabel()
-        self._registry_label.setStyleSheet("color: #16a34a; font-size: 9pt;")
+        self._registry_label.setStyleSheet("color: #27AE60; font-size: 9pt;")
         details.addWidget(self._registry_label)
 
         layout.addLayout(details)
@@ -797,12 +831,12 @@ class FinishPage(QWizardPage):
 
         btn_layout = QHBoxLayout()
         self._open_folder_btn = QPushButton(_theme_icon("folder-open"), "Open Install Folder")
-        self._open_folder_btn.clicked.connect(self._on_open_folder)
+        self._open_folder_btn.clicked.connect(lambda: (play_sound("click"), self._on_open_folder()))
         self._open_folder_btn.setVisible(False)
         btn_layout.addWidget(self._open_folder_btn)
 
         self._show_in_niruvi_btn = QPushButton(_theme_icon("go-home"), "Show in Niruvi")
-        self._show_in_niruvi_btn.clicked.connect(self._on_show_in_niruvi)
+        self._show_in_niruvi_btn.clicked.connect(lambda: (play_sound("click"), self._on_show_in_niruvi()))
         self._show_in_niruvi_btn.setVisible(False)
         btn_layout.addWidget(self._show_in_niruvi_btn)
 
@@ -832,7 +866,8 @@ class FinishPage(QWizardPage):
             else:
                 size_str = f"{size} B"
             self._size_label.setText(f"<b>Size:</b> {size_str}")
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to calculate install size: %s", e, exc_info=True)
             self._size_label.setText("<b>Size:</b> ?")
         desktop_path = os.path.expanduser(f"~/.local/share/applications/{app_name}.desktop")
         if os.path.isfile(desktop_path):
@@ -857,8 +892,8 @@ class FinishPage(QWizardPage):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to open in Niruvi: %s", e, exc_info=True)
 
     def shouldLaunch(self):
         return self.launch_cb.isChecked()
@@ -889,6 +924,8 @@ class SelfInstallWizard(QWizard):
 
         self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
         self.button(QWizard.WizardButton.BackButton).setEnabled(False)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        self.setFixedSize(560, 480)
 
     def _build_install_pages(self):
         self.addPage(WelcomePage(self.config))
@@ -984,22 +1021,19 @@ class SelfInstallWizard(QWizard):
         self.button(QWizard.WizardButton.BackButton).setEnabled(False)
 
     def _on_install_finished(self, dest):
+        play_sound("success")
         self._progress_page.setComplete(True)
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self._finish_appimage = os.path.join(dest, "AppRun")
         self._finish_page.setDest(dest)
 
     def _on_worker_error(self, msg):
-        try:
-            from niruvi.utils.sound_manager import play as play_sound
-
-            play_sound("error")
-        except ImportError:
-            pass
+        play_sound("error")
         QMessageBox.critical(self, "Error", msg)
         self.reject()
 
     def _on_install_page_changed(self, idx):
+        play_sound("navigation")
         if isinstance(self.page(idx), ProgressPage):
             self.startInstall()
 
@@ -1021,17 +1055,23 @@ class SelfInstallWizard(QWizard):
 
                 time.sleep(1)
                 if proc.poll() is not None and proc.returncode != 0:
+                    play_sound("warning")
                     QMessageBox.warning(
                         self,
                         "Launch Issue",
                         "The application was installed but could not be launched. "
                         "You can open the install folder and run it manually.",
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to launch app after install: %s", e, exc_info=True)
         super().accept()
 
+    def reject(self):
+        play_sound("navigation")
+        super().reject()
+
     def _on_uninstall_page_changed(self, idx):
+        play_sound("navigation")
         if isinstance(self.page(idx), ProgressPage):
             self._progress_page.log.clear()
             self._worker = UninstallWorker(self.config)
@@ -1046,6 +1086,7 @@ class SelfInstallWizard(QWizard):
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
 
     def _on_update_page_changed(self, idx):
+        play_sound("navigation")
         page = self.page(idx)
         if page is self._avail_page and self._manifest:
             self._changelog.setText(self._manifest.get("changelog", "No changelog available."))
@@ -1105,7 +1146,8 @@ def main():
     if not self_appimage or not os.path.isfile(self_appimage):
         try:
             self_appimage = os.readlink("/proc/self/exe")
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to read /proc/self/exe: %s", e, exc_info=True)
             self_appimage = sys.argv[0]
     # Validate AppImage path
     self_appimage = os.path.realpath(self_appimage)
@@ -1140,10 +1182,15 @@ def main():
         if launch and os.path.isfile(launch):
             try:
                 subprocess.Popen([launch], start_new_session=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to launch app: %s", e, exc_info=True)
 
-    sys.exit(exit_code if exit_code else 0)
+    # Use os._exit to bypass PyQt6 SEGV during Python atexit cleanup.
+    # sip's cleanup_on_exit crashes when iterating QObject wrappers after
+    # the interpreter has started finalizing — the C++ objects are gone
+    # but the Python wrappers still exist.
+    app.quit()
+    os._exit(exit_code if exit_code else 0)
 
 
 if __name__ == "__main__":

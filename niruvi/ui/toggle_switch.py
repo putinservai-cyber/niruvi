@@ -1,16 +1,22 @@
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, Qt, pyqtProperty, pyqtSignal
-from PyQt6.QtGui import QPainter, QPalette, QPen
+from PyQt6.QtGui import QColor, QPainter, QPalette, QPen
 from PyQt6.QtWidgets import QWidget
+
+from niruvi.utils.sound_manager import play as play_sound
 
 
 class ToggleSwitch(QWidget):
     toggled = pyqtSignal(bool)
 
+    TRACK_H_RATIO = 0.4
+    HANDLE_D_RATIO = 0.78
+    PAD = 2
+
     def __init__(self, parent=None, initial: bool = False):
         super().__init__(parent)
         self._checked = initial
-        self._handle_pos = 0.0
-        self.setFixedSize(48, 24)
+        self._offset = 0.0
+        self.setFixedSize(56, 28)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._anim: QPropertyAnimation | None = None
 
@@ -22,60 +28,66 @@ class ToggleSwitch(QWidget):
             self._checked = checked
             self._animate()
             self.toggled.emit(checked)
-        elif self._handle_pos != (1.0 if checked else 0.0):
+        elif abs(self._offset - (1.0 if checked else 0.0)) > 0.01:
             self._animate()
 
     def _animate(self):
         if self._anim:
             self._anim.stop()
-        self._anim = QPropertyAnimation(self, b"handle_pos")
-        self._anim.setDuration(150)
-        self._anim.setStartValue(self._handle_pos)
+        self._anim = QPropertyAnimation(self, b"offset")
+        self._anim.setDuration(120)
+        self._anim.setStartValue(self._offset)
         self._anim.setEndValue(1.0 if self._checked else 0.0)
-        self._anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._anim.start()
 
-    def _get_handle_pos(self) -> float:
-        return self._handle_pos
+    def _get_offset(self) -> float:
+        return self._offset
 
-    def _set_handle_pos(self, val: float):
-        self._handle_pos = val
+    def _set_offset(self, val: float):
+        self._offset = val
         self.update()
 
-    handle_pos = pyqtProperty(float, _get_handle_pos, _set_handle_pos)
+    offset = pyqtProperty(float, _get_offset, _set_offset)
 
     def mousePressEvent(self, event):
         self.setChecked(not self._checked)
+        play_sound("toggle")
         super().mousePressEvent(event)
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         pal = self.palette()
         w, h = self.width(), self.height()
-        track_h = h * 0.625
-        track_y = (h - track_h) / 2
-        radius = track_h / 2
+
+        track_h = round(h * self.TRACK_H_RATIO)
+        track_y = (h - track_h) // 2
+        track_w = w - self.PAD * 2
+        track_x = self.PAD
+        radius = track_h // 2
 
         if self._checked:
             track_color = pal.color(QPalette.ColorRole.Highlight)
         else:
-            track_color = pal.color(QPalette.ColorRole.Dark)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(track_color)
-        painter.drawRoundedRect(
-            int((w - w * 0.85) / 2), int(track_y), int(w * 0.85), int(track_h), int(radius), int(radius)
-        )
+            c = pal.color(QPalette.ColorRole.Mid)
+            track_color = QColor(c.red(), c.green(), c.blue(), 160)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(track_color)
+        p.drawRoundedRect(track_x, track_y, track_w, track_h, radius, radius)
 
-        margin = 2
-        handle_size = h - margin * 2
-        track_start = (w - w * 0.85) / 2
-        track_end = (w + w * 0.85) / 2
-        handle_x = track_start + margin + self._handle_pos * (track_end - track_start - handle_size - margin * 2)
-        handle_color = pal.color(QPalette.ColorRole.Light)
-        painter.setBrush(handle_color)
-        painter.setPen(QPen(pal.color(QPalette.ColorRole.Mid), 1))
-        painter.drawEllipse(int(handle_x), int(margin), int(handle_size), int(handle_size))
+        d = round(h * self.HANDLE_D_RATIO)
+        handle_y = (h - d) // 2
+        min_x = self.PAD + 3
+        max_x = w - self.PAD - d - 3
+        x = round(min_x + self._offset * (max_x - min_x))
 
-        painter.end()
+        if self._checked:
+            hc = pal.color(QPalette.ColorRole.HighlightedText)
+        else:
+            hc = pal.color(QPalette.ColorRole.Window)
+        p.setPen(QPen(pal.color(QPalette.ColorRole.Midlight), 1))
+        p.setBrush(hc)
+        p.drawEllipse(x, handle_y, d, d)
+
+        p.end()

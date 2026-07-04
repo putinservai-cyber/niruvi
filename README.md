@@ -19,8 +19,6 @@ Niruvi makes this workflow smarter:
   and optional shortcuts. Your apps appear in your system menu just like native software.
 - **Build AppImages** from DEB packages, RPM packages, tar archives, or even a local project
   folder — no packaging expertise needed.
-- **Create self-installing AppImages** that prompt the user to install on first run, with a
-  professional wizard, license acceptance, component selection, and optional auto-updater.
 - **Keep your apps up to date** with automatic update checking and SHA256-verified downloads.
 - **Remove apps cleanly** when you no longer need them — no leftover files, no orphaned
   desktop entries.
@@ -39,9 +37,6 @@ Niruvi makes this workflow smarter:
 
 ### AppImage Builder
 - **Multiple source formats** — build from DEB, RPM, tar archives, or a local project folder
-- **Self-installing format** — create AppImages that install themselves with full desktop integration
-- **Advanced options** — brand name, license/EULA, pre/post-install scripts, optional components,
-  custom messages, rollback protection, silent mode, and auto-updater with SHA256 verification
 - **Post-build verification** — automatically checks ELF header, executable permissions, and runs
   a version test to confirm the AppImage works
 
@@ -163,6 +158,10 @@ niruvi --version                   # Show the current version
 |-----|--------|
 | `Ctrl+I` | Install an AppImage |
 | `Ctrl+R` | Refresh the installed apps list |
+| `Ctrl+B` | Build an AppImage |
+| `Ctrl+U` | Uninstall selected app |
+| `Ctrl+D` | Show app info/details |
+| `Ctrl+O` | Open app's install folder |
 | `Ctrl+Q` | Quit Niruvi |
 | `F1` | Open the built-in help system |
 
@@ -176,8 +175,7 @@ niruvi --version                   # Show the current version
 2. Select **Package file** as the source type
 3. Choose a DEB, RPM, or tar archive
 4. Set the app name and version (auto-detected if left empty)
-5. Optionally enable **Self-Installing AppImage**
-6. Click **Build AppImage**
+5. Click **Build AppImage**
 
 ### From a project folder
 
@@ -187,17 +185,6 @@ niruvi --version                   # Show the current version
 4. Niruvi analyzes the folder — file count, size, and detects entry points
 5. The folder contents are copied directly into the AppDir
 6. If no `AppRun` exists, Niruvi auto-creates one based on detected executables
-
-### Self-installing AppImages
-
-Enable **Self-Installing AppImage** to create an AppImage that installs itself
-on first run. This is ideal for applications that need:
-
-- Desktop integration (launcher entries, icons)
-- A managed install lifecycle with uninstaller
-- End-user license agreement acceptance
-- Optional component selection during install
-- Automatic background updates
 
 ---
 
@@ -301,7 +288,7 @@ This creates `Niruvi-x86_64.AppImage` in the project root.
 
 ## License
 
-Copyright (c) 2025 putinservai-cyber.
+Copyright © 2026 putinservai-cyber.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
