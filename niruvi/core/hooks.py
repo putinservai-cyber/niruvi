@@ -3,6 +3,8 @@ import os
 import stat
 import subprocess
 
+logger = logging.getLogger(__name__)
+
 HOOKS_DIR = os.path.expanduser("~/.config/niruvi/hooks")
 
 
@@ -26,8 +28,13 @@ def list_hooks(app_name: str) -> list[str]:
     for base in [get_global_hooks_dir(), get_app_hooks_dir(app_name)]:
         if not os.path.isdir(base):
             continue
+        real_base = os.path.realpath(base)
         for f in sorted(os.listdir(base)):
             path = os.path.join(base, f)
+            real_path = os.path.realpath(path)
+            if not real_path.startswith(real_base + os.sep):
+                logger.warning("Hook %s escapes hooks directory — skipping", path)
+                continue
             if f.endswith(".hook") and os.path.isfile(path) and f not in seen:
                 seen.add(f)
                 hooks.append(path)
@@ -38,20 +45,35 @@ def _check_hook_secure(hook_path: str) -> bool:
     try:
         st = os.stat(hook_path)
         if st.st_uid != os.getuid():
-            logging.warning("Hook %s is not owned by current user — skipping", hook_path)
+            logger.warning("Hook %s is not owned by current user — skipping", hook_path)
             return False
         if st.st_mode & stat.S_IWOTH:
-            logging.warning("Hook %s is world-writable — skipping", hook_path)
+            logger.warning("Hook %s is world-writable — skipping", hook_path)
             return False
         if st.st_mode & stat.S_IWGRP:
             parent_st = os.stat(os.path.dirname(hook_path))
             if parent_st.st_gid != st.st_gid:
-                logging.warning("Hook %s is group-writable by a different group — skipping", hook_path)
+                logger.warning("Hook %s is group-writable by a different group — skipping", hook_path)
                 return False
         return True
     except OSError as e:
-        logging.warning("Cannot stat hook %s: %s — skipping", hook_path, e)
+        logger.warning("Cannot stat hook %s: %s — skipping", hook_path, e)
         return False
+
+
+def _minimal_env(extra: dict | None = None) -> dict:
+    """Build a minimal safe environment for hook scripts."""
+    safe = {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "USER": os.environ.get("USER", ""),
+        "LANG": os.environ.get("LANG", "C"),
+        "SHELL": "/bin/sh",
+        "TERM": os.environ.get("TERM", "dumb"),
+    }
+    if extra:
+        safe.update(extra)
+    return safe
 
 
 def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict]:
@@ -68,11 +90,9 @@ def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict
             )
             continue
         try:
-            hook_env = os.environ.copy()
-            hook_env["APP_NAME"] = app_name
-            hook_env["APP_DIR"] = app_dir
+            hook_env = _minimal_env({"APP_NAME": app_name, "APP_DIR": app_dir})
             if env:
-                hook_env.update(env)
+                hook_env.update({k: v for k, v in env.items() if k in ("DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY")})
             result = subprocess.run(
                 [hook_path],
                 capture_output=True,
@@ -83,9 +103,9 @@ def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict
             out = result.stdout.strip()
             err = result.stderr.strip()
             if out:
-                logging.info("Hook %s stdout: %s", hook_path, out)
+                logger.info("Hook %s stdout: %s", hook_path, out)
             if err:
-                logging.warning("Hook %s stderr: %s", hook_path, err)
+                logger.warning("Hook %s stderr: %s", hook_path, err)
             results.append(
                 {
                     "hook": hook_path,
@@ -95,10 +115,10 @@ def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict
                 }
             )
         except subprocess.TimeoutExpired:
-            logging.warning("Hook %s timed out", hook_path)
+            logger.warning("Hook %s timed out", hook_path)
             results.append({"hook": hook_path, "returncode": -1, "stdout": "", "stderr": "timed out"})
         except OSError as e:
-            logging.warning("Failed to run hook %s: %s", hook_path, e)
+            logger.warning("Failed to run hook %s: %s", hook_path, e)
             results.append({"hook": hook_path, "returncode": -1, "stdout": "", "stderr": str(e)})
     return results
 
@@ -110,7 +130,7 @@ def write_hook(app_name: str, hook_name: str, content: str) -> str:
         path += ".hook"
     with open(path, "w") as f:
         f.write(content)
-    os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+    os.chmod(path, stat.S_IRWXU)
     return path
 
 

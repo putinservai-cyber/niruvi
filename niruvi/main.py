@@ -7,71 +7,26 @@ from urllib.parse import unquote, urlparse
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
-
-def _fix_qt_platform_path():
-    """Ensure Qt can find its platform plugins when running from an AppImage.
-
-    The AppImage runtime may set QT_QPA_PLATFORM_PLUGIN_PATH to an empty
-    or non-existent path, causing QApplication creation to fail with
-    "Could not find the Qt platform plugin". We fix this by:
-
-    1. Cleaning LD_LIBRARY_PATH so bundled Qt5 libs don't shadow system Qt6
-    2. Pointing QT_QPA_PLATFORM_PLUGIN_PATH at the system Qt6 plugin dir
-    """
-    old = os.environ.get("LD_LIBRARY_PATH", "")
-    if old:
-        cleaned = [p for p in old.split(":") if p and not p.startswith("/tmp/.mount_")]
-        if cleaned:
-            os.environ["LD_LIBRARY_PATH"] = ":".join(cleaned)
-        else:
-            os.environ.pop("LD_LIBRARY_PATH", None)
-
-    def _has_platform_plugins(path: str) -> bool:
-        platforms = os.path.join(path, "platforms")
-        if not os.path.isdir(platforms):
-            return False
-        return any(f.startswith("libq") and f.endswith(".so") for f in os.listdir(platforms))
-
-    cur = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
-    if cur and _has_platform_plugins(cur):
-        return
-
-    candidates = [
-        os.path.join(os.environ.get("APPDIR", ""), "usr", "lib64", "qt6", "plugins"),
-        "/usr/lib64/qt6/plugins",
-        "/usr/lib/x86_64-linux-gnu/qt6/plugins",
-    ]
-    for p in candidates:
-        if _has_platform_plugins(p):
-            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = p
-            return
-    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
-
-
 from niruvi._version import __version__
-from niruvi.core.worker import extract_appimage_sync
-from niruvi.desktop.desktop_utils import (
-    create_desktop_entry,
-    find_desktop_for_app,
-    find_desktop_shortcut,
-    get_version,
-    refresh_desktop_database,
-)
-from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
-from niruvi.ui.manager import AppManager, get_appimage_metadata
-from niruvi.ui.settings import (
+from niruvi.config import (
     DEFAULT_INSTALL_DIR,
     DESKTOP_DIR,
     INSTALLED_DIR,
+    _settings,
     get_data_dir,
     get_settings,
     load_settings,
 )
-from niruvi.ui.wizard import InstallWizard
-from niruvi.utils import get_icon
+from niruvi.desktop.desktop_utils import find_desktop_for_app, find_desktop_shortcut, refresh_desktop_database
+from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
+from niruvi.utils.qt_compat import fix_qt_platform_path as _fix_qt_platform_path
 
 
 def process_appimage(path_str: str, parent=None):
+    from niruvi.ui.manager import get_appimage_metadata
+    from niruvi.ui.wizard import InstallWizard
+    from niruvi.utils import get_icon
+
     path = Path(path_str)
     info, icon_data = get_appimage_metadata(str(path))
     app_name = info.get("Name", path.stem)
@@ -149,6 +104,10 @@ def process_appimage(path_str: str, parent=None):
 
 def cli_install(path_str: str):
     """Silent CLI install without GUI."""
+    from niruvi.core.worker import extract_appimage_sync
+    from niruvi.desktop.desktop_utils import create_desktop_entry, get_version
+    from niruvi.ui.manager import get_appimage_metadata
+
     path = Path(path_str)
     info, _icon_data = get_appimage_metadata(str(path))
     app_name = info.get("Name", path.stem)
@@ -194,10 +153,13 @@ def cli_install(path_str: str):
 def _resolve_path(raw: str) -> str:
     if raw.startswith("file://"):
         raw = unquote(urlparse(raw).path)
-    resolved = os.path.realpath(raw)
-    # Reject path traversal outside the filesystem
+    if "\0" in raw:
+        raise ValueError("Path contains null byte")
     if ".." in raw.split(os.sep):
         raise ValueError(f"Path contains '..' traversal: {raw}")
+    resolved = os.path.realpath(raw)
+    if "\0" in resolved:
+        raise ValueError("Resolved path contains null byte")
     return resolved
 
 
@@ -220,6 +182,7 @@ def main():
     parser.add_argument("--update-all", action="store_true", help="Check all apps for updates (CLI)")
     parser.add_argument("--update-check", metavar="APP", help="Check a specific app for updates (CLI)")
     parser.add_argument("--is-installed", metavar="PATH", help="Check if an AppImage is installed (CLI)")
+    parser.add_argument("--mute", action="store_true", help="Disable all sound effects")
     args = parser.parse_args()
 
     if args.version:
@@ -230,6 +193,9 @@ def main():
     os.makedirs(DEFAULT_INSTALL_DIR, exist_ok=True)
     os.makedirs(DESKTOP_DIR, exist_ok=True)
     load_settings()
+
+    if args.mute:
+        _settings["sound_effects_enabled"] = False
 
     if args.install:
         try:
@@ -364,6 +330,14 @@ def main():
     app.setApplicationName("Niruvi")
     app.setApplicationVersion(__version__)
 
+    # Set restrictive permissions on data directory
+    data_dir = get_data_dir()
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        os.chmod(data_dir, 0o700)
+    except OSError:
+        pass
+
     icon_path = None
     appdir_env = os.environ.get("APPDIR")
     if appdir_env:
@@ -405,13 +379,12 @@ def main():
     if file_to_process:
         process_appimage(file_to_process)
 
+    from niruvi.ui.manager import AppManager
+
     window = AppManager()
     window.show()
     ret = app.exec()
     window.close()
-    from niruvi.utils.sound_manager import uninstall_button_filter
-
-    uninstall_button_filter()
     for _ in range(3):
         import gc as _gc
 
@@ -427,6 +400,9 @@ def main():
         _gc.collect()
     window = None
     app = None
+    from niruvi.utils.sound_manager import cleanup as _sound_cleanup
+
+    _sound_cleanup()
     sys.exit(ret)
 
 

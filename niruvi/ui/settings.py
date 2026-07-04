@@ -1,7 +1,8 @@
-import json
 import logging
 import os
 import subprocess
+
+logger = logging.getLogger(__name__)
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -20,67 +21,26 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
 
+from niruvi.config import (  # noqa: F401 — re-exported for other UI modules
+    DEFAULT_INSTALL_DIR,
+    DESKTOP_DIR,
+    INSTALLED_DIR,
+    _settings,
+    get_data_dir,
+    get_settings,
+    load_settings,
+    save_settings,
+)
 from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils import get_icon
+from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.styles import placeholder_style
 from niruvi.utils.theme_engine import COLOR_SUCCESS
-
-DEFAULT_INSTALL_DIR = os.path.expanduser("~/Applications")
-DESKTOP_DIR = os.path.expanduser("~/.local/share/applications")
-
-INSTALLED_DIR = os.path.expanduser("~/Applications/Niruvi")
-
-
-def get_data_dir():
-    env = os.environ.get("NIRUVI_DATA_DIR")
-    if env:
-        return env
-    if os.path.isfile(os.path.join(INSTALLED_DIR, "AppRun")):
-        return os.path.join(INSTALLED_DIR, ".niruvi")
-    appimage = os.environ.get("APPIMAGE")
-    if appimage:
-        return os.path.join(os.path.dirname(appimage), ".niruvi")
-    return os.path.expanduser("~/.config/niruvi")
-
-
-_settings = {
-    "install_dir": DEFAULT_INSTALL_DIR,
-    "create_desktop": True,
-    "create_shortcut": False,
-    "portable_home": False,
-    "portable_config": False,
-    "icon_in_theme": True,
-    "auto_scan_before_install": True,
-    "update_check_interval": "weekly",
-    "auto_update_apps": False,
-    "sandbox_default_enabled": True,
-    "sandbox_default_level": 2,
-    "sandbox_default_backend": "shield",
-    "auto_remove_source": False,
-    "sound_effects_enabled": True,
-}
-
-
-def get_settings():
-    return _settings
-
-
-def _settings_file():
-    return os.path.join(get_data_dir(), "settings.json")
-
-
-def load_settings():
-    sf = _settings_file()
-    if os.path.exists(sf):
-        try:
-            with open(sf) as f:
-                loaded = json.load(f)
-                _settings.update(loaded)
-        except (json.JSONDecodeError, OSError) as e:
-            logging.warning("Corrupted settings file: %s", e)
 
 
 def _is_local_path(path: str) -> bool:
@@ -94,13 +54,6 @@ def _is_local_path(path: str) -> bool:
         if p in resolved:
             return False
     return True
-
-
-def save_settings():
-    data_dir = get_data_dir()
-    os.makedirs(data_dir, exist_ok=True)
-    with open(_settings_file(), "w") as f:
-        json.dump(_settings, f, indent=2)
 
 
 class _ToggleRow(QWidget):
@@ -118,6 +71,46 @@ class _ToggleRow(QWidget):
         layout.addWidget(self.label, 1)
         layout.addWidget(self.toggle)
         self.setToolTip(tooltip)
+
+    def isChecked(self):
+        return self.toggle.isChecked()
+
+    def setChecked(self, checked: bool):
+        self.toggle.setChecked(checked)
+
+
+class _SoundCategoryRow(QWidget):
+    _PREVIEW_KEYS: dict[str, str] = {
+        "feedback": "click",
+        "navigation": "interface",
+        "notifications": "info",
+    }
+
+    def __init__(self, label: str, category: str, tooltip: str = "", parent=None):
+        super().__init__(parent)
+        self._category = category
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 4, 0, 4)
+        self.label = QLabel(label)
+        self.label.setWordWrap(True)
+        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        if tooltip:
+            self.label.setToolTip(tooltip)
+        self.toggle = ToggleSwitch(self)
+        if tooltip:
+            self.toggle.setToolTip(tooltip)
+        self.preview_btn = QPushButton("\u25B6")
+        self.preview_btn.setFixedSize(32, 24)
+        self.preview_btn.setToolTip("Preview this sound category")
+        self.preview_btn.clicked.connect(self._preview)
+        layout.addWidget(self.label, 1)
+        layout.addWidget(self.preview_btn)
+        layout.addWidget(self.toggle)
+        self.setToolTip(tooltip)
+
+    def _preview(self):
+        key = self._PREVIEW_KEYS.get(self._category, "click")
+        play_sound(key)
 
     def isChecked(self):
         return self.toggle.isChecked()
@@ -156,7 +149,7 @@ class SettingsPage(QWidget):
         self.install_dir_edit = QLineEdit(_settings.get("install_dir", DEFAULT_INSTALL_DIR))
         self.install_dir_edit.setReadOnly(True)
         browse_btn = QPushButton(get_icon("folder-open"), "Browse...")
-        browse_btn.clicked.connect(self._browse_install_dir)
+        browse_btn.clicked.connect(lambda: (play_sound("click"), self._browse_install_dir()))
         dir_layout = QHBoxLayout()
         dir_layout.addWidget(self.install_dir_edit)
         dir_layout.addWidget(browse_btn)
@@ -218,7 +211,7 @@ class SettingsPage(QWidget):
             status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-size: 11px;")
         else:
             status_label = QLabel("Process hardening not available")
-            status_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+            status_label.setStyleSheet(placeholder_style("", 11))
         status_label.setWordWrap(True)
         shield_layout.addWidget(status_label)
 
@@ -276,7 +269,7 @@ class SettingsPage(QWidget):
         os.makedirs(hooks_dir, exist_ok=True)
         hooks_label = QLabel(f"Hooks directory:<br><code>{hooks_dir}</code>")
         hooks_label.setWordWrap(True)
-        hooks_label.setStyleSheet("color: palette(disabled-text); font-size: 12px;")
+        hooks_label.setStyleSheet(placeholder_style("", 12))
         hooks_layout.addWidget(hooks_label)
 
         hooks_desc = QLabel(
@@ -285,11 +278,11 @@ class SettingsPage(QWidget):
             "Scripts receive <code>APP_NAME</code> and <code>APP_DIR</code> environment variables."
         )
         hooks_desc.setWordWrap(True)
-        hooks_desc.setStyleSheet("color: palette(disabled-text); font-size: 11px;")
+        hooks_desc.setStyleSheet(placeholder_style("", 11))
         hooks_layout.addWidget(hooks_desc)
 
         open_hooks_btn = QPushButton(get_icon("folder-open"), "Open Hooks Directory")
-        open_hooks_btn.clicked.connect(lambda: subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True))
+        open_hooks_btn.clicked.connect(lambda: (play_sound("click"), subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True)))
         hooks_layout.addWidget(open_hooks_btn)
 
         layout.addWidget(hooks_group)
@@ -321,10 +314,10 @@ class SettingsPage(QWidget):
 
         tn_btn_row = QHBoxLayout()
         self.btn_install_tn = QPushButton(get_icon("emblem-photos", "image-x-generic"), "Install Thumbnailer")
-        self.btn_install_tn.clicked.connect(self._install_thumbnailer)
+        self.btn_install_tn.clicked.connect(lambda: (play_sound("click"), self._install_thumbnailer()))
         tn_btn_row.addWidget(self.btn_install_tn)
         self.btn_remove_tn = QPushButton(get_icon("edit-delete"), "Remove Thumbnailer")
-        self.btn_remove_tn.clicked.connect(self._remove_thumbnailer)
+        self.btn_remove_tn.clicked.connect(lambda: (play_sound("click"), self._remove_thumbnailer()))
         tn_btn_row.addWidget(self.btn_remove_tn)
         tn_btn_row.addStretch()
         tn_layout.addLayout(tn_btn_row)
@@ -335,7 +328,7 @@ class SettingsPage(QWidget):
             "Requires tumbler or GNOME thumbnails daemon."
         )
         tn_info.setWordWrap(True)
-        tn_info.setStyleSheet("font-size: 11px; color: palette(disabled-text);")
+        tn_info.setStyleSheet(placeholder_style("", 11))
         tn_layout.addWidget(tn_info)
 
         layout.addWidget(tn_group)
@@ -363,7 +356,7 @@ class SettingsPage(QWidget):
 
         theme_desc = QLabel("Detects your desktop environment's light or dark theme automatically.")
         theme_desc.setWordWrap(True)
-        theme_desc.setStyleSheet("font-size: 11px; color: palette(placeholderText);")
+        theme_desc.setStyleSheet(placeholder_style("", 11))
         theme_layout.addWidget(theme_desc)
 
         layout.addWidget(theme_group)
@@ -391,12 +384,120 @@ class SettingsPage(QWidget):
             "Play sound effects", "Play sounds for installation, errors, and navigation"
         )
         self.sound_effects_row.setChecked(_settings.get("sound_effects_enabled", True))
+        self.sound_effects_row.toggle.toggled.connect(
+            lambda checked: _settings.update({"sound_effects_enabled": checked})
+        )
         audio_layout.addWidget(self.sound_effects_row)
+
+        vol_row = QHBoxLayout()
+        vol_row.addWidget(QLabel("Master volume:"))
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        vol_val = int(_settings.get("sound_volume", 0.7) * 100)
+        self.volume_slider.setValue(vol_val)
+        self.volume_slider.setToolTip("Adjust the master volume of all sound effects")
+        self.volume_label = QLabel(f"{vol_val}%")
+        self.volume_label.setFixedWidth(36)
+        self.volume_slider.valueChanged.connect(lambda v: self.volume_label.setText(f"{v}%"))
+        vol_row.addWidget(self.volume_slider)
+        vol_row.addWidget(self.volume_label)
+        audio_layout.addLayout(vol_row)
+
+        self.sound_feedback_row = _SoundCategoryRow(
+            "Feedback sounds", "feedback",
+            "Click, success, error, warning, toggle sounds",
+        )
+        self.sound_feedback_row.setChecked(_settings.get("sound_feedback_enabled", True))
+        self.sound_feedback_row.toggle.toggled.connect(
+            lambda checked: _settings.update({"sound_feedback_enabled": checked})
+        )
+        audio_layout.addWidget(self.sound_feedback_row)
+
+        fb_vol_row = QHBoxLayout()
+        fb_vol_row.addWidget(QLabel("  Feedback volume:"))
+        self.feedback_volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.feedback_volume_slider.setRange(0, 100)
+        fb_vol_val = int(_settings.get("sound_volume_feedback", 1.0) * 100)
+        self.feedback_volume_slider.setValue(fb_vol_val)
+        self.feedback_volume_label = QLabel(f"{fb_vol_val}%")
+        self.feedback_volume_label.setFixedWidth(36)
+        self.feedback_volume_slider.valueChanged.connect(lambda v: self.feedback_volume_label.setText(f"{v}%"))
+        fb_vol_row.addWidget(self.feedback_volume_slider)
+        fb_vol_row.addWidget(self.feedback_volume_label)
+        audio_layout.addLayout(fb_vol_row)
+
+        self.sound_navigation_row = _SoundCategoryRow(
+            "Navigation sounds", "navigation",
+            "Interface open, page transition sounds",
+        )
+        self.sound_navigation_row.setChecked(_settings.get("sound_navigation_enabled", True))
+        self.sound_navigation_row.toggle.toggled.connect(
+            lambda checked: _settings.update({"sound_navigation_enabled": checked})
+        )
+        audio_layout.addWidget(self.sound_navigation_row)
+
+        nav_vol_row = QHBoxLayout()
+        nav_vol_row.addWidget(QLabel("  Navigation volume:"))
+        self.nav_volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.nav_volume_slider.setRange(0, 100)
+        nav_vol_val = int(_settings.get("sound_volume_navigation", 1.0) * 100)
+        self.nav_volume_slider.setValue(nav_vol_val)
+        self.nav_volume_label = QLabel(f"{nav_vol_val}%")
+        self.nav_volume_label.setFixedWidth(36)
+        self.nav_volume_slider.valueChanged.connect(lambda v: self.nav_volume_label.setText(f"{v}%"))
+        nav_vol_row.addWidget(self.nav_volume_slider)
+        nav_vol_row.addWidget(self.nav_volume_label)
+        audio_layout.addLayout(nav_vol_row)
+
+        self.sound_notifications_row = _SoundCategoryRow(
+            "Notification sounds", "notifications",
+            "Info alerts and notification beeps",
+        )
+        self.sound_notifications_row.setChecked(_settings.get("sound_notifications_enabled", True))
+        self.sound_notifications_row.toggle.toggled.connect(
+            lambda checked: _settings.update({"sound_notifications_enabled": checked})
+        )
+        audio_layout.addWidget(self.sound_notifications_row)
+
+        notif_vol_row = QHBoxLayout()
+        notif_vol_row.addWidget(QLabel("  Notification volume:"))
+        self.notif_volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.notif_volume_slider.setRange(0, 100)
+        notif_vol_val = int(_settings.get("sound_volume_notifications", 1.0) * 100)
+        self.notif_volume_slider.setValue(notif_vol_val)
+        self.notif_volume_label = QLabel(f"{notif_vol_val}%")
+        self.notif_volume_label.setFixedWidth(36)
+        self.notif_volume_slider.valueChanged.connect(lambda v: self.notif_volume_label.setText(f"{v}%"))
+        notif_vol_row.addWidget(self.notif_volume_slider)
+        notif_vol_row.addWidget(self.notif_volume_label)
+        audio_layout.addLayout(notif_vol_row)
 
         layout.addWidget(audio_group)
 
+        privacy_group = QGroupBox("Privacy")
+        privacy_layout = QVBoxLayout(privacy_group)
+        privacy_layout.setSpacing(4)
+
+        self.privacy_updates_row = _ToggleRow(
+            "Check for updates automatically",
+            "When enabled, Niruvi will periodically check GitHub for new versions. "
+            "No personal data is transmitted.",
+        )
+        self.privacy_updates_row.setChecked(_settings.get("privacy_allow_update_checks", True))
+        privacy_layout.addWidget(self.privacy_updates_row)
+
+        privacy_note = QLabel(
+            "Update checks send only your current app version number to GitHub's public API. "
+            "No personal data, paths, or system information is transmitted."
+        )
+        privacy_note.setWordWrap(True)
+        privacy_note.setStyleSheet(placeholder_style("", 10))
+        privacy_layout.addWidget(privacy_note)
+
+        layout.addWidget(privacy_group)
+
         help_label = QLabel("Theme changes apply immediately. Other changes apply on the next install or build.")
-        help_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+        help_label.setStyleSheet(placeholder_style("", 11))
         help_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(help_label)
 
@@ -422,7 +523,8 @@ class SettingsPage(QWidget):
             if info.get("xdg_open_daemon"):
                 parts.append("xdg-open proxy")
             return " | ".join(parts) if parts else ""
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to detect sandbox status: %s", e, exc_info=True)
             return ""
 
     def _detect_backend_details(self) -> dict:
@@ -433,7 +535,8 @@ class SettingsPage(QWidget):
                 "firejail": check_firejail_available().get("available", False),
                 "bwrap": check_bwrap_available().get("available", False),
             }
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to detect backend details: %s", e, exc_info=True)
             return {"firejail": False, "bwrap": False}
 
     def _update_thumbnailer_status(self):
@@ -455,11 +558,10 @@ class SettingsPage(QWidget):
 
         err = install_thumbnailer()
         if err:
-            from niruvi.utils.sound_manager import play as play_sound
-
             play_sound("error")
             QMessageBox.critical(self, "Install Failed", err)
         else:
+            play_sound("success")
             QMessageBox.information(
                 self,
                 "Thumbnailer Installed",
@@ -474,11 +576,10 @@ class SettingsPage(QWidget):
 
         err = remove_thumbnailer()
         if err:
-            from niruvi.utils.sound_manager import play as play_sound
-
             play_sound("error")
             QMessageBox.critical(self, "Remove Failed", err)
         else:
+            play_sound("success")
             QMessageBox.information(self, "Thumbnailer Removed", "The thumbnailer has been removed.")
         self._update_thumbnailer_status()
 
@@ -486,8 +587,6 @@ class SettingsPage(QWidget):
         dir_path = QFileDialog.getExistingDirectory(self, "Select installation directory", self.install_dir_edit.text())
         if dir_path:
             if not _is_local_path(dir_path):
-                from niruvi.utils.sound_manager import play as play_sound
-
                 play_sound("warning")
                 QMessageBox.warning(
                     self,
@@ -520,14 +619,20 @@ class SettingsPage(QWidget):
             or self.backend_combo.currentData() != _settings.get("sandbox_default_backend", "shield")
             or self.remove_source_row.isChecked() != _settings.get("auto_remove_source", False)
             or self.sound_effects_row.isChecked() != _settings.get("sound_effects_enabled", True)
+            or self.volume_slider.value() != int(_settings.get("sound_volume", 0.7) * 100)
+            or self.sound_feedback_row.isChecked() != _settings.get("sound_feedback_enabled", True)
+            or self.sound_navigation_row.isChecked() != _settings.get("sound_navigation_enabled", True)
+            or self.sound_notifications_row.isChecked() != _settings.get("sound_notifications_enabled", True)
+            or self.feedback_volume_slider.value() != int(_settings.get("sound_volume_feedback", 1.0) * 100)
+            or self.nav_volume_slider.value() != int(_settings.get("sound_volume_navigation", 1.0) * 100)
+            or self.notif_volume_slider.value() != int(_settings.get("sound_volume_notifications", 1.0) * 100)
+            or self.privacy_updates_row.isChecked() != _settings.get("privacy_allow_update_checks", True)
             or self.theme_combo.currentData() != _settings.get("theme_mode", "auto")
         )
 
     def apply(self) -> bool:
         install_dir = self.install_dir_edit.text()
         if not _is_local_path(install_dir):
-            from niruvi.utils.sound_manager import play as play_sound
-
             play_sound("warning")
             QMessageBox.warning(
                 self,
@@ -549,6 +654,14 @@ class SettingsPage(QWidget):
         _settings["sandbox_default_backend"] = self.backend_combo.currentData()
         _settings["auto_remove_source"] = self.remove_source_row.isChecked()
         _settings["sound_effects_enabled"] = self.sound_effects_row.isChecked()
+        _settings["sound_volume"] = self.volume_slider.value() / 100.0
+        _settings["sound_feedback_enabled"] = self.sound_feedback_row.isChecked()
+        _settings["sound_navigation_enabled"] = self.sound_navigation_row.isChecked()
+        _settings["sound_notifications_enabled"] = self.sound_notifications_row.isChecked()
+        _settings["sound_volume_feedback"] = self.feedback_volume_slider.value() / 100.0
+        _settings["sound_volume_navigation"] = self.nav_volume_slider.value() / 100.0
+        _settings["sound_volume_notifications"] = self.notif_volume_slider.value() / 100.0
+        _settings["privacy_allow_update_checks"] = self.privacy_updates_row.isChecked()
         _settings["theme_mode"] = self.theme_combo.currentData()
         save_settings()
         return True
@@ -568,15 +681,11 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def accept(self):
-        from niruvi.utils.sound_manager import play as play_sound
-
         if self._page.apply():
             play_sound("click")
             super().accept()
 
     def reject(self):
-        from niruvi.utils.sound_manager import play as play_sound
-
         if self._page._has_changes():
             play_sound("warning")
             reply = QMessageBox.question(
@@ -587,5 +696,5 @@ class SettingsDialog(QDialog):
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
-        play_sound("click")
+        play_sound("navigation")
         super().reject()

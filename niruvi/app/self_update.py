@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import shutil
+import ssl
 import subprocess
 import tempfile
 import time
@@ -13,6 +14,7 @@ from PyQt6.QtCore import QProcess, Qt
 from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QWidget
 
 from niruvi import __version__
+from niruvi.utils.http import _create_ssl_context
 from niruvi.utils.sound_manager import play as play_sound
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ def _get_install_dir() -> str:
     appimage = os.environ.get("APPIMAGE")
     if appimage and os.path.isfile(appimage):
         return os.path.dirname(os.path.realpath(appimage))
-    from niruvi.ui.settings import INSTALLED_DIR
+    from niruvi.config import INSTALLED_DIR
 
     return os.path.expanduser(INSTALLED_DIR)
 
@@ -94,29 +96,38 @@ def compare_versions(v1, op, v2):
 
 
 def _fetch_json(url: str, timeout: int) -> dict:
-    resp = urllib.request.urlopen(url, timeout=timeout)
-    return json.loads(resp.read().decode("utf-8"))
+    from niruvi.utils.http import fetch_json
+
+    return fetch_json(url, timeout)
 
 
 def _download_file(url: str, dest: str, progress: QProgressDialog) -> bytes:
-    resp = urllib.request.urlopen(url, timeout=120)
+    ctx = _create_ssl_context()
+    resp = urllib.request.urlopen(url, timeout=120, context=ctx)
     total = int(resp.headers.get("Content-Length", 0))
     chunk_size = 8192
     sha256_hash = hashlib.sha256()
 
-    with open(dest, "wb") as f:
-        downloaded = 0
-        while True:
-            if progress.wasCanceled():
-                return None
-            chunk = resp.read(chunk_size)
-            if not chunk:
-                break
-            f.write(chunk)
-            sha256_hash.update(chunk)
-            downloaded += len(chunk)
-            if total > 0:
-                progress.setValue(int((downloaded / total) * 100))
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            downloaded = 0
+            while True:
+                if progress.wasCanceled():
+                    os.unlink(dest)
+                    return None
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                sha256_hash.update(chunk)
+                downloaded += len(chunk)
+                if total > 0:
+                    progress.setValue(int((downloaded / total) * 100))
+    except Exception:
+        if os.path.exists(dest):
+            os.unlink(dest)
+        raise
 
     return sha256_hash.digest()
 
@@ -129,16 +140,17 @@ def _verify_update_manifest(manifest_json: str) -> bool:
     Returns True if the signature is valid, False otherwise.
     """
     if not os.path.isfile(SIGNING_KEY_PATH):
-        logger.warning("No signing key found at %s — skipping manifest verification", SIGNING_KEY_PATH)
-        return True
+        logger.error("No signing key found at %s — manifest verification FAILED", SIGNING_KEY_PATH)
+        return False
 
     if not shutil.which("gpg"):
-        logger.warning("GPG not available — skipping manifest verification")
-        return True
+        logger.error("GPG not available — manifest verification FAILED")
+        return False
 
     try:
+        ctx = _create_ssl_context()
         req = urllib.request.Request(UPDATE_SIGNATURE_URL, headers={"Accept": "text/plain"})
-        resp = urllib.request.urlopen(req, timeout=15)
+        resp = urllib.request.urlopen(req, timeout=15, context=ctx)
         sig_data = resp.read().decode("utf-8")
     except Exception as e:
         logger.warning("Failed to fetch signature from %s: %s", UPDATE_SIGNATURE_URL, e)
@@ -188,7 +200,8 @@ def check_for_updates(parent: QWidget):
     current_version = __version__
 
     try:
-        raw_json_resp = urllib.request.urlopen(UPDATE_MANIFEST_URL, timeout=15)
+        ctx = _create_ssl_context()
+        raw_json_resp = urllib.request.urlopen(UPDATE_MANIFEST_URL, timeout=15, context=ctx)
         raw_json = raw_json_resp.read().decode("utf-8")
         manifest = json.loads(raw_json)
 
@@ -225,6 +238,7 @@ def check_for_updates(parent: QWidget):
             if changelog:
                 msg += f"\nWhat's new:\n{changelog[:500]}"
 
+            play_sound("notification")
             reply = QMessageBox.question(
                 parent,
                 "Update Available",
@@ -236,6 +250,7 @@ def check_for_updates(parent: QWidget):
             if reply == QMessageBox.StandardButton.Yes:
                 _download_and_install(parent, download_url, expected_sha256, latest_version)
         else:
+            play_sound("info")
             QMessageBox.information(
                 parent,
                 "Up to Date",
@@ -265,6 +280,7 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
     try:
         fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
         os.close(fd)
+        os.chmod(temp_path, 0o600)
 
         digest = _download_file(download_url, temp_path, progress)
         progress.close()
@@ -316,6 +332,7 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
             os.remove(backup_path)
         backup_path = None
 
+        play_sound("success")
         reply = QMessageBox.question(
             parent,
             "Update Installed",
@@ -336,8 +353,8 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
                 if os.path.exists(dest):
                     os.remove(dest)
                 os.rename(backup_path, dest)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to restore backup during update rollback: %s", e, exc_info=True)
         if temp_path:
             Path(temp_path).unlink(missing_ok=True)
         progress.close()

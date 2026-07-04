@@ -2,9 +2,11 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from datetime import datetime
 
-from niruvi.ui.settings import get_data_dir
+from niruvi.config import get_data_dir
+from niruvi.utils.integrity import read_json_with_hmac, write_json_with_hmac
 
 
 class InstallationRecord:
@@ -27,6 +29,7 @@ class InstallationRecord:
         auto_update: bool = False,
         update_channel: str = "stable",
         sandbox_config: dict | None = None,
+        size: int = 0,
     ):
         self.name = name
         self.path = path
@@ -45,6 +48,7 @@ class InstallationRecord:
         self.auto_update = auto_update
         self.update_channel = update_channel
         self.sandbox_config = sandbox_config or {}
+        self.size = size
 
     def to_dict(self) -> dict:
         return {
@@ -65,6 +69,7 @@ class InstallationRecord:
             "auto_update": self.auto_update,
             "update_channel": self.update_channel,
             "sandbox_config": self.sandbox_config,
+            "size": self.size,
         }
 
     @classmethod
@@ -87,63 +92,132 @@ class InstallationRecord:
             auto_update=data.get("auto_update", False),
             update_channel=data.get("update_channel", "stable"),
             sandbox_config=data.get("sandbox_config", {}),
+            size=data.get("size", 0),
         )
 
 
 class InstallationRegistry:
+    _instance: "InstallationRegistry | None" = None
+    _instance_lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
         self._records: dict[str, InstallationRecord] = {}
-        self._load()
+        self._path_index: dict[str, str] = {}
+        self._loaded = False
+        self._save_timer: threading.Timer | None = None
+        self._save_pending = False
+        self._save_lock = threading.Lock()
+
+    def _ensure_loaded(self):
+        if not self._loaded:
+            self._load()
+            self._loaded = True
 
     def _registry_file(self):
         return os.path.join(get_data_dir(), "registry.json")
 
     def _load(self):
         rf = self._registry_file()
-        if os.path.exists(rf):
+        if not os.path.exists(rf):
+            return
+        data = None
+        raw = read_json_with_hmac(rf)
+        if raw is not None:
+            data = raw
+        if data is None:
             try:
                 with open(rf) as f:
-                    data = json.load(f)
-                for item in data:
-                    record = InstallationRecord.from_dict(item)
-                    self._records[record.name] = record
+                    raw_json = json.load(f)
+                if isinstance(raw_json, dict) and "_data" in raw_json:
+                    raw_json = raw_json["_data"]
+                data = raw_json
+                logging.info("Loaded registry without HMAC (legacy format)")
             except (json.JSONDecodeError, OSError) as e:
                 logging.warning("Corrupted installation registry: %s", e)
+                return
+        items = []
+        if isinstance(data, dict):
+            items = data.get("records", [])
+            if not items:
+                items = [v for v in data.values() if isinstance(v, dict) and "name" in v]
+        elif isinstance(data, list):
+            items = data
+        for item in items:
+            record = InstallationRecord.from_dict(item)
+            self._records[record.name] = record
+            if record.path:
+                self._path_index[record.path] = record.name
 
     def _save(self):
         data_dir = get_data_dir()
         os.makedirs(data_dir, exist_ok=True)
         data = [r.to_dict() for r in self._records.values()]
-        tmp = None
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", dir=data_dir, delete=False, suffix=".tmp") as f:
-                json.dump(data, f, indent=2)
-                tmp = f.name
-            os.replace(tmp, self._registry_file())
-        except OSError:
-            if tmp and os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
+        write_json_with_hmac(self._registry_file(), {"records": data})
+
+    def _deferred_save(self):
+        with self._save_lock:
+            if self._save_pending:
+                return
+            self._save_pending = True
+        if self._save_timer is not None:
+            self._save_timer.cancel()
+        self._save_timer = threading.Timer(0.5, self._flush_save)
+        self._save_timer.daemon = True
+        self._save_timer.start()
+
+    def _flush_save(self):
+        with self._save_lock:
+            self._save_pending = False
+        self._save()
 
     def add(self, record: InstallationRecord):
+        self._ensure_loaded()
         self._records[record.name] = record
-        self._save()
+        if record.path:
+            self._path_index[record.path] = record.name
+        self._deferred_save()
 
     def remove(self, name: str):
-        self._records.pop(name, None)
-        self._save()
+        self._ensure_loaded()
+        record = self._records.pop(name, None)
+        if record and record.path:
+            self._path_index.pop(record.path, None)
+        self._deferred_save()
 
     def get(self, name: str) -> InstallationRecord | None:
+        self._ensure_loaded()
         return self._records.get(name)
 
     def get_all(self) -> list[InstallationRecord]:
+        self._ensure_loaded()
         return list(self._records.values())
 
     def lookup_by_path(self, path: str) -> InstallationRecord | None:
+        self._ensure_loaded()
+        name = self._path_index.get(path)
+        if name:
+            return self._records.get(name)
         for record in self._records.values():
             if record.path == path:
+                self._path_index[path] = record.name
                 return record
         return None
 
     def lookup_by_name(self, name: str) -> InstallationRecord | None:
+        self._ensure_loaded()
         return self._records.get(name)
+
+    def flush(self):
+        """Force immediate save (for shutdown)."""
+        self._flush_save()
