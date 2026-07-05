@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
     QWizardPage,
 )
 
-from niruvi.app.update_sources import resolve_update_source
+from niruvi.app.update_sources import UpdateInfo, resolve_update_source
 from niruvi.core.worker import DownloadWorker, extract_appimage_sync
 from niruvi.desktop.desktop_utils import get_version, refresh_desktop_database
 from niruvi.desktop.installation_registry import InstallationRegistry
@@ -361,7 +361,14 @@ class UpdateInstallWorker(QThread):
 
 class UpdateWizard(QWizard):
     def __init__(
-        self, app_name: str, app_dir: str, current_version: str, update_url: str, channel: str = "stable", parent=None
+        self,
+        app_name: str,
+        app_dir: str,
+        current_version: str,
+        update_url: str,
+        channel: str = "stable",
+        parent=None,
+        update_info: UpdateInfo | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"Update {app_name}")
@@ -375,7 +382,7 @@ class UpdateWizard(QWizard):
         self.update_url = update_url
         self.channel = channel
 
-        self._update_info = None
+        self._update_info = update_info
         self._downloaded_path: str | None = None
         self._download_worker: DownloadWorker | None = None
         self._install_worker: UpdateInstallWorker | None = None
@@ -455,10 +462,20 @@ class UpdateWizard(QWizard):
         if cid == self._page_ids.get("download"):
             return self._page_ids["install"]
         if cid == self._page_ids.get("install"):
+            if self._rollback_performed:
+                return self._page_ids["rollback"]
             return self._page_ids["finish"]
         return -1
 
     def _run_update_check(self):
+        if self._update_info:
+            self._has_update = True
+            self._changelog_page.set_info(
+                self.current_version, self._update_info.version, self._update_info.changelog or ""
+            )
+            self.button(QWizard.WizardButton.NextButton).setEnabled(True)
+            self.next()
+            return
         try:
             info = resolve_update_source(self.update_url, self.current_version, channel=self.channel)
             if info and info.version:
@@ -595,7 +612,6 @@ class UpdateWizard(QWizard):
         self._rollback_page.set_rollback_progress(100, "Previous version restored.")
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).setText("Finish")
-        self._page_ids["rollback"]
         if self.currentId() != self._page_ids.get("rollback"):
             self.next()
 

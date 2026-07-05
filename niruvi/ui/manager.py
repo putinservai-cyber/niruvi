@@ -1938,25 +1938,24 @@ class AppManager(QMainWindow):
             return
 
         app_info = self.installed_apps.get(app_name)
-        if app_info:
-            app_dir = app_info.get("path", "")
-            if app_dir:
-                from niruvi.desktop.appimageupdate import get_update_method_for_app
+        app_dir = app_info.get("path", "") if app_info else ""
+        if app_info and app_dir:
+            from niruvi.desktop.appimageupdate import get_update_method_for_app
 
-                method_info = get_update_method_for_app(app_dir)
-                if method_info["method"] == "zsync":
-                    play_sound("info")
-                    ret = QMessageBox.question(
-                        self,
-                        "Delta Update Available",
-                        f"An AppImageUpdate-compatible update is available for <b>{app_name}</b>.<br><br>"
-                        f"Update info: <code>{method_info['update_info'][:60]}</code><br><br>"
-                        "Use delta update (smaller download)?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    )
-                    if ret == QMessageBox.StandardButton.Yes:
-                        self._zsync_update_app(app_name, app_dir)
-                        return
+            method_info = get_update_method_for_app(app_dir)
+            if method_info["method"] == "zsync":
+                play_sound("info")
+                ret = QMessageBox.question(
+                    self,
+                    "Delta Update Available",
+                    f"An AppImageUpdate-compatible update is available for <b>{app_name}</b>.<br><br>"
+                    f"Update info: <code>{method_info['update_info'][:60]}</code><br><br>"
+                    "Use delta update (smaller download)?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if ret == QMessageBox.StandardButton.Yes:
+                    self._zsync_update_app(app_name, app_dir)
+                    return
 
         registry = InstallationRegistry()
         record = registry.get(app_name)
@@ -1975,23 +1974,32 @@ class AppManager(QMainWindow):
         wizard.exec()
 
     def _download_app_update(self, app_name: str, download_url: str, latest_version: str, expected_sha256: str = ""):
+        from niruvi.app.update_sources import UpdateInfo
         from niruvi.ui.update_wizard import UpdateWizard
 
         app_info = self.installed_apps.get(app_name)
         if app_info is None:
             return
         app_dir = app_info["path"]
+        current_version = app_info.get("version", "0.0.0")
         from niruvi.desktop.installation_registry import InstallationRegistry
 
         record = InstallationRegistry().get(app_name)
         channel = record.update_channel if record else "stable"
+        update_url = record.update_url if record else ""
+        pre_resolved = UpdateInfo(
+            version=latest_version,
+            download_url=download_url,
+            sha256=expected_sha256 or None,
+        )
         wizard = UpdateWizard(
             app_name,
             app_dir,
-            latest_version,
-            download_url,
+            current_version,
+            update_url,
             channel=channel,
             parent=self,
+            update_info=pre_resolved,
         )
         wizard.exec()
 
