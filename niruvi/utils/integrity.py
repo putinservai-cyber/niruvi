@@ -13,36 +13,51 @@ import os
 
 logger = logging.getLogger(__name__)
 
-_MACHINE_SECRET: str | None = None
+_HMAC_KEY: str | None = None
 
 
-def _get_machine_secret() -> str:
-    """Derive a machine-local secret for HMAC signing.
+def _get_key_path() -> str:
+    """Return the path to the per-user HMAC key file."""
+    from niruvi.config import get_data_dir
 
-    Uses /etc/machine-id (or D-Bus machine ID) as the seed.
-    This is consistent per-machine but not portable across machines.
+    return os.path.join(get_data_dir(), ".hmac_key")
+
+
+def _get_hmac_key() -> str:
+    """Derive a per-user secret for HMAC signing.
+
+    Generates a random 32-byte key on first use and stores it
+    in the user's data directory with 0600 permissions.
+    Unlike /etc/machine-id, this is not world-readable.
     """
-    global _MACHINE_SECRET
-    if _MACHINE_SECRET is not None:
-        return _MACHINE_SECRET
-    for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
-        try:
-            with open(path) as f:
-                mid = f.read(64).strip()
-                if mid:
-                    _MACHINE_SECRET = hashlib.sha256(mid.encode()).hexdigest()
-                    return _MACHINE_SECRET
-        except OSError:
-            continue
-    _MACHINE_SECRET = hashlib.sha256(os.uname().nodename.encode()).hexdigest()
-    return _MACHINE_SECRET
+    global _HMAC_KEY
+    if _HMAC_KEY is not None:
+        return _HMAC_KEY
+    key_path = _get_key_path()
+    try:
+        with open(key_path) as f:
+            _HMAC_KEY = f.read(128).strip()
+            if _HMAC_KEY:
+                return _HMAC_KEY
+    except OSError:
+        pass
+    import secrets
+
+    _HMAC_KEY = secrets.token_hex(32)
+    try:
+        os.makedirs(os.path.dirname(key_path), exist_ok=True)
+        with os.fdopen(os.open(key_path, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600), "w") as f:
+            f.write(_HMAC_KEY)
+    except OSError:
+        pass
+    return _HMAC_KEY
 
 
 def sign_data(data: dict) -> str:
     """Create an HMAC signature for a data dictionary."""
     raw = json.dumps(data, sort_keys=True, separators=(",", ":"))
     return hmac.new(
-        _get_machine_secret().encode(),
+        _get_hmac_key().encode(),
         raw.encode(),
         hashlib.sha256,
     ).hexdigest()
@@ -79,8 +94,6 @@ def read_json_with_hmac(path: str) -> dict | None:
 
     Returns the data dict if valid, or None if tampered/corrupted.
     """
-    if not os.path.exists(path):
-        return None
     try:
         with open(path) as f:
             payload = json.load(f)

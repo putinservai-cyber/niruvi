@@ -557,8 +557,10 @@ class UpdateWorker(QThread):
                 return
             self.log.emit("Checking for updates...")
             self.progress.emit(10)
+            from niruvi.utils.http import _create_ssl_context
+
             req = urllib.request.Request(url, headers={"User-Agent": "Niruvi-Updater/1.0"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=30, context=_create_ssl_context()) as resp:
                 manifest = json.loads(resp.read().decode())
             remote_ver = manifest.get("version", "")
             current_ver = installed_version(self.config)
@@ -583,7 +585,12 @@ class UpdateWorker(QThread):
             tmp = tempfile.NamedTemporaryFile(suffix=".AppImage", delete=False)
             tmp_path = tmp.name
             tmp.close()
-            with urllib.request.urlopen(download_url, timeout=120) as resp, open(tmp_path, "wb") as f:
+            from niruvi.utils.http import _create_ssl_context
+
+            with (
+                urllib.request.urlopen(download_url, timeout=120, context=_create_ssl_context()) as resp,
+                open(tmp_path, "wb") as f,
+            ):
                 shutil.copyfileobj(resp, f)
             os.chmod(tmp_path, 0o755)
             self.log.emit("Downloaded")

@@ -223,7 +223,9 @@ class DownloadWorker(QThread):
 
     def run(self):
         try:
-            resp = urllib.request.urlopen(self.url, timeout=120)
+            from niruvi.utils.http import _create_ssl_context
+
+            resp = urllib.request.urlopen(self.url, timeout=120, context=_create_ssl_context())
             total = int(resp.headers.get("Content-Length", 0))
             chunk_size = 65536
             downloaded = 0

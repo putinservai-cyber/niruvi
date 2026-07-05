@@ -48,6 +48,12 @@ def parse_gitlab_project(url: str) -> str | None:
     return None
 
 
+def _create_ssl_context():
+    from niruvi.utils.http import _create_ssl_context as _ctx
+
+    return _ctx()
+
+
 def _fetch_json(url: str, timeout: int = 15) -> dict:
     from niruvi.utils.http import fetch_json
 
@@ -154,7 +160,7 @@ def resolve_github(url: str, channel: str = "stable", timeout: int = 15) -> Upda
             try:
                 sha_url = asset["browser_download_url"]
                 req = urllib.request.Request(sha_url, headers={"Accept": "text/plain"})
-                resp = urllib.request.urlopen(req, timeout=timeout)
+                resp = urllib.request.urlopen(req, timeout=timeout, context=_create_ssl_context())
                 content = resp.read().decode("utf-8").strip()
                 # Format: "sha256  filename" or "sha256 *filename"
                 sha_part = content.split()[0] if content else ""
@@ -236,7 +242,7 @@ def resolve_gitlab(url: str, channel: str = "stable", timeout: int = 15) -> Upda
 def resolve_direct(url: str, current_version: str = "", timeout: int = 15) -> UpdateInfo | None:
     try:
         req = urllib.request.Request(url, method="HEAD")
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        resp = urllib.request.urlopen(req, timeout=timeout, context=_create_ssl_context())
         headers = resp.headers
         content_disposition = headers.get("Content-Disposition", "")
         m = re.search(r'filename=["\']?([^"\';\n]+)', content_disposition)

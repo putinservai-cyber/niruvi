@@ -549,21 +549,13 @@ HARDENED_ENV = {
 
 
 def _bridge_audio_config(portable_home: str):
-    """Bridge PulseAudio/PipeWire/D-Bus config into portable home.
+    """Bridge PipeWire/D-Bus config into portable home.
 
     Uses copies instead of symlinks to avoid leaking host paths.
+    PulseAudio cookie is NOT copied — sandboxed apps use PULSE_SERVER
+    socket instead, preventing microphone eavesdropping.
     """
     real_config = os.path.expanduser("~/.config")
-    pulse_config = os.path.join(portable_home, ".config", "pulse")
-    try:
-        os.makedirs(pulse_config, exist_ok=True)
-        real_cookie = os.path.join(real_config, "pulse", "cookie")
-        portable_cookie = os.path.join(pulse_config, "cookie")
-        if os.path.isfile(real_cookie) and not os.path.isfile(portable_cookie):
-            shutil.copy2(real_cookie, portable_cookie)
-            os.chmod(portable_cookie, 0o600)
-    except OSError:
-        pass
     pw_config = os.path.join(portable_home, ".config", "pipewire")
     try:
         os.makedirs(pw_config, exist_ok=True)
