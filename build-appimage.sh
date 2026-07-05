@@ -222,8 +222,8 @@ cp "$ASSET_DIR/niruvi.appdata.xml" "$APPDIR/usr/share/metainfo/"
 
 echo "==> Building AppImage"
 UPDATE_INFO="gh-releases-zsync|putinservai-cyber|niruvi|latest|${APP}-x86_64.AppImage.zsync"
+export UPDATE_INFORMATION="$UPDATE_INFO"
 "$ASSET_DIR/appimagetool-x86_64.AppImage" \
-    --update-info "$UPDATE_INFO" \
     "$APPDIR" "$PROJECT_DIR/$APP-x86_64.AppImage"
 
 echo "==> Cleaning up"
