@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -475,6 +475,10 @@ class BuildProgressPage(QWizardPage):
         self.cancel_btn.clicked.connect(lambda: (play_sound("click"), self._cancel_build()))
         btn_row.addWidget(self.cancel_btn)
         btn_row.addStretch()
+        self.close_btn = QPushButton(get_icon("window-close"), "Close")
+        self.close_btn.clicked.connect(lambda: (play_sound("click"), self._close()))
+        self.close_btn.setVisible(False)
+        btn_row.addWidget(self.close_btn)
         self.launch_btn = QPushButton(get_icon("media-playback-start"), "Launch")
         self.launch_btn.clicked.connect(lambda: (play_sound("click"), self._launch()))
         self.launch_btn.setVisible(False)
@@ -484,23 +488,37 @@ class BuildProgressPage(QWizardPage):
         self._worker = None
         self._out_path = None
 
-    def initializePage(self):
+    def isFinalPage(self):
+        return True
+
+    def _hide_wizard_buttons(self):
         wiz = self.wizard()
-        for btn in (
+        for btn_id in (
             QWizard.WizardButton.BackButton,
             QWizard.WizardButton.NextButton,
             QWizard.WizardButton.FinishButton,
             QWizard.WizardButton.CancelButton,
         ):
-            b = wiz.button(btn)
+            b = wiz.button(btn_id)
             if b:
                 b.setVisible(False)
+
+    def initializePage(self):
+        self._hide_wizard_buttons()
+        QTimer.singleShot(0, self._hide_wizard_buttons)
+
+    def _close(self):
+        wiz = self.wizard()
+        if wiz:
+            wiz.reject()
 
     def _cancel_build(self):
         if self._worker:
             self._worker.stop()
             self.log_text.append("\nBuild cancelled.")
             self.cancel_btn.setEnabled(False)
+            self.cancel_btn.setVisible(False)
+            self.close_btn.setVisible(True)
 
     def _launch(self):
         if self._out_path and os.path.isfile(self._out_path):
@@ -516,9 +534,12 @@ class BuildProgressPage(QWizardPage):
         self.log_text.clear()
         self.progress_bar.setValue(0)
         self.cancel_btn.setEnabled(True)
+        self.cancel_btn.setVisible(True)
+        self.close_btn.setVisible(False)
         self.launch_btn.setVisible(False)
         self._out_path = None
         self.setSubTitle("Building...")
+        self._hide_wizard_buttons()
 
         setup = wizard.page(0)
         config = wizard.page(2)
@@ -563,7 +584,8 @@ class BuildProgressPage(QWizardPage):
     def _on_finished(self, out_path: str):
         self._out_path = out_path
         self.progress_bar.setValue(100)
-        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setVisible(False)
+        self.close_btn.setVisible(True)
         self.launch_btn.setVisible(True)
         play_sound("success")
         self.setSubTitle("Build complete!")
@@ -588,7 +610,8 @@ class BuildProgressPage(QWizardPage):
     def _on_error(self, msg: str):
         self.log_text.append(f"\nERROR: {msg}")
         self.progress_bar.setValue(0)
-        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setVisible(False)
+        self.close_btn.setVisible(True)
         self.setSubTitle("Build failed")
 
         import traceback
