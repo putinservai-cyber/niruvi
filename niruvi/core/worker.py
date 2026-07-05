@@ -61,8 +61,35 @@ def _find_extracted_dir(extract_dir: str) -> str:
     raise RuntimeError("No extracted directory found.")
 
 
+def _check_disk_space(path: str, extract_dir: str) -> None:
+    """Check that extract_dir has enough free space for the AppImage."""
+    try:
+        appimage_size = os.path.getsize(path)
+        free = shutil.disk_usage(extract_dir).free
+        if free < appimage_size * 2:
+            needed = _format_bytes(appimage_size * 2)
+            available = _format_bytes(free)
+            raise OSError(
+                f"Not enough disk space. Need ~{needed}, only {available} available.\n"
+                f"AppImage size: {_format_bytes(appimage_size)}"
+            )
+    except OSError:
+        raise
+    except Exception:
+        pass
+
+
+def _format_bytes(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.0f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
 def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_tracker: list | None = None):
     path = _ensure_local(appimage_path, log or (lambda m: None))
+    _check_disk_space(path, extract_dir)
     safe_dir = os.path.join(extract_dir, "squashfs-root")
     if extract_safely(path, safe_dir):
         extracted = _find_extracted_dir(extract_dir)
@@ -80,7 +107,10 @@ def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_trac
         process_tracker.append(proc)
     _stdout, stderr = proc.communicate(timeout=300)
     if proc.returncode != 0:
-        raise RuntimeError(f"Extraction failed: {stderr.strip()}")
+        msg = stderr.strip()
+        if "Quota exceeded" in msg or "quota" in msg.lower() or "No space left" in msg:
+            msg = "Not enough disk space to extract the AppImage. Free up space and try again."
+        raise RuntimeError(f"Extraction failed: {msg}")
     return _find_extracted_dir(extract_dir)
 
 
