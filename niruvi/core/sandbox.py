@@ -956,8 +956,6 @@ class Shield:
         cmd_to_run = cmd
         if self.config.use_namespace and not self.config.enable_network:
             try:
-                import subprocess
-
                 runner = ["unshare", "--user", "--mount", "--net"]
                 cmd_to_run = runner + cmd
             except Exception:
