@@ -457,7 +457,6 @@ class UninstallWizard(QWizard):
 
         self._build_pages()
         self._configure_buttons()
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
         self.setFixedSize(600, 500)
         self.currentIdChanged.connect(self._on_page_changed)
 

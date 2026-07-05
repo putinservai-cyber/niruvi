@@ -13,10 +13,13 @@ import subprocess
 import tempfile
 import time
 import wave
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QTimer, QUrl
-from PyQt6.QtMultimedia import QSoundEffect
 from PyQt6.QtWidgets import QMenu
+
+if TYPE_CHECKING:
+    from PyQt6.QtMultimedia import QSoundEffect
 
 from niruvi.config import _settings
 
@@ -190,6 +193,7 @@ def _try_init_qsound():
     """Try to initialize QSoundEffect as primary backend."""
     global _player
     try:
+        from PyQt6.QtMultimedia import QSoundEffect
         effect = QSoundEffect()
         if effect is not None and effect.status() != QSoundEffect.Status.Error:
             _player = "qsound"
@@ -209,6 +213,7 @@ class _SoundEffectPlayer(QObject):
     def play(self, source: str, volume: float):
         if self._effect is None:
             try:
+                from PyQt6.QtMultimedia import QSoundEffect
                 self._effect = QSoundEffect(self)
                 self._effect.setLoopCount(1)
             except Exception:
