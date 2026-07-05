@@ -216,8 +216,15 @@ chmod +x "$APPDIR/AppRun"
 echo "==> Final AppDir size:"
 du -sh "$APPDIR"
 
+echo "==> Copying AppStream metadata"
+mkdir -p "$APPDIR/usr/share/metainfo"
+cp "$ASSET_DIR/niruvi.appdata.xml" "$APPDIR/usr/share/metainfo/"
+
 echo "==> Building AppImage"
-"$ASSET_DIR/appimagetool-x86_64.AppImage" "$APPDIR" "$PROJECT_DIR/$APP-x86_64.AppImage"
+UPDATE_INFO="gh-releases-zsync|putinservai-cyber|niruvi|latest|${APP}-x86_64.AppImage.zsync"
+"$ASSET_DIR/appimagetool-x86_64.AppImage" \
+    --update-info "$UPDATE_INFO" \
+    "$APPDIR" "$PROJECT_DIR/$APP-x86_64.AppImage"
 
 echo "==> Cleaning up"
 rm -rf "$APPDIR"

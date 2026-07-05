@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.putinservai_cyber.niruvi</id>
+  <name>Niruvi</name>
+  <summary>AppImage Manager — install, run, sandbox, and update AppImages</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <description>
+    <p>
+      Niruvi is a desktop application for managing AppImages on Linux.
+      Features include AppImage installation, sandboxed execution,
+      automatic updates, dependency scanning, and AppImage building.
+    </p>
+  </description>
+  <url type="homepage">https://github.com/putinservai-cyber/niruvi</url>
+  <url type="bugtracker">https://github.com/putinservai-cyber/niruvi/issues</url>
+  <url type="donation">https://github.com/sponsors/putinservai-cyber</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/putinservai-cyber/niruvi/main/asset/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>Utility</category>
+    <category>PackageManager</category>
+  </categories>
+  <keywords>
+    <keyword>AppImage</keyword>
+    <keyword>package</keyword>
+    <keyword>manager</keyword>
+    <keyword>sandbox</keyword>
+  </keywords>
+  <releases>
+    <release version="3.1.1" date="2026-07-05"/>
+  </releases>
+  <update_contact>putinservai_cyber</update_contact>
+  <content_rating type="oars-1.1"/>
+</component>
