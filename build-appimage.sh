@@ -218,12 +218,13 @@ du -sh "$APPDIR"
 
 echo "==> Copying AppStream metadata"
 mkdir -p "$APPDIR/usr/share/metainfo"
-cp "$ASSET_DIR/niruvi.appdata.xml" "$APPDIR/usr/share/metainfo/"
+cp "$ASSET_DIR/io.github.putinservai_cyber.niruvi.appdata.xml" "$APPDIR/usr/share/metainfo/niruvi.appdata.xml"
 
 echo "==> Building AppImage"
 UPDATE_INFO="gh-releases-zsync|putinservai-cyber|niruvi|latest|${APP}-x86_64.AppImage.zsync"
-export UPDATE_INFORMATION="$UPDATE_INFO"
 "$ASSET_DIR/appimagetool-x86_64.AppImage" \
+    --no-appstream \
+    -u "$UPDATE_INFO" \
     "$APPDIR" "$PROJECT_DIR/$APP-x86_64.AppImage"
 
 echo "==> Cleaning up"

@@ -12,14 +12,10 @@
       automatic updates, dependency scanning, and AppImage building.
     </p>
   </description>
+  <launchable type="desktop-id">niruvi.desktop</launchable>
   <url type="homepage">https://github.com/putinservai-cyber/niruvi</url>
   <url type="bugtracker">https://github.com/putinservai-cyber/niruvi/issues</url>
   <url type="donation">https://github.com/sponsors/putinservai-cyber</url>
-  <screenshots>
-    <screenshot type="default">
-      <image>https://raw.githubusercontent.com/putinservai-cyber/niruvi/main/asset/screenshot.png</image>
-    </screenshot>
-  </screenshots>
   <categories>
     <category>Utility</category>
     <category>PackageManager</category>
@@ -33,6 +29,9 @@
   <releases>
     <release version="3.1.1" date="2026-07-05"/>
   </releases>
-  <update_contact>putinservai_cyber</update_contact>
+  <update_contact>putinservai_cyber@users.noreply.github.com</update_contact>
+  <developer id="io.github.putinservai_cyber">
+    <name>putinservai-cyber</name>
+  </developer>
   <content_rating type="oars-1.1"/>
 </component>
