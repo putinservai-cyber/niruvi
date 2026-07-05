@@ -41,6 +41,7 @@ class AppImageMetadata:
     def sha256(self) -> str:
         if self._sha256 is None:
             import hashlib
+
             sha = hashlib.sha256()
             with open(self.path, "rb") as f:
                 f.seek(self.payload_offset)

@@ -65,7 +65,17 @@ _CATEGORY_VOLUME_KEYS: dict[str, str] = {
     "notifications": "sound_volume_notifications",
 }
 
-_PLAYER_PRIORITY = ["paplay", "pw-play", "canberra-gtk-play", "play", "ffplay", "aplay", "gst-play-1.0", "cvlc", "mpg123"]
+_PLAYER_PRIORITY = [
+    "paplay",
+    "pw-play",
+    "canberra-gtk-play",
+    "play",
+    "ffplay",
+    "aplay",
+    "gst-play-1.0",
+    "cvlc",
+    "mpg123",
+]
 
 _VOLUME_PLAYERS: dict[str, str] = {
     "paplay": "--volume",
@@ -194,6 +204,7 @@ def _try_init_qsound():
     global _player
     try:
         from PyQt6.QtMultimedia import QSoundEffect
+
         effect = QSoundEffect()
         if effect is not None and effect.status() != QSoundEffect.Status.Error:
             _player = "qsound"
@@ -214,6 +225,7 @@ class _SoundEffectPlayer(QObject):
         if self._effect is None:
             try:
                 from PyQt6.QtMultimedia import QSoundEffect
+
                 self._effect = QSoundEffect(self)
                 self._effect.setLoopCount(1)
             except Exception:
@@ -327,12 +339,16 @@ def _play_subprocess_fallback():
                 if player == "ffplay":
                     subprocess.Popen(
                         [exe, "-nodisp", "-autoexit", "-loglevel", "quiet", path],
-                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                     )
                 else:
                     subprocess.Popen(
                         [exe, path],
-                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                     )
                 return
             except Exception:

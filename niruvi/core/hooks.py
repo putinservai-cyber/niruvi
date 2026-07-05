@@ -92,7 +92,13 @@ def run_hooks(app_name: str, app_dir: str, env: dict | None = None) -> list[dict
         try:
             hook_env = _minimal_env({"APP_NAME": app_name, "APP_DIR": app_dir})
             if env:
-                hook_env.update({k: v for k, v in env.items() if k in ("DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY")})
+                hook_env.update(
+                    {
+                        k: v
+                        for k, v in env.items()
+                        if k in ("DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY")
+                    }
+                )
             result = subprocess.run(
                 [hook_path],
                 capture_output=True,

@@ -18,8 +18,10 @@ _log = logging.getLogger(__name__)
 try:
     from niruvi.utils.sound_manager import play as play_sound
 except ImportError:
+
     def play_sound(_name):
         pass
+
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -169,6 +171,7 @@ def run_self_install():
 
         try:
             from niruvi.utils.sound_manager import play as play_sound
+
             play_sound("interface")
         except ImportError:
             pass

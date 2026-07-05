@@ -145,8 +145,9 @@ def _get_app_suggestions(app_name: str) -> list[tuple[str, str]]:
 class AppListItemWidget(QWidget):
     """Custom two-line widget for the installed apps list."""
 
-    def __init__(self, icon: QIcon, name: str, key: str, version: str, size: int,
-                 health_info: dict | None = None, parent=None):
+    def __init__(
+        self, icon: QIcon, name: str, key: str, version: str, size: int, health_info: dict | None = None, parent=None
+    ):
         super().__init__(parent)
         self.setAutoFillBackground(True)
         layout = QHBoxLayout(self)
@@ -740,9 +741,15 @@ class AppManager(QMainWindow):
         for key in keys:
             info = self.installed_apps[key]
             self._add_app_to_list(
-                key, info["path"], info["version"], info["display_name"],
-                info["icon_path"], info["update_url"], info.get("architecture", ""),
-                info.get("display_name_override", ""), info.get("custom_icon_path", ""),
+                key,
+                info["path"],
+                info["version"],
+                info["display_name"],
+                info["icon_path"],
+                info["update_url"],
+                info.get("architecture", ""),
+                info.get("display_name_override", ""),
+                info.get("custom_icon_path", ""),
                 info.get("health_info"),
             )
 
@@ -792,8 +799,14 @@ class AppManager(QMainWindow):
                     if path:
                         return path
         common_names = {
-            "icon.png", "icon.svg", "logo.png", "logo.svg",
-            "appicon.png", "appicon.svg", "AppIcon.png", "AppIcon.svg",
+            "icon.png",
+            "icon.svg",
+            "logo.png",
+            "logo.svg",
+            "appicon.png",
+            "appicon.svg",
+            "AppIcon.png",
+            "AppIcon.svg",
             "application.png",
         }
         icon_exts = (".png", ".svg", ".xpm", ".ico", ".icns")
@@ -1649,16 +1662,16 @@ class AppManager(QMainWindow):
         app_dir = app_info["path"]
         if not app_dir or not os.path.isdir(app_dir):
             play_sound("error")
-            QMessageBox.critical(self, "Verification Failed", f"<b>{app_name}</b> directory not found:<br><br>{app_dir}")
+            QMessageBox.critical(
+                self, "Verification Failed", f"<b>{app_name}</b> directory not found:<br><br>{app_dir}"
+            )
             return
         try:
             results = verify_complete(app_dir)
         except Exception as e:
             play_sound("error")
             logger.exception("Verification failed for %s: %s", app_name, e)
-            QMessageBox.critical(
-                self, "Verification Error", f"Failed to verify <b>{app_name}</b>:<br><br>{e}"
-            )
+            QMessageBox.critical(self, "Verification Error", f"Failed to verify <b>{app_name}</b>:<br><br>{e}")
             return
         passed = sum(1 for r in results if r.passed)
         total = len(results)
@@ -1692,9 +1705,7 @@ class AppManager(QMainWindow):
         except Exception as e:
             play_sound("error")
             logger.exception("Repair failed for %s: %s", app_name, e)
-            QMessageBox.critical(
-                self, "Repair Error", f"Failed to repair <b>{app_name}</b>:<br><br>{e}"
-            )
+            QMessageBox.critical(self, "Repair Error", f"Failed to repair <b>{app_name}</b>:<br><br>{e}")
             return
         if report.all_succeeded:
             play_sound("notification")

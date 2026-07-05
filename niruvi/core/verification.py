@@ -129,13 +129,9 @@ def verify_complete(app_dir: str) -> list[VerificationResult]:
         ("AppRun executable", verify_apprun_executable),
         ("Desktop file", verify_desktop_file),
     ]
-    sig_paths = sorted(
-        os.path.join(app_dir, f) for f in os.listdir(app_dir) if f.endswith(".sig")
-    )
+    sig_paths = sorted(os.path.join(app_dir, f) for f in os.listdir(app_dir) if f.endswith(".sig"))
     if sig_paths:
-        appimage_paths = [
-            os.path.join(app_dir, f) for f in os.listdir(app_dir) if f.endswith(".AppImage")
-        ]
+        appimage_paths = [os.path.join(app_dir, f) for f in os.listdir(app_dir) if f.endswith(".AppImage")]
         if appimage_paths:
             checks.append(("GPG signature", lambda d: verify_gpg_signature(appimage_paths[0], sig_paths[0])))
     results = []

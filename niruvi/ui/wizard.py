@@ -937,6 +937,7 @@ class InstallWizard(QWizard):
             source_sha256 = ""
             if self.appimage_path and os.path.isfile(self.appimage_path):
                 from niruvi.core.verification import sha256_file
+
                 source_sha256 = sha256_file(self.appimage_path)
             sandbox_config = {
                 "enabled": self._components_page.cb_hardening.isChecked(),

@@ -71,7 +71,7 @@ def resolve_xdg(path: str) -> str:
         if raw == shortcut:
             return real
         if raw.startswith(shortcut + "/"):
-            return real + raw[len(shortcut):]
+            return real + raw[len(shortcut) :]
     return path
 
 
@@ -133,106 +133,106 @@ def _apply_ptrace_scope():
 
 
 _SECCOMP_ALLOWED_SYSCALLS = [
-    0,    # read
-    1,    # write
-    2,    # open
-    3,    # close
-    4,    # stat
-    5,    # fstat
-    6,    # lstat
-    7,    # poll
-    8,    # lseek
-    9,    # mmap
-    10,   # mprotect
-    11,   # munmap
-    12,   # brk
-    13,   # rt_sigaction
-    14,   # rt_sigprocmask
-    15,   # rt_sigreturn
-    16,   # ioctl
-    17,   # pread64
-    18,   # pwrite64
-    19,   # readv
-    20,   # writev
-    21,   # access
-    22,   # pipe
-    23,   # select
-    24,   # sched_yield
-    25,   # mremap
-    26,   # msync
-    27,   # mincore
-    28,   # madvise
-    29,   # shmget
-    30,   # shmat
-    31,   # shmctl
-    32,   # dup
-    33,   # dup2
-    34,   # pause
-    35,   # nanosleep
-    36,   # getitimer
-    37,   # alarm
-    38,   # setitimer
-    39,   # getpid
-    40,   # sendfile
-    41,   # socket
-    42,   # connect
-    43,   # accept
-    44,   # sendto
-    45,   # recvfrom
-    46,   # sendmsg
-    47,   # recvmsg
-    48,   # shutdown
-    49,   # bind
-    50,   # listen
-    51,   # getsockname
-    52,   # getpeername
-    53,   # socketpair
-    54,   # setsockopt
-    55,   # getsockopt
-    56,   # clone
-    57,   # fork
-    58,   # vfork
-    59,   # execve
-    60,   # exit
-    61,   # wait4
-    62,   # kill
-    63,   # uname
-    64,   # semget
-    65,   # semop
-    66,   # semctl
-    67,   # shmdt
-    68,   # msgget
-    69,   # msgsnd
-    70,   # msgrcv
-    71,   # msgctl
-    72,   # fcntl
-    73,   # flock
-    74,   # fsync
-    75,   # fdatasync
-    76,   # truncate
-    77,   # ftruncate
-    78,   # getdents
-    79,   # getcwd
-    80,   # chdir
-    81,   # fchdir
-    82,   # rename
-    83,   # mkdir
-    84,   # rmdir
-    85,   # creat
-    86,   # link
-    87,   # unlink
-    88,   # symlink
-    89,   # readlink
-    90,   # chmod
-    91,   # fchmod
-    92,   # chown
-    93,   # fchown
-    94,   # lchown
-    95,   # umask
-    96,   # gettimeofday
-    97,   # getrlimit
-    98,   # getrusage
-    99,   # sysinfo
+    0,  # read
+    1,  # write
+    2,  # open
+    3,  # close
+    4,  # stat
+    5,  # fstat
+    6,  # lstat
+    7,  # poll
+    8,  # lseek
+    9,  # mmap
+    10,  # mprotect
+    11,  # munmap
+    12,  # brk
+    13,  # rt_sigaction
+    14,  # rt_sigprocmask
+    15,  # rt_sigreturn
+    16,  # ioctl
+    17,  # pread64
+    18,  # pwrite64
+    19,  # readv
+    20,  # writev
+    21,  # access
+    22,  # pipe
+    23,  # select
+    24,  # sched_yield
+    25,  # mremap
+    26,  # msync
+    27,  # mincore
+    28,  # madvise
+    29,  # shmget
+    30,  # shmat
+    31,  # shmctl
+    32,  # dup
+    33,  # dup2
+    34,  # pause
+    35,  # nanosleep
+    36,  # getitimer
+    37,  # alarm
+    38,  # setitimer
+    39,  # getpid
+    40,  # sendfile
+    41,  # socket
+    42,  # connect
+    43,  # accept
+    44,  # sendto
+    45,  # recvfrom
+    46,  # sendmsg
+    47,  # recvmsg
+    48,  # shutdown
+    49,  # bind
+    50,  # listen
+    51,  # getsockname
+    52,  # getpeername
+    53,  # socketpair
+    54,  # setsockopt
+    55,  # getsockopt
+    56,  # clone
+    57,  # fork
+    58,  # vfork
+    59,  # execve
+    60,  # exit
+    61,  # wait4
+    62,  # kill
+    63,  # uname
+    64,  # semget
+    65,  # semop
+    66,  # semctl
+    67,  # shmdt
+    68,  # msgget
+    69,  # msgsnd
+    70,  # msgrcv
+    71,  # msgctl
+    72,  # fcntl
+    73,  # flock
+    74,  # fsync
+    75,  # fdatasync
+    76,  # truncate
+    77,  # ftruncate
+    78,  # getdents
+    79,  # getcwd
+    80,  # chdir
+    81,  # fchdir
+    82,  # rename
+    83,  # mkdir
+    84,  # rmdir
+    85,  # creat
+    86,  # link
+    87,  # unlink
+    88,  # symlink
+    89,  # readlink
+    90,  # chmod
+    91,  # fchmod
+    92,  # chown
+    93,  # fchown
+    94,  # lchown
+    95,  # umask
+    96,  # gettimeofday
+    97,  # getrlimit
+    98,  # getrusage
+    99,  # sysinfo
     100,  # times
     101,  # ptrace
     102,  # getuid
@@ -282,7 +282,7 @@ _SECCOMP_ALLOWED_SYSCALLS = [
     158,  # arch_prctl
     159,  # adjtimex
     160,  # setrlimit
-    186,  #gettid
+    186,  # gettid
     187,  # readahead
     188,  # setxattr
     189,  # lsetxattr
@@ -957,6 +957,7 @@ class Shield:
         if self.config.use_namespace and not self.config.enable_network:
             try:
                 import subprocess
+
                 runner = ["unshare", "--user", "--mount", "--net"]
                 cmd_to_run = runner + cmd
             except Exception:

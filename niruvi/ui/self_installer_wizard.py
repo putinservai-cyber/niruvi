@@ -432,14 +432,16 @@ class InstallWorker(QThread):
         try:
             subprocess.run(
                 ["update-desktop-database", apps_dir],
-                capture_output=True, timeout=30,
+                capture_output=True,
+                timeout=30,
             )
         except Exception as e:
             logger.debug("Failed to run update-desktop-database: %s", e, exc_info=True)
         try:
             subprocess.run(
                 ["gtk-update-icon-cache", "-f", "-t", icons_dir],
-                capture_output=True, timeout=30,
+                capture_output=True,
+                timeout=30,
             )
         except Exception as e:
             logger.debug("Failed to run gtk-update-icon-cache: %s", e, exc_info=True)
@@ -515,14 +517,16 @@ class UninstallWorker(QThread):
             try:
                 subprocess.run(
                     ["update-desktop-database", apps_dir],
-                    capture_output=True, timeout=30,
+                    capture_output=True,
+                    timeout=30,
                 )
             except Exception as e:
                 logger.debug("Failed to run update-desktop-database: %s", e, exc_info=True)
             try:
                 subprocess.run(
                     ["gtk-update-icon-cache", "-f", "-t", icons_dir],
-                    capture_output=True, timeout=30,
+                    capture_output=True,
+                    timeout=30,
                 )
             except Exception as e:
                 logger.debug("Failed to run gtk-update-icon-cache: %s", e, exc_info=True)

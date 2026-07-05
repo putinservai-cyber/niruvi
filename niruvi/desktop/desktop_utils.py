@@ -240,6 +240,7 @@ def find_desktop_for_app(app_name: str) -> str | None:
         return desktop_file
     try:
         from niruvi.desktop.installation_registry import InstallationRegistry
+
         record = InstallationRegistry().get(app_name)
         if record and record.desktop_file and os.path.exists(record.desktop_file):
             return record.desktop_file

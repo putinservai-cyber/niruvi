@@ -160,9 +160,4 @@ def detail_label_style(size: int = FONT_MD) -> str:
 
 def error_card_style(bg_color: str, border_color: str) -> str:
     """Return QSS for a diagnostics error/warning card."""
-    return (
-        f"background:{bg_color};"
-        f"border:1px solid {border_color};"
-        f"border-radius:{RADIUS_M}px;"
-        f"padding:{SPACING_L}px;"
-    )
+    return f"background:{bg_color};border:1px solid {border_color};border-radius:{RADIUS_M}px;padding:{SPACING_L}px;"

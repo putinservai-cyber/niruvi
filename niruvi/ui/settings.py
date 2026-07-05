@@ -99,7 +99,7 @@ class _SoundCategoryRow(QWidget):
         self.toggle = ToggleSwitch(self)
         if tooltip:
             self.toggle.setToolTip(tooltip)
-        self.preview_btn = QPushButton("\u25B6")
+        self.preview_btn = QPushButton("\u25b6")
         self.preview_btn.setFixedSize(32, 24)
         self.preview_btn.setToolTip("Preview this sound category")
         self.preview_btn.clicked.connect(self._preview)
@@ -282,7 +282,9 @@ class SettingsPage(QWidget):
         hooks_layout.addWidget(hooks_desc)
 
         open_hooks_btn = QPushButton(get_icon("folder-open"), "Open Hooks Directory")
-        open_hooks_btn.clicked.connect(lambda: (play_sound("click"), subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True)))
+        open_hooks_btn.clicked.connect(
+            lambda: (play_sound("click"), subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True))
+        )
         hooks_layout.addWidget(open_hooks_btn)
 
         layout.addWidget(hooks_group)
@@ -404,7 +406,8 @@ class SettingsPage(QWidget):
         audio_layout.addLayout(vol_row)
 
         self.sound_feedback_row = _SoundCategoryRow(
-            "Feedback sounds", "feedback",
+            "Feedback sounds",
+            "feedback",
             "Click, success, error, warning, toggle sounds",
         )
         self.sound_feedback_row.setChecked(_settings.get("sound_feedback_enabled", True))
@@ -427,7 +430,8 @@ class SettingsPage(QWidget):
         audio_layout.addLayout(fb_vol_row)
 
         self.sound_navigation_row = _SoundCategoryRow(
-            "Navigation sounds", "navigation",
+            "Navigation sounds",
+            "navigation",
             "Interface open, page transition sounds",
         )
         self.sound_navigation_row.setChecked(_settings.get("sound_navigation_enabled", True))
@@ -450,7 +454,8 @@ class SettingsPage(QWidget):
         audio_layout.addLayout(nav_vol_row)
 
         self.sound_notifications_row = _SoundCategoryRow(
-            "Notification sounds", "notifications",
+            "Notification sounds",
+            "notifications",
             "Info alerts and notification beeps",
         )
         self.sound_notifications_row.setChecked(_settings.get("sound_notifications_enabled", True))
@@ -480,8 +485,7 @@ class SettingsPage(QWidget):
 
         self.privacy_updates_row = _ToggleRow(
             "Check for updates automatically",
-            "When enabled, Niruvi will periodically check GitHub for new versions. "
-            "No personal data is transmitted.",
+            "When enabled, Niruvi will periodically check GitHub for new versions. No personal data is transmitted.",
         )
         self.privacy_updates_row.setChecked(_settings.get("privacy_allow_update_checks", True))
         privacy_layout.addWidget(self.privacy_updates_row)

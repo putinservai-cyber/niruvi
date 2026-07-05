@@ -777,7 +777,6 @@ class HelpDialog(QDialog):
             ("Updates", self._page_updates, "emblem-downloads"),
             ("Removing Apps", self._page_uninstall, "edit-delete"),
             ("Building AppImages", self._page_build, "applications-utilities"),
-
             ("Silent / CLI Mode", self._page_cli, "utilities-terminal"),
             ("Settings", self._page_settings, "preferences-system"),
             ("Safety & Security", self._page_security, "dialog-warning"),
