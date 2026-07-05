@@ -928,7 +928,7 @@ class SelfInstallWizard(QWizard):
 
         self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
         self.button(QWizard.WizardButton.BackButton).setEnabled(False)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
         self.setFixedSize(560, 480)
 
     def _build_install_pages(self):

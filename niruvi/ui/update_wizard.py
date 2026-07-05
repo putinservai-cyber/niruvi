@@ -391,7 +391,7 @@ class UpdateWizard(QWizard):
 
         self._build_pages()
         self._configure_buttons()
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
         self.setFixedSize(620, 540)
         self.currentIdChanged.connect(self._on_page_changed)
 

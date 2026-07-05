@@ -560,7 +560,7 @@ class InstallWizard(QWizard):
         if appimage_path:
             self._select_file(appimage_path)
 
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
         self.setFixedSize(620, 540)
         self.currentIdChanged.connect(self._on_page_changed)
 
