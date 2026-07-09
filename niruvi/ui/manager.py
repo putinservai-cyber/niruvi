@@ -954,7 +954,9 @@ class AppManager(QMainWindow):
     def _cleanup_source_appimage(self, path: str, app_name: str):
         """Delete the source AppImage after successful install if setting enabled."""
         # Skip temp downloads (from catalog) and removable-media copies
-        if "/tmp/" in path or "/niruvi_local_copy/" in path:
+        resolved = os.path.realpath(path)
+        tmpdir = tempfile.gettempdir()
+        if resolved.startswith(tmpdir + "/") or "/niruvi_local_copy/" in path:
             return
         if not os.path.isfile(path):
             return

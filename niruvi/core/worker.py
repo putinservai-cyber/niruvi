@@ -63,20 +63,15 @@ def _find_extracted_dir(extract_dir: str) -> str:
 
 def _check_disk_space(path: str, extract_dir: str) -> None:
     """Check that extract_dir has enough free space for the AppImage."""
-    try:
-        appimage_size = os.path.getsize(path)
-        free = shutil.disk_usage(extract_dir).free
-        if free < appimage_size * 2:
-            needed = _format_bytes(appimage_size * 2)
-            available = _format_bytes(free)
-            raise OSError(
-                f"Not enough disk space. Need ~{needed}, only {available} available.\n"
-                f"AppImage size: {_format_bytes(appimage_size)}"
-            )
-    except OSError:
-        raise
-    except Exception:
-        pass
+    appimage_size = os.path.getsize(path)
+    free = shutil.disk_usage(extract_dir).free
+    if free < appimage_size * 2:
+        needed = _format_bytes(appimage_size * 2)
+        available = _format_bytes(free)
+        raise OSError(
+            f"Not enough disk space. Need ~{needed}, only {available} available.\n"
+            f"AppImage size: {_format_bytes(appimage_size)}"
+        )
 
 
 def _format_bytes(n: int) -> str:

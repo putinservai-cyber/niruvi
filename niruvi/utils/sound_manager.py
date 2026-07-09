@@ -6,6 +6,7 @@ Category-based toggles and per-category volume for fine-grained control.
 """
 
 import logging
+import math
 import os
 import shutil
 import struct
@@ -110,7 +111,7 @@ def _generate_fallback_wav() -> str:
         data = b""
         for i in range(num_samples):
             t = i / sample_rate
-            value = int(16000 * (1.0 - t / duration) * __import__("math").sin(2 * 3.14159 * frequency * t))
+            value = int(16000 * (1.0 - t / duration) * math.sin(2 * 3.14159 * frequency * t))
             data += struct.pack("<h", value)
         with wave.open(_fallback_wav, "w") as wf:
             wf.setnchannels(1)
@@ -151,7 +152,7 @@ def _validate_audio_file(path: str) -> bool:
 
 
 def _find_audio_dir() -> str:
-    from niruvi.config import get_data_dir
+    from niruvi.config import INSTALLED_DIR, get_data_dir
 
     _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     candidates: list[str] = []
@@ -164,6 +165,7 @@ def _find_audio_dir() -> str:
     inst = os.environ.get("APPIMAGE", "")
     if inst:
         candidates.append(os.path.join(os.path.dirname(inst), "asset", "audio"))
+    candidates.append(os.path.join(INSTALLED_DIR, "asset", "audio"))
     seen = set()
     for path in candidates:
         norm = os.path.normpath(os.path.abspath(path))

@@ -245,33 +245,40 @@ def _apply_landlock(paths_readonly: list[str], paths_rw: list[str]):
         logger.debug("Landlock restrict failed: %s", e)
 
 
-def _preexec_harden():
-    """Apply process hardening in child before exec."""
-    try:
-        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-        libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
-        libc.prctl.restype = ctypes.c_int
-        if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
-            logger.debug("PR_SET_NO_NEW_PRIVS failed: errno=%d", ctypes.get_errno())
-        if libc.prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
-            logger.debug("PR_SET_DUMPABLE failed: errno=%d", ctypes.get_errno())
-    except Exception as e:
-        logger.debug("prctl hardening failed: %s", e)
+def _make_preexec(ro_paths: list[str] | None = None, rw_paths: list[str] | None = None):
+    """Return a preexec_fn closure that applies hardening + optional Landlock in the child."""
 
-    try:
-        _apply_rlimits_ctypes()
-    except Exception as e:
-        logger.debug("rlimit hardening failed: %s", e)
+    def _preexec():
+        try:
+            libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+            libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+            libc.prctl.restype = ctypes.c_int
+            if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
+                logger.debug("PR_SET_NO_NEW_PRIVS failed: errno=%d", ctypes.get_errno())
+            if libc.prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
+                logger.debug("PR_SET_DUMPABLE failed: errno=%d", ctypes.get_errno())
+        except Exception as e:
+            logger.debug("prctl hardening failed: %s", e)
 
-    try:
-        with open("/proc/self/oom_score_adj", "w") as f:
-            f.write("-500\n")
-    except OSError:
-        pass
+        try:
+            _apply_rlimits_ctypes()
+        except Exception as e:
+            logger.debug("rlimit hardening failed: %s", e)
 
-    _apply_memory_hardening()
-    _apply_ptrace_scope()
-    _apply_seccomp()
+        try:
+            with open("/proc/self/oom_score_adj", "w") as f:
+                f.write("-500\n")
+        except OSError:
+            pass
+
+        _apply_memory_hardening()
+        _apply_ptrace_scope()
+        _apply_seccomp()
+
+        if ro_paths is not None:
+            _apply_landlock(ro_paths, rw_paths or [])
+
+    return _preexec
 
 
 class XdgOpenDaemon:
@@ -491,7 +498,7 @@ class ShieldConfig:
             private_tmp=d.get("private_tmp", False),
             seccomp=d.get("seccomp", True),
             landlock=d.get("landlock", True),
-            use_namespace=d.get("use_namespace", False),
+            use_namespace=d.get("use_namespace", True),
         )
 
     def to_dict(self) -> dict:
@@ -624,33 +631,29 @@ class Shield:
         except Exception as e:
             logger.debug("Failed to inject permission broker into sandbox env: %s", e, exc_info=True)
 
-        preexec_fn = _preexec_harden if self.config.hardening else None
+        if self.config.hardening:
+            ro_paths = None
+            rw_paths = None
+            if self.config.landlock:
+                ro_paths = ["/usr", "/etc", "/lib", "/lib64"]
+                rw_paths = []
+                if self.config.portable_home and app_dir:
+                    rw_paths.append(os.path.join(app_dir, ".home"))
+                if self.config.portable_config and app_dir:
+                    rw_paths.append(os.path.join(app_dir, ".config"))
+            preexec_fn = _make_preexec(ro_paths, rw_paths)
+        else:
+            preexec_fn = None
 
         if self.config.portable_home and app_dir:
             os.makedirs(os.path.join(app_dir, ".home"), exist_ok=True)
         if self.config.portable_config and app_dir:
             os.makedirs(os.path.join(app_dir, ".config"), exist_ok=True)
 
-        if self.config.landlock:
-            ro_paths = ["/usr", "/etc", "/lib", "/lib64"]
-            rw_paths = []
-            if self.config.portable_home and app_dir:
-                rw_paths.append(os.path.join(app_dir, ".home"))
-            if self.config.portable_config and app_dir:
-                rw_paths.append(os.path.join(app_dir, ".config"))
-            try:
-                os.landlock_restrict_self(ro_paths, rw_paths)
-                logger.debug("Landlock applied to sandbox")
-            except (AttributeError, OSError) as e:
-                logger.debug("Landlock: %s", e)
-
         cmd_to_run = cmd
         if self.config.use_namespace and not self.config.enable_network:
-            try:
-                runner = ["unshare", "--user", "--mount", "--net"]
-                cmd_to_run = runner + cmd
-            except Exception:
-                pass
+            runner = ["unshare", "--user", "--mount", "--net"]
+            cmd_to_run = runner + cmd
 
         return subprocess.Popen(
             cmd_to_run,

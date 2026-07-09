@@ -1389,7 +1389,7 @@ d = {{}}
 if open('$META','r'):
     try:
         d = json.load(open('$META'))
-    except: pass
+    except Exception: pass
 d['version'] = '$REMOTE_VER'
 d['install_date'] = '$(date -Iseconds)'
 d['last_update_check'] = $(date +%s)

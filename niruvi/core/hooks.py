@@ -141,10 +141,14 @@ def write_hook(app_name: str, hook_name: str, content: str) -> str:
 
 
 def remove_hook(app_name: str, hook_name: str) -> bool:
-    path = os.path.join(get_app_hooks_dir(app_name), hook_name)
-    if not os.path.isfile(path):
-        path = os.path.join(HOOKS_DIR, hook_name)
-    if os.path.isfile(path):
-        os.remove(path)
-        return True
+    candidates = [
+        os.path.join(get_app_hooks_dir(app_name), hook_name),
+        os.path.join(get_app_hooks_dir(app_name), hook_name + ".hook"),
+        os.path.join(HOOKS_DIR, hook_name),
+        os.path.join(HOOKS_DIR, hook_name + ".hook"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            os.remove(path)
+            return True
     return False

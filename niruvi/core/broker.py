@@ -56,12 +56,7 @@ class PermissionStore:
             loaded = read_json_with_hmac(self._path)
             if loaded is not None:
                 self._data = loaded
-                return
-            try:
-                with open(self._path) as f:
-                    self._data = json.load(f)
-                logger.info("Loaded permissions without HMAC (legacy format)")
-            except (json.JSONDecodeError, OSError):
+            else:
                 self._data = {}
 
     def _save(self):

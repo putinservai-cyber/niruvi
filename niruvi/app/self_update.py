@@ -347,15 +347,16 @@ def _download_and_install(parent: QWidget, download_url: str, expected_sha256: s
             parent.close()
 
     except Exception as e:
+        orig_error = e
         if backup_path and os.path.exists(backup_path) and dest:
             try:
                 if os.path.exists(dest):
                     os.remove(dest)
                 os.rename(backup_path, dest)
-            except Exception as e:
-                logger.debug("Failed to restore backup during update rollback: %s", e, exc_info=True)
+            except Exception as rb_e:
+                logger.debug("Failed to restore backup during update rollback: %s", rb_e, exc_info=True)
         if temp_path:
             Path(temp_path).unlink(missing_ok=True)
         progress.close()
         play_sound("error")
-        QMessageBox.critical(parent, "Update Failed", f"Failed to download or install update:\n{e}")
+        QMessageBox.critical(parent, "Update Failed", f"Failed to download or install update:\n{orig_error}")

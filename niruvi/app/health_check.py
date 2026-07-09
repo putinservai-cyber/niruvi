@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import platform
 import stat
 import subprocess
 import time
@@ -225,7 +226,8 @@ def check_appimage_magic(path: str) -> dict:
 def check_system_compatibility() -> dict:
     issues = []
     info = {}
-    info["os"] = f"{os.uname().sysname} {os.uname().release}"
+    u = os.uname()
+    info["os"] = f"{u.sysname} {u.release}"
     try:
         with open("/etc/os-release") as f:
             for line in f:
@@ -235,8 +237,8 @@ def check_system_compatibility() -> dict:
     except Exception as e:
         logger.debug("Failed to read /etc/os-release: %s", e, exc_info=True)
         info["distro"] = "unknown"
-    info["kernel"] = os.uname().version
-    info["python"] = __import__("platform").python_version()
+    info["kernel"] = u.version
+    info["python"] = platform.python_version()
     try:
         r = subprocess.run(["rpm", "-q", "glibc", "--qf", "%{VERSION}"], capture_output=True, text=True, timeout=5)
         if r.returncode == 0:

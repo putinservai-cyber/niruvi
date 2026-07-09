@@ -1,5 +1,3 @@
-import json
-import logging
 import os
 import threading
 from datetime import datetime
@@ -130,21 +128,10 @@ class InstallationRegistry:
         rf = self._registry_file()
         if not os.path.exists(rf):
             return
-        data = None
         raw = read_json_with_hmac(rf)
-        if raw is not None:
-            data = raw
-        if data is None:
-            try:
-                with open(rf) as f:
-                    raw_json = json.load(f)
-                if isinstance(raw_json, dict) and "_data" in raw_json:
-                    raw_json = raw_json["_data"]
-                data = raw_json
-                logging.info("Loaded registry without HMAC (legacy format)")
-            except (json.JSONDecodeError, OSError) as e:
-                logging.warning("Corrupted installation registry: %s", e)
-                return
+        if raw is None:
+            return
+        data = raw
         items = []
         if isinstance(data, dict):
             items = data.get("records", [])

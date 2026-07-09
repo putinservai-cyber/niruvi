@@ -9,6 +9,7 @@ import os
 import shutil
 import tempfile
 import time
+import urllib.request
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
@@ -526,7 +527,7 @@ class UpdateWizard(QWizard):
         self._download_timer.start()
 
         try:
-            resp = __import__("urllib.request").request.urlopen(self._update_info.download_url, timeout=10)
+            resp = urllib.request.urlopen(self._update_info.download_url, timeout=10)
             total = int(resp.headers.get("Content-Length", 0))
             self._download_total = total
             resp.close()

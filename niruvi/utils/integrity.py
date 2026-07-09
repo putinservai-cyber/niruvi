@@ -17,10 +17,12 @@ _HMAC_KEY: str | None = None
 
 
 def _get_key_path() -> str:
-    """Return the path to the per-user HMAC key file."""
-    from niruvi.config import get_data_dir
+    """Return the path to the per-user HMAC key file.
 
-    return os.path.join(get_data_dir(), ".hmac_key")
+    Stored in ~/.config/niruvi/ so the same key is used regardless of
+    which data directory the app is running from (AppImage, installed, source).
+    """
+    return os.path.join(os.path.expanduser("~/.config/niruvi"), ".hmac_key")
 
 
 def _get_hmac_key() -> str:
@@ -103,9 +105,9 @@ def read_json_with_hmac(path: str) -> dict | None:
         return None
     sig = payload.get("_hmac", "")
     data = payload.get("_data")
-    if not data or not sig:
-        return data
-    if verify_data(data, sig):
-        return data
-    logger.warning("HMAC verification failed for %s — data may be tampered", path)
-    return None
+    if data is not None and sig:
+        if verify_data(data, sig):
+            return data
+        logger.warning("HMAC verification failed for %s — data may be tampered", path)
+        return None
+    return data if data is not None else payload

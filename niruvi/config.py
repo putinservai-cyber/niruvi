@@ -4,7 +4,6 @@ This module has ZERO UI imports. It is the single source of truth
 for paths and settings used by all other modules.
 """
 
-import json
 import logging
 import os
 
@@ -74,16 +73,6 @@ def load_settings():
         loaded = read_json_with_hmac(sf)
         if loaded is not None:
             _settings.update(loaded)
-        else:
-            try:
-                with open(sf) as f:
-                    loaded = json.load(f)
-                    if "_data" in loaded:
-                        loaded = loaded.get("_data", {})
-                    _settings.update(loaded)
-                    logger.info("Loaded settings without HMAC (legacy format)")
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning("Corrupted settings file: %s", e)
 
 
 def save_settings():
