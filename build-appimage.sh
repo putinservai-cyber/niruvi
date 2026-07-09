@@ -222,7 +222,22 @@ cp "$ASSET_DIR/io.github.putinservai_cyber.niruvi.appdata.xml" "$APPDIR/usr/shar
 
 echo "==> Building AppImage"
 UPDATE_INFO="gh-releases-zsync|putinservai-cyber|niruvi|latest|${APP}-x86_64.AppImage.zsync"
-"$ASSET_DIR/appimagetool-x86_64.AppImage" \
+APPIMAGETOOL="$ASSET_DIR/appimagetool-x86_64.AppImage"
+
+# If FUSE is not available, extract appimagetool first
+if ! fusermount --version &>/dev/null && ! fusermount3 --version &>/dev/null; then
+    echo "FUSE not available, extracting appimagetool..."
+    TMP_EXTRACT=$(mktemp -d)
+    cd "$TMP_EXTRACT" || exit 1
+    "$APPIMAGETOOL" --appimage-extract &>/dev/null || true
+    if [ -d squashfs-root ]; then
+        APPIMAGETOOL="$TMP_EXTRACT/squashfs-root/usr/bin/appimagetool"
+        export LD_LIBRARY_PATH="$TMP_EXTRACT/squashfs-root/usr/lib:$LD_LIBRARY_PATH"
+    fi
+    cd "$PROJECT_DIR" || exit 1
+fi
+
+"$APPIMAGETOOL" \
     --no-appstream \
     -u "$UPDATE_INFO" \
     "$APPDIR" "$PROJECT_DIR/$APP-x86_64.AppImage"
