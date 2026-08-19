@@ -154,6 +154,9 @@ def run_self_install():
 
     Creates a single QApplication and reuses it — never creates two.
     """
+    from niruvi.config import configure_runtime_env
+
+    configure_runtime_env()
     appimage = os.environ.get("APPIMAGE")
 
     if appimage and not _is_installed():

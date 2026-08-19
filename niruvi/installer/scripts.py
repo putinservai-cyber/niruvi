@@ -1,4 +1,4 @@
-from niruvi.installer.sanitize import sanitize_bash_string
+from niruvi.installer.sanitize import escape_bash_double_quoted, sanitize_bash_string
 
 
 def build_config_to_bash(config: dict) -> str:
@@ -367,6 +367,24 @@ _extract_appimage() {
     chmod +x "$dest/AppRun" 2>/dev/null || true
     echo "installed" > "$dest/.installed"
 
+    # ── JuNest container detection (paths with spaces break bundled scripts) ──
+    if [ -d "$dest/.junest" ] || [ -d "$dest/.local/share/junest" ] || [ -d "$dest/usr/share/junest" ]; then
+        case "$dest" in
+            *" "*)
+                _msg "Container Warning" \\
+"This app bundles a JuNest container, which may fail when installed
+to a path containing spaces.
+
+Current path: $dest
+
+If the app fails to launch (bwrap/proot errors, 'command not found'),
+reinstall it to a path without spaces, e.g.:
+$(echo "$dest" | tr ' ' '-')" \\
+"warning"
+                ;;
+        esac
+    fi
+
     local backup="$dest/.niruvi-install/apprun-backup.sh"
     if [ -f "$backup" ]; then
         cp "$backup" "$dest/AppRun"
@@ -390,8 +408,8 @@ _install_desktop_entries() {
 [Desktop Entry]
 Type=Application
 Name=$APP_NAME
-Exec=$target/AppRun %F
-Icon=$icon_path
+Exec="$target/AppRun" %F
+Icon="$icon_path"
 Terminal=false
 Categories=Utility;
 StartupNotify=true
@@ -416,7 +434,7 @@ _install_uninstall_entry() {
 [Desktop Entry]
 Type=Application
 Name=Uninstall $APP_NAME
-Exec=$uninstall_script
+Exec="$uninstall_script"
 Icon=computer
 Terminal=false
 Categories=Utility;
@@ -483,7 +501,7 @@ if [ -f "$INSTALL_DIR/.installed" ]; then
 fi
 
 _rollback_init "$INSTALL_DIR"
-trap "_rollback_restore $INSTALL_DIR" EXIT
+trap '_rollback_restore "$INSTALL_DIR"' EXIT
 
 # ═══════════════════════════════════════════
 #  Pre-install script
@@ -590,7 +608,7 @@ Proceed with installation?"; then
 fi
 
 _rollback_init "$INSTALL_DIR"
-trap "_rollback_restore $INSTALL_DIR" EXIT
+trap '_rollback_restore "$INSTALL_DIR"' EXIT
 _run_pre_install
 
 _msg "Installing" "Extracting $APP_NAME to: $INSTALL_DIR" "info"
@@ -658,10 +676,10 @@ if [ "$HAS_COMPONENTS" = "true" ] && [ -f "$HERE/components.cfg" ]; then
     echo "========================================"
     echo "  Components"
     echo "========================================"
-    local i=0
+    i=0
     while IFS=: read -r id label default_enabled description; do
         i=$((i+1))
-        local mark=" "
+        mark=" "
         [ "$default_enabled" = "true" ] && mark="*"
         echo "  [$mark] $i. $label"
     done < "$HERE/components.cfg"
@@ -670,10 +688,10 @@ if [ "$HAS_COMPONENTS" = "true" ] && [ -f "$HERE/components.cfg" ]; then
         echo "  Enter numbers to toggle, or leave blank for defaults:"
         read -p "  Selection: " -a toggles
     fi
-    local i=0
+    i=0
     while IFS=: read -r id label default_enabled description; do
         i=$((i+1))
-        local sel="$default_enabled"
+        sel="$default_enabled"
         for t in "${toggles[@]}"; do
             if [ "$t" = "$i" ]; then
                 [ "$sel" = "true" ] && sel="false" || sel="true"
@@ -714,7 +732,7 @@ if [ -f "$INSTALL_DIR/.installed" ]; then
 fi
 
 _rollback_init "$INSTALL_DIR"
-trap "_rollback_restore $INSTALL_DIR" EXIT
+trap '_rollback_restore "$INSTALL_DIR"' EXIT
 
 _run_pre_install
 echo "Extracting $APP_NAME..."
@@ -961,7 +979,7 @@ fi
 
 # ── Execute installation ──
 _rollback_init "$INSTALL_DIR"
-trap "_rollback_restore $INSTALL_DIR" EXIT
+trap '_rollback_restore "$INSTALL_DIR"' EXIT
 _run_pre_install
 
 _page_progress
@@ -1148,14 +1166,15 @@ exit 0
 def updater_script(app_name: str, app_version: str = "", updater_url: str = "") -> str:
     safe_name = sanitize_bash_string(app_name, "app_name")
     safe_ver = sanitize_bash_string(app_version, "app_version")
+    safe_url = escape_bash_double_quoted(updater_url)
     if not updater_url:
-        updater_url = "https://example.com/updates/update.json"
+        safe_url = "https://example.com/updates/update.json"
     return f'''#!/bin/bash
 set -e
 
 APP_NAME="{safe_name}"
 APP_VERSION="{safe_ver}"
-UPDATE_URL="{updater_url}"
+UPDATE_URL="{safe_url}"
 INSTALL_DIR="$HOME/Applications/$APP_NAME"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
@@ -1228,12 +1247,16 @@ fi
 # ── Page: Check for updates ──
 if [ "$SILENT" = "true" ]; then
     if [ -f "$META" ]; then
-        python3 -c "
-import json
-with open('$META') as f:
-    d = json.load(f)
-d['last_update_check'] = $(date +%s)
-with open('$META', 'w') as f:
+        NIRUVI_META="$META" NIRUVI_TS="$(date +%s)" python3 -c "
+import json, os
+d = {{}}
+try:
+    with open(os.environ['NIRUVI_META']) as f:
+        d = json.load(f)
+except Exception:
+    pass
+d['last_update_check'] = int(os.environ['NIRUVI_TS'])
+with open(os.environ['NIRUVI_META'], 'w') as f:
     json.dump(d, f)
 " 2>/dev/null || true
     fi
@@ -1252,15 +1275,13 @@ REMOTE_CHANGELOG=""
 REMOTE_SHA256=""
 
 if command -v curl &>/dev/null; then
-    FETCH_CMD="curl -sL --connect-timeout 10 \"$UPDATE_URL\""
+    JSON_DATA=$(curl -sL --connect-timeout 10 -- "$UPDATE_URL" 2>/dev/null || echo "")
 elif command -v wget &>/dev/null; then
-    FETCH_CMD="wget -q -O - --timeout=10 \"$UPDATE_URL\""
+    JSON_DATA=$(wget -q -O - --timeout=10 "$UPDATE_URL" 2>/dev/null || echo "")
 else
     _msg "No Internet" "Cannot check for updates: neither curl nor wget found." "error"
     exit 1
 fi
-
-JSON_DATA=$(curl -sL -- "$UPDATE_URL" 2>/dev/null || echo "")
 
 if [ -z "$JSON_DATA" ]; then
     _msg "Update Check Failed" "Could not reach update server.
@@ -1383,17 +1404,20 @@ rm -rf "$INSTALL_DIR" 2>/dev/null || true
 cp -a "$SQUASHFS"/* "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/AppRun" 2>/dev/null || true
 
-python3 -c "
-import json
+NIRUVI_META="$META" NIRUVI_REMOTE_VER="$REMOTE_VER" \
+NIRUVI_INSTALL_DATE="$(date -Iseconds)" NIRUVI_TS="$(date +%s)" python3 -c "
+import json, os
 d = {{}}
-if open('$META','r'):
-    try:
-        d = json.load(open('$META'))
-    except Exception: pass
-d['version'] = '$REMOTE_VER'
-d['install_date'] = '$(date -Iseconds)'
-d['last_update_check'] = $(date +%s)
-json.dump(d, open('$META','w'))
+try:
+    with open(os.environ['NIRUVI_META']) as f:
+        d = json.load(f)
+except Exception:
+    pass
+d['version'] = os.environ['NIRUVI_REMOTE_VER']
+d['install_date'] = os.environ['NIRUVI_INSTALL_DATE']
+d['last_update_check'] = int(os.environ['NIRUVI_TS'])
+with open(os.environ['NIRUVI_META'], 'w') as f:
+    json.dump(d, f)
 " 2>/dev/null || true
 
 rm -rf "$BACKUP_DIR" "$TMP_EXTRACT" "$TMP_FILE" 2>/dev/null || true

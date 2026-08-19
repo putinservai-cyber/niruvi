@@ -112,6 +112,18 @@ class SigningPlugin(Plugin):
         """Verify a signature against a file."""
 
 
+class EventPlugin(Plugin):
+    """Subscribe to application events (install/update/launch/scan, ...).
+
+    Handlers receive the same keyword arguments as the script-level events
+    (see niruvi.core.plugins.EVENTS).
+    """
+
+    def event_handlers(self) -> dict[str, Any]:
+        """Return {event_name: callable(**kwargs)} pairs."""
+        return {}
+
+
 _PLUGIN_REGISTRY: dict[str, list[Plugin]] = {
     "builder": [],
     "compressor": [],
@@ -119,6 +131,7 @@ _PLUGIN_REGISTRY: dict[str, list[Plugin]] = {
     "installer": [],
     "updater": [],
     "signing": [],
+    "event": [],
 }
 
 
@@ -147,14 +160,20 @@ def get_plugins(category: str) -> list[Plugin]:
     return list(_PLUGIN_REGISTRY.get(category, []))
 
 
+_discovered_entry_points: set[str] = set()
+
+
 def discover_entry_point_plugins():
     """Discover plugins via setuptools entry_points (niruvi.plugins)."""
     for entry_point in importlib.metadata.entry_points(group="niruvi.plugins"):
+        if entry_point.name in _discovered_entry_points:
+            continue
         try:
             plugin_class = entry_point.load()
             category = getattr(plugin_class, "plugin_category", "builder")
             instance = plugin_class()
             register_plugin(instance, category)
+            _discovered_entry_points.add(entry_point.name)
             logger.info("Discovered plugin: %s from %s", entry_point.name, entry_point.module)
         except Exception as e:
             logger.warning("Failed to load plugin %s: %s", entry_point.name, e)

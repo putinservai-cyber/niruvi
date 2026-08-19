@@ -39,3 +39,13 @@ def sanitize_identifier(value: str, field_name: str = "value") -> str:
     if not safe:
         logger.error("sanitize_identifier: %s is empty after cleaning: %r", field_name, value)
     return safe
+
+
+def escape_bash_double_quoted(value: str) -> str:
+    """Escape a value for safe embedding in a bash double-quoted string.
+
+    Unlike :func:`sanitize_bash_string`, this preserves the original content
+    (URLs, paths with ``:``/``/``, etc.) and only escapes the characters that
+    bash treats specially inside double quotes.
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")

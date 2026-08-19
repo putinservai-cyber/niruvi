@@ -12,7 +12,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 
 logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
     QWizardPage,
 )
 
-from niruvi.core.worker import ExtractionWorker, _ensure_local, _is_removable_path
+from niruvi.core.worker import ExtractionWorker, _ensure_local, _is_removable_path, start_worker
 from niruvi.desktop.appimage_assets import extract_metadata
 from niruvi.desktop.appimage_metadata import AppImageMetadata
 from niruvi.desktop.desktop_utils import (
@@ -316,6 +316,22 @@ class ComponentsPage(QWizardPage):
         self.cb_hardening = QCheckBox("Enable Memory & Process Hardening")
         self.cb_hardening.setChecked(get_settings().get("sandbox_default_enabled", True))
         layout.addWidget(self.cb_hardening)
+
+        layout.addSpacing(12)
+        from niruvi.app.virustotal import get_api_key
+
+        if get_api_key():
+            sec_title = QLabel("<b>Security Scan</b>")
+            layout.addWidget(sec_title)
+            self.cb_vt_scan = QCheckBox("Scan with VirusTotal before installing")
+            self.cb_vt_scan.setChecked(True)
+            self.cb_vt_scan.setToolTip(
+                "Uploads the AppImage to VirusTotal for malware analysis. "
+                "Installation waits for the report and warns you if anything is flagged."
+            )
+            layout.addWidget(self.cb_vt_scan)
+        else:
+            self.cb_vt_scan = None
 
         layout.addStretch()
 
@@ -812,12 +828,74 @@ class InstallWizard(QWizard):
         self._progress_page.append_log(f"Destination: {self.dest_dir}")
         self._start_progress_animation()
 
+        want_vt = self._components_page.cb_vt_scan is not None and self._components_page.cb_vt_scan.isChecked()
+        if want_vt:
+            from niruvi.app.virustotal import get_api_key, scan_file
+
+            api_key = get_api_key()
+            if api_key:
+                self._progress_page.set_task("Scanning with VirusTotal...")
+                self._progress_page.append_log("Uploading to VirusTotal for analysis (may take a minute)...")
+
+                class _VTScanWorker(QThread):
+                    finished_scan = pyqtSignal(object)
+
+                    def run(self):
+                        self.finished_scan.emit(scan_file(self.appimage_path, api_key))
+
+                self._vt_worker = _VTScanWorker(self)
+                self._vt_worker.finished_scan.connect(self._on_vt_scan_done)
+                self._vt_worker.finished.connect(self._vt_worker.deleteLater)
+                self._vt_worker.start()
+                return
+
+        self._start_extraction()
+
+    def _start_extraction(self):
         self.worker = ExtractionWorker(self.appimage_path, self.dest_dir, self.app_name)
         self.worker.extraction_finished.connect(self._on_extraction_finished)
         self.worker.extraction_error.connect(self._on_extraction_error)
         self.worker.progress_updated.connect(self._on_worker_progress)
         self.worker.log_message.connect(self._on_worker_log)
-        self.worker.start()
+        start_worker(self.worker)
+
+    def _on_vt_scan_done(self, result: dict):
+        if getattr(self, "_vt_scan_aborted", False):
+            return
+        self._scan_result = result
+        status = result.get("status", "skipped")
+        malicious = result.get("malicious", 0)
+        if status == "flagged":
+            play_sound("warning")
+            self._progress_page.append_log(
+                f"VirusTotal: {malicious} engine(s) flagged this file — {result.get('permalink', '')}"
+            )
+            reply = QMessageBox.warning(
+                self,
+                "VirusTotal Flagged",
+                f"<b>{malicious} antivirus engine(s)</b> flagged this AppImage as malicious.<br><br>"
+                f"SHA-256: <code>{result.get('sha256', '')[:16]}…</code><br>"
+                f"Report: <a href='{result.get('permalink', '')}'>{result.get('permalink', '')}</a><br><br>"
+                "Installing a file flagged by multiple engines is risky.<br><br>"
+                "Continue installing anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self._vt_scan_aborted = True
+                self._progress_page.append_log("Installation aborted after VirusTotal flag.")
+                self._restore_backup()
+                self._cleanup_backup()
+                self.reject()
+                return
+        elif status == "clean":
+            self._progress_page.append_log(
+                f"VirusTotal: clean ({result.get('harmless', 0)} harmless, {result.get('undetected', 0)} undetected)."
+            )
+        else:
+            self._progress_page.append_log(
+                f"VirusTotal scan skipped: {result.get('error', 'unknown reason')}. Continuing without cloud scan."
+            )
+        self._start_extraction()
 
     def _on_worker_progress(self, value: int):
         self._set_real_progress(value)
@@ -857,6 +935,27 @@ class InstallWizard(QWizard):
         self._progress_page.set_task("Configuring desktop integration...")
         self._progress_page.append_log("Installation complete!")
         play_sound("success")
+
+        from niruvi.config import get_settings
+        from niruvi.core.plugins import emit
+
+        try:
+            emit(
+                "app_installed",
+                app_name=app_name,
+                app_dir=dest_dir,
+                version=get_version(dest_dir),
+            )
+        except Exception:
+            pass
+
+        if get_settings().get("delta_updates", True) and os.path.isfile(self.appimage_path):
+            try:
+                seed_target = os.path.join(dest_dir, f"{app_name}.AppImage")
+                shutil.copy2(self.appimage_path, seed_target)
+                os.chmod(seed_target, 0o755)
+            except OSError as e:
+                self._progress_page.append_log(f"Note: could not keep delta seed: {e}")
         self.button(QWizard.WizardButton.NextButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.button(QWizard.WizardButton.FinishButton).show()
@@ -871,6 +970,10 @@ class InstallWizard(QWizard):
             if self._scan_result:
                 metadata["scan_risk"] = self._scan_result.get("risk_level", "")
                 metadata["scan_warnings"] = self._scan_result.get("warnings", [])
+                if self._scan_result.get("status"):
+                    metadata["vt_status"] = self._scan_result.get("status")
+                    metadata["vt_malicious"] = self._scan_result.get("malicious", 0)
+                    metadata["vt_permalink"] = self._scan_result.get("permalink", "")
             meta_path = os.path.join(dest_dir, ".appimage-manager.json")
             with tempfile.NamedTemporaryFile(
                 mode="w", dir=os.path.dirname(meta_path), delete=False, suffix=".tmp"
@@ -982,6 +1085,32 @@ class InstallWizard(QWizard):
         self._stop_progress_animation()
         play_sound("error")
         self._progress_page.append_log(f"ERROR: {error_msg}")
+        if error_msg.startswith("JUNEST_PATH:"):
+            error_msg = error_msg[len("JUNEST_PATH:") :]
+            self._progress_page.set_task("Installation failed", error_msg)
+            try:
+                from niruvi.installer.junest import suggest_space_free_path
+
+                suggested = suggest_space_free_path(self.dest_dir)
+            except Exception:
+                suggested = ""
+            self._restore_backup()
+            self._cleanup_backup()
+            if suggested and suggested != self.dest_dir:
+                reply = QMessageBox.question(
+                    self,
+                    "JuNest Container Path",
+                    f"{error_msg}\n\nInstall to '{suggested}' instead?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.dest_dir = suggested
+                    self._extraction_started = False
+                    self._do_install()
+                    return
+            self.reject()
+            return
         self._progress_page.set_task("Installation failed", error_msg)
         if os.path.isdir(self.dest_dir):
             try:
@@ -1071,9 +1200,12 @@ class InstallWizard(QWizard):
 
     def done(self, result):
         self._stop_progress_animation()
-        if self.worker and self.worker.isRunning():
-            self.worker.stop()
-            self.worker.wait()
+        try:
+            if self.worker and self.worker.isRunning():
+                self.worker.stop()
+                self.worker.wait()
+        except RuntimeError:
+            pass  # Worker was already deleted
         super().done(result)
 
     def accept(self):

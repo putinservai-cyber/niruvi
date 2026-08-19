@@ -209,6 +209,8 @@ export QT_QPA_PLATFORM_PLUGIN_PATH="$HERE/usr/lib64/qt6/plugins"
 export QT_PLUGIN_PATH="$HERE/usr/lib64/qt6/plugins"
 export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export NIRUVI_ICON_DIR="$HERE/icons"
+export QT_LOGGING_RULES="qt.qpa.wayland.warning=false;qt.multimedia.ffmpeg.info=false;qt.multimedia.ffmpeg.warning=false;kf.kio.widgets.kdirmodel.warning=false"
+export QT_FFMPEG_DECODING_HW_DEVICE_TYPES=","
 exec "$HERE/usr/bin/python3" -m niruvi.app.self_install "$@"
 EOF
 chmod +x "$APPDIR/AppRun"

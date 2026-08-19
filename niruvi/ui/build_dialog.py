@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.build.page import BuildWorker
+from niruvi.core.worker import start_worker
 from niruvi.ui.report_dialog import BuildSummaryDialog, ErrorReportDialog
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
@@ -135,6 +136,25 @@ class BuildDialog(QDialog):
         self.copy_to_managed_check = QCheckBox("Copy to managed install directory")
         self.copy_to_managed_check.setChecked(True)
         out_layout.addWidget(self.copy_to_managed_check)
+
+        arch_row = QHBoxLayout()
+        arch_row.addWidget(QLabel("Architecture:"))
+        from niruvi.build.page import SUPPORTED_ARCHES, detect_host_arch
+
+        self.arch_combo = QComboBox()
+        self.arch_combo.addItems(list(SUPPORTED_ARCHES))
+        host_arch = detect_host_arch()
+        idx = self.arch_combo.findText(host_arch)
+        if idx >= 0:
+            self.arch_combo.setCurrentIndex(idx)
+        self.arch_combo.setToolTip(
+            "Target architecture for the AppImage. The matching appimagetool "
+            "(e.g. appimagetool-aarch64.AppImage) must be available in the "
+            "asset/ folder or the toolchain cache."
+        )
+        arch_row.addWidget(self.arch_combo)
+        arch_row.addStretch()
+        out_layout.addLayout(arch_row)
 
         inner.addWidget(out_group)
 
@@ -386,6 +406,7 @@ class BuildDialog(QDialog):
             app_version=self.app_version_edit.text() or None,
             self_installing=False,
             is_folder_source=is_folder,
+            arch=self.arch_combo.currentText(),
         )
 
         self._sign_key = (
@@ -400,7 +421,7 @@ class BuildDialog(QDialog):
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
-        self._worker.start()
+        start_worker(self._worker)
 
     def _on_log(self, msg: str):
         self.log_text.append(msg)
@@ -485,7 +506,10 @@ class BuildDialog(QDialog):
                             app_type = "Type 1"
                 # SHA256
                 f.seek(0)
-                sha256 = hashlib.sha256(f.read()).hexdigest()
+                sha256_hash = hashlib.sha256()
+                while chunk := f.read(65536):
+                    sha256_hash.update(chunk)
+                sha256 = sha256_hash.hexdigest()
         except Exception as e:
             logger.debug("Failed to read AppImage metadata for summary: %s", e, exc_info=True)
 

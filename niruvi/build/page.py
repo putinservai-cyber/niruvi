@@ -1,4 +1,5 @@
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -10,11 +11,35 @@ TOOLCHAIN_DIR = Path.home() / '.cache' / 'niruvi' / 'builder'
 APPIMAGETOOL_BIN = TOOLCHAIN_DIR / 'appimagetool-x86_64.AppImage'
 ASSETS_DIR = Path(__file__).parent.parent.parent / 'asset'
 
+#: Arch identifiers appimagetool understands (used in tool names, ARCH= and output names).
+SUPPORTED_ARCHES = ("x86_64", "aarch64", "armhf", "arm", "i686")
 
-def _find_appimagetool():
+_MACHINE_MAP = {
+    "x86_64": "x86_64",
+    "amd64": "x86_64",
+    "aarch64": "aarch64",
+    "arm64": "aarch64",
+    "armv7l": "armhf",
+    "armv6l": "armhf",
+    "armv5tel": "arm",
+    "i686": "i686",
+    "i586": "i686",
+    "i386": "i686",
+}
+
+
+def detect_host_arch() -> str:
+    return _MACHINE_MAP.get(platform.machine().lower(), "x86_64")
+
+
+def _toolchain_path(arch: str) -> Path:
+    return TOOLCHAIN_DIR / f"appimagetool-{arch}.AppImage"
+
+
+def _find_appimagetool(arch: str):
     candidates = [
-        ('cached', APPIMAGETOOL_BIN),
-        ('bundled', ASSETS_DIR / 'appimagetool-x86_64.AppImage'),
+        ('cached', _toolchain_path(arch)),
+        ('bundled', ASSETS_DIR / f'appimagetool-{arch}.AppImage'),
     ]
     for label, path in candidates:
         if path.exists() and path.stat().st_size > 1_000_000:
@@ -22,21 +47,24 @@ def _find_appimagetool():
     return None
 
 
-def _ensure_toolchain():
-    cached = APPIMAGETOOL_BIN.exists() and APPIMAGETOOL_BIN.stat().st_size > 1_000_000
+def _ensure_toolchain(arch: str = "x86_64"):
+    if arch not in SUPPORTED_ARCHES:
+        raise RuntimeError(f"Unsupported architecture: {arch}")
+    tool_bin = _toolchain_path(arch)
+    cached = tool_bin.exists() and tool_bin.stat().st_size > 1_000_000
     if cached:
-        APPIMAGETOOL_BIN.chmod(0o755)
-        return str(APPIMAGETOOL_BIN)
-    found = _find_appimagetool()
+        tool_bin.chmod(0o755)
+        return str(tool_bin)
+    found = _find_appimagetool(arch)
     if found is None:
         raise RuntimeError(
-            'appimagetool not found.\n\n'
-            'Place appimagetool-x86_64.AppImage in the assets/ folder.'
+            f'appimagetool for {arch} not found.\n\n'
+            f'Place appimagetool-{arch}.AppImage in the assets/ folder.'
         )
     TOOLCHAIN_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(found), str(APPIMAGETOOL_BIN))
-    APPIMAGETOOL_BIN.chmod(0o755)
-    return str(APPIMAGETOOL_BIN)
+    shutil.copy2(str(found), str(tool_bin))
+    tool_bin.chmod(0o755)
+    return str(tool_bin)
 
 
 def detect_package_type(path: str) -> str:
@@ -370,7 +398,7 @@ class BuildWorker(QThread):
                  enable_silent=True,
                  updater_url="", welcome_message="",
                  finish_message="", enable_launch_at_finish=True,
-                 is_folder_source=False):
+                 is_folder_source=False, arch="x86_64"):
         super().__init__()
         self.source_path = source_path
         self.output_dir = output_dir
@@ -391,6 +419,7 @@ class BuildWorker(QThread):
         self.finish_message = finish_message
         self.enable_launch_at_finish = enable_launch_at_finish
         self.is_folder_source = is_folder_source
+        self.arch = arch if arch in SUPPORTED_ARCHES else "x86_64"
         self._process = None
         self._cancelled = False
 
@@ -408,8 +437,8 @@ class BuildWorker(QThread):
             self.log.emit(f"Building AppImage from {self.source_path}...")
             self.progress.emit(5)
 
-            appimagetool = _ensure_toolchain()
-            self.log.emit(f"Using appimagetool: {appimagetool}")
+            appimagetool = _ensure_toolchain(self.arch)
+            self.log.emit(f"Using appimagetool: {appimagetool} (arch: {self.arch})")
             self.progress.emit(10)
 
             Path(self.output_dir).mkdir(parents=True, exist_ok=True)
@@ -572,13 +601,13 @@ class BuildWorker(QThread):
                 self.progress.emit(60)
 
                 self.log.emit(f"Version: {version}")
-                out_name = f'{app_name}-{version}-x86_64.AppImage'
+                out_name = f'{app_name}-{version}-{self.arch}.AppImage'
                 out_path = os.path.join(self.output_dir, out_name)
 
                 self.log.emit("Running appimagetool...")
                 self.progress.emit(70)
                 env = os.environ.copy()
-                env['ARCH'] = 'x86_64'
+                env['ARCH'] = self.arch
                 if version:
                     env['VERSION'] = version
 

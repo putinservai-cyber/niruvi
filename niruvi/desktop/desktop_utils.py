@@ -62,6 +62,37 @@ def _format_exec_path(app_dir: str) -> str:
     return f"{apprun} %F"
 
 
+def _format_tryexec_path(app_dir: str) -> str:
+    apprun = os.path.join(app_dir, "AppRun")
+    return f'"{apprun}"' if " " in apprun else apprun
+
+
+def _record_sandboxed(app_name: str) -> bool:
+    """True when the app's registry record has sandboxing enabled."""
+    try:
+        from niruvi.desktop.installation_registry import InstallationRegistry
+
+        record = InstallationRegistry().get(app_name)
+        return bool(record and record.sandbox_config and record.sandbox_config.get("enabled", False))
+    except Exception:
+        return False
+
+
+def _format_sandboxed_exec(app_name: str) -> str:
+    """Exec= value that routes the launch through `niruvi --run` so the
+    sandbox is applied even when launched from the desktop. Returns "" when
+    no Niruvi launcher binary is available."""
+    try:
+        from niruvi.launcher import launcher_exec_line
+
+        line = launcher_exec_line(app_name, fields="")
+        if not line:
+            return ""
+        return line + " %F"
+    except Exception:
+        return ""
+
+
 def install_icon_to_theme(icon_path: str, app_name: str) -> str | None:
     if not icon_path or not os.path.exists(icon_path):
         return None
@@ -130,10 +161,13 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
     has_exec = False
     has_categories = False
     has_startup = False
+    sandboxed_exec = _format_sandboxed_exec(app_name) if _record_sandboxed(app_name) else ""
     for line in lines:
         if line.startswith("Exec="):
-            new_lines.append(f"Exec={_format_exec_path(app_dir)}\n")
+            new_lines.append(f"Exec={sandboxed_exec or _format_exec_path(app_dir)}\n")
             has_exec = True
+        elif line.startswith("TryExec="):
+            new_lines.append(f"TryExec={_format_tryexec_path(app_dir)}\n")
         elif line.startswith("Icon="):
             if icon_name:
                 new_lines.append(f"Icon={icon_name}\n")
@@ -149,7 +183,7 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
             new_lines.append(line)
 
     if not has_exec:
-        new_lines.append(f"Exec={_format_exec_path(app_dir)}\n")
+        new_lines.append(f"Exec={sandboxed_exec or _format_exec_path(app_dir)}\n")
     if not has_categories:
         new_lines.append("Categories=Utility;\n")
     if not has_startup:
@@ -185,7 +219,8 @@ def create_desktop_shortcut(app_name: str, exec_path: str, icon_path: str | None
         else:
             icon_value = icon_path
 
-    exec_value = f'"{exec_path}"' if " " in exec_path else exec_path
+    sandboxed_exec = _format_sandboxed_exec(app_name) if _record_sandboxed(app_name) else ""
+    exec_value = sandboxed_exec or (f'"{exec_path}"' if " " in exec_path else exec_path)
     content = (
         "[Desktop Entry]\n"
         "Type=Application\n"

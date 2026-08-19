@@ -44,6 +44,8 @@ from PyQt6.QtWidgets import (
     QWizardPage,
 )
 
+from niruvi.core.worker import start_worker
+from niruvi.installer.junest import path_has_spaces, suggest_space_free_path
 from niruvi.utils.sound_manager import play as play_sound
 
 
@@ -256,6 +258,16 @@ class InstallWorker(QThread):
 
             Path(marker_file(self.dest)).write_text("")
 
+            # JuNest container detection — paths with spaces break bundled scripts
+            try:
+                from niruvi.installer.junest import junest_install_warning
+
+                junest_warning = junest_install_warning(self.dest, self.dest)
+                if junest_warning:
+                    self.log.emit(f"Warning: {junest_warning}")
+            except Exception as e:
+                logger.debug("JuNest path check failed: %s", e, exc_info=True)
+
             # Restore real application launcher (override self-installer AppRun)
             backup = os.path.join(self.dest, ".niruvi-install", "apprun-backup.sh")
             apprun_path = os.path.join(self.dest, "AppRun")
@@ -327,7 +339,7 @@ class InstallWorker(QThread):
             fixed = []
             for line in lines:
                 if line.startswith("Exec="):
-                    fixed.append(f"Exec={os.path.join(self.dest, 'AppRun')} %F\n")
+                    fixed.append(f'Exec="{os.path.join(self.dest, "AppRun")}" %F\n')
                 else:
                     fixed.append(line)
             with open(dest_desktop, "w") as f:
@@ -363,7 +375,7 @@ class InstallWorker(QThread):
         uninstall_content = (
             "[Desktop Entry]\n"
             f"Name=Uninstall {app_name}\n"
-            f"Exec={uninstall_exec}\n"
+            f'Exec="{uninstall_exec}"\n'
             "Icon=edit-delete\n"
             "Type=Application\n"
             "Categories=Utility;\n"
@@ -1023,12 +1035,23 @@ class SelfInstallWizard(QWizard):
         self._progress_page.log.clear()
         dir_page = self.findChild(DirectoryPage)
         dest = dir_page.installDir() if dir_page else installed_dir(self.config)
+        if path_has_spaces(dest):
+            choice = QMessageBox.warning(
+                self,
+                "Path with spaces",
+                f"The install destination contains spaces:\n\n{dest}\n\n"
+                "This may cause launching issues. "
+                "Would you like to install to a space-free path instead?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if choice == QMessageBox.Yes:
+                dest = suggest_space_free_path(dest)
         self._worker = InstallWorker(self.config, dest, self.self_appimage)
         self._worker.progress.connect(self._progress_page.progress.setValue)
         self._worker.log.connect(self._progress_page.log.append)
         self._worker.finished.connect(self._on_install_finished)
         self._worker.error.connect(self._on_worker_error)
-        self._worker.start()
+        start_worker(self._worker)
         self.button(QWizard.WizardButton.BackButton).setEnabled(False)
 
     def _on_install_finished(self, dest):
@@ -1090,7 +1113,7 @@ class SelfInstallWizard(QWizard):
             self._worker.log.connect(self._progress_page.log.append)
             self._worker.finished.connect(self._on_uninstall_finished)
             self._worker.error.connect(self._on_worker_error)
-            self._worker.start()
+            start_worker(self._worker)
 
     def _on_uninstall_finished(self):
         self._progress_page.setComplete(True)
@@ -1109,7 +1132,7 @@ class SelfInstallWizard(QWizard):
         self._worker.update_available.connect(self._on_update_available)
         self._worker.no_update.connect(self._on_no_update)
         self._worker.error.connect(self._on_worker_error)
-        self._worker.start()
+        start_worker(self._worker)
 
     def _on_update_available(self, manifest):
         self._manifest = manifest

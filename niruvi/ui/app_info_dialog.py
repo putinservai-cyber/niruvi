@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi._version import __app_name__
+from niruvi.core.worker import start_worker
 from niruvi.utils import get_icon
 from niruvi.utils.styles import format_date, format_size
 
@@ -326,6 +327,24 @@ class AppInfoDialog(QDialog):
         self.btn_save_display_name.clicked.connect(self._save_display_name)
         name_row.addWidget(self.btn_save_display_name)
         cust_grid.addLayout(name_row)
+
+        tags_row = QHBoxLayout()
+        tags_label = QLabel("Tags / category")
+        tags_label.setFixedWidth(120)
+        tags_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        tags_row.addWidget(tags_label)
+        self.tags_edit = QLineEdit()
+        self.tags_edit.setPlaceholderText("e.g. Media, Video (comma separated)")
+        from niruvi.app.tags import infer_tags
+
+        record_tags = (record.tags if record and record.tags else []) or infer_tags(self._app_name)
+        if record_tags:
+            self.tags_edit.setText(", ".join(record_tags))
+        tags_row.addWidget(self.tags_edit, 1)
+        self.btn_save_tags = QPushButton(get_icon("document-save"), "Save")
+        self.btn_save_tags.clicked.connect(self._save_tags)
+        tags_row.addWidget(self.btn_save_tags)
+        cust_grid.addLayout(tags_row)
 
         icon_row = QHBoxLayout()
         icon_label_2 = QLabel("Custom icon")
@@ -657,6 +676,16 @@ class AppInfoDialog(QDialog):
         InstallationRegistry().add(record)
         self._status(f"Run arguments saved for {self._app_name}")
 
+    def _save_tags(self):
+        play_sound("click")
+        from niruvi.app.tags import normalize_tags
+
+        raw = [t.strip() for t in self.tags_edit.text().split(",") if t.strip()]
+        record = self._get_or_create_record()
+        record.tags = normalize_tags(raw)
+        InstallationRegistry().add(record)
+        self._status(f"Tags saved for {self._app_name}: {', '.join(record.tags) or 'none'}")
+
     def _populate_env_table(self, env_vars: dict):
         self.env_table.setRowCount(len(env_vars))
         for i, (key, val) in enumerate(sorted(env_vars.items())):
@@ -813,7 +842,7 @@ class AppInfoDialog(QDialog):
         self._update_worker = UpdateCheckWorker(normalized, current_version)
         self._update_worker.update_checked.connect(self._on_update_check_done)
         self._update_worker.error.connect(self._on_update_check_error)
-        self._update_worker.start()
+        start_worker(self._update_worker)
 
     def _on_update_check_done(self, available: bool, latest: str, download_url: str, changelog: str):
         self.btn_check_update.setEnabled(True)
@@ -847,7 +876,7 @@ class AppInfoDialog(QDialog):
         QMessageBox.warning(self, "Update Check Failed", f"Could not check for updates:\n{error_msg}")
 
     def _download_and_update(self, download_url: str, latest_version: str):
-        from niruvi.core.worker import DownloadWorker, extract_appimage_sync
+        from niruvi.core.worker import DownloadWorker, extract_appimage_sync, start_worker
 
         dest_dir = self._info.get("path", "")
         fd, temp_path = tempfile.mkstemp(suffix=".AppImage")
@@ -873,7 +902,7 @@ class AppInfoDialog(QDialog):
 
         self._download_worker.finished.connect(on_finished)
         self._download_worker.error.connect(on_error)
-        self._download_worker.start()
+        start_worker(self._download_worker)
         progress.canceled.connect(self._download_worker.cancel)
         loop.exec()
         progress.close()
@@ -881,14 +910,14 @@ class AppInfoDialog(QDialog):
             self._download_worker.wait(5000)
         self._download_worker = None
 
+        if progress.wasCanceled() or error_msg[0] == "cancelled":
+            Path(temp_path).unlink(missing_ok=True)
+            return
+
         if error_msg[0]:
             play_sound("error")
             Path(temp_path).unlink(missing_ok=True)
             QMessageBox.critical(self, "Download Failed", str(error_msg[0]))
-            return
-
-        if progress.wasCanceled():
-            Path(temp_path).unlink(missing_ok=True)
             return
 
         backup_dir = dest_dir + ".backup"
@@ -956,6 +985,13 @@ class AppInfoDialog(QDialog):
             Path(os.path.join(record.path, ".config")).mkdir(exist_ok=True)
         record.sandbox_config = sc
         InstallationRegistry().add(record)
+        try:
+            from niruvi.desktop.desktop_utils import create_desktop_entry, refresh_desktop_database
+
+            create_desktop_entry(record.path, self._app_name)
+            refresh_desktop_database()
+        except Exception:
+            pass
         self._load_shield_ui()
         self._status(f"Shield config saved for {self._app_name}")
 

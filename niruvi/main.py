@@ -13,6 +13,7 @@ from niruvi.config import (
     DESKTOP_DIR,
     INSTALLED_DIR,
     _settings,
+    configure_runtime_env,
     get_data_dir,
     get_settings,
     load_settings,
@@ -102,17 +103,18 @@ def process_appimage(path_str: str, parent=None):
     wiz.exec()
 
 
-def cli_install(path_str: str):
+def cli_install(path_str: str, dest_override: str | None = None):
     """Silent CLI install without GUI."""
     from niruvi.core.worker import extract_appimage_sync
     from niruvi.desktop.desktop_utils import create_desktop_entry, get_version
+    from niruvi.installer.junest import JunestPathError, suggest_space_free_path
     from niruvi.ui.manager import get_appimage_metadata
 
     path = Path(path_str)
     info, _icon_data = get_appimage_metadata(str(path))
     app_name = info.get("Name", path.stem)
     install_dir = get_settings()["install_dir"]
-    dest_dir = os.path.join(install_dir, app_name)
+    dest_dir = dest_override or os.path.join(install_dir, app_name)
 
     registry = InstallationRegistry()
     existing = registry.lookup_by_name(app_name) or registry.lookup_by_path(str(path))
@@ -122,7 +124,17 @@ def cli_install(path_str: str):
 
     print(f"Installing {app_name}...", end=" ", flush=True)
     os.makedirs(dest_dir, exist_ok=True)
-    extract_appimage_sync(str(path), dest_dir)
+    try:
+        extract_appimage_sync(str(path), dest_dir)
+    except JunestPathError as e:
+        if dest_override:
+            print(f"\nError: {e}", file=sys.stderr)
+            print("The destination was chosen explicitly; reinstall with a space-free path.", file=sys.stderr)
+            sys.exit(1)
+        dest_dir = e.suggested_path or suggest_space_free_path(dest_dir)
+        print(f"\nJuNest container requires a space-free path — installing to {dest_dir}")
+        os.makedirs(dest_dir, exist_ok=True)
+        extract_appimage_sync(str(path), dest_dir)
     version = get_version(dest_dir)
 
     metadata = {
@@ -143,6 +155,7 @@ def cli_install(path_str: str):
         desktop_shortcut="",
     )
     registry.add(record)
+    registry.flush()
     try:
         refresh_desktop_database()
     except Exception:
@@ -164,8 +177,9 @@ def _resolve_path(raw: str) -> str:
 
 
 def main():
-    # Suppress Qt Wayland debug noise ("plugin supports grabbing the mouse only for popup windows")
-    os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.wayland.warning=false")
+    # Silence benign Qt/KDE/FFmpeg log noise and disable FFmpeg hardware decode
+    # probing (triggers the libvdpau_nvidia.so warning) BEFORE QApplication.
+    configure_runtime_env()
 
     parser = argparse.ArgumentParser(
         prog="Niruvi",
@@ -177,13 +191,31 @@ def main():
     )
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--install", metavar="PATH", help="Install an AppImage (silent, no GUI)")
+    parser.add_argument(
+        "--dest",
+        metavar="DIR",
+        help="Install destination directory (overrides install_dir + app name)",
+    )
     parser.add_argument("--uninstall", metavar="APP", help="Uninstall an installed app")
     parser.add_argument("--list", action="store_true", help="List installed apps (CLI)")
     parser.add_argument("--update-all", action="store_true", help="Check all apps for updates (CLI)")
     parser.add_argument("--update-check", metavar="APP", help="Check a specific app for updates (CLI)")
     parser.add_argument("--is-installed", metavar="PATH", help="Check if an AppImage is installed (CLI)")
+    parser.add_argument(
+        "--run",
+        metavar="APP",
+        help="Launch an installed app headlessly, applying its sandbox config "
+        "(used by desktop entries; extra args go after '--')",
+    )
+    parser.add_argument(
+        "--unsandboxed",
+        action="store_true",
+        help="With --run: launch without applying the app's sandbox",
+    )
     parser.add_argument("--mute", action="store_true", help="Disable all sound effects")
-    args = parser.parse_args()
+    args, app_args = parser.parse_known_args()
+    if app_args and app_args[0] == "--":
+        app_args = app_args[1:]
 
     if args.version:
         print(f"Niruvi v{__version__}")
@@ -206,7 +238,8 @@ def main():
         if not os.path.exists(raw):
             print(f"Error: file not found: {raw}", file=sys.stderr)
             sys.exit(1)
-        cli_install(raw)
+        dest = os.path.realpath(os.path.expanduser(args.dest)) if args.dest else None
+        cli_install(raw, dest)
         sys.exit(0)
 
     if args.uninstall:
@@ -217,6 +250,10 @@ def main():
             sys.exit(1)
         if record.path and os.path.exists(record.path):
             shutil.rmtree(record.path)
+        for suffix in (".home", ".config", ".prev"):
+            side_dir = record.path + suffix
+            if os.path.isdir(side_dir):
+                shutil.rmtree(side_dir, ignore_errors=True)
         df = find_desktop_for_app(args.uninstall)
         if df and os.path.exists(df):
             os.remove(df)
@@ -224,6 +261,7 @@ def main():
         if sc and os.path.exists(sc):
             os.remove(sc)
         registry.remove(args.uninstall)
+        registry.flush()
         try:
             refresh_desktop_database()
         except Exception:
@@ -309,6 +347,11 @@ def main():
             print("Not installed.")
             sys.exit(1)
 
+    if args.run:
+        from niruvi.launcher import run_app_headless
+
+        sys.exit(run_app_headless(args.run, app_args))
+
     # --- GUI path ---
     file_to_process = None
     src = args.open or args.file
@@ -385,6 +428,9 @@ def main():
     window.show()
     ret = app.exec()
     window.close()
+    from niruvi.core.worker import wait_for_workers
+
+    wait_for_workers(10000)
     for _ in range(3):
         import gc as _gc
 

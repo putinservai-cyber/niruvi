@@ -27,6 +27,7 @@ class InstallationRecord:
         update_channel: str = "stable",
         sandbox_config: dict | None = None,
         size: int = 0,
+        tags: list[str] | None = None,
     ):
         self.name = name
         self.path = path
@@ -46,6 +47,7 @@ class InstallationRecord:
         self.update_channel = update_channel
         self.sandbox_config = sandbox_config or {}
         self.size = size
+        self.tags = tags or []
 
     def to_dict(self) -> dict:
         return {
@@ -67,6 +69,7 @@ class InstallationRecord:
             "update_channel": self.update_channel,
             "sandbox_config": self.sandbox_config,
             "size": self.size,
+            "tags": list(self.tags),
         }
 
     @classmethod
@@ -90,6 +93,7 @@ class InstallationRecord:
             update_channel=data.get("update_channel", "stable"),
             sandbox_config=data.get("sandbox_config", {}),
             size=data.get("size", 0),
+            tags=data.get("tags") or [],
         )
 
 
@@ -145,27 +149,29 @@ class InstallationRegistry:
             if record.path:
                 self._path_index[record.path] = record.name
 
-    def _save(self):
-        data_dir = get_data_dir()
+    def _save(self, target: str | None = None):
+        rf = target or self._registry_file()
+        data_dir = os.path.dirname(rf)
         os.makedirs(data_dir, exist_ok=True)
         data = [r.to_dict() for r in self._records.values()]
-        write_json_with_hmac(self._registry_file(), {"records": data})
+        write_json_with_hmac(rf, {"records": data})
 
     def _deferred_save(self):
         with self._save_lock:
             if self._save_pending:
                 return
             self._save_pending = True
+            target = self._registry_file()
         if self._save_timer is not None:
             self._save_timer.cancel()
-        self._save_timer = threading.Timer(0.5, self._flush_save)
+        self._save_timer = threading.Timer(0.5, self._flush_save, args=(target,))
         self._save_timer.daemon = True
         self._save_timer.start()
 
-    def _flush_save(self):
+    def _flush_save(self, target: str | None = None):
         with self._save_lock:
             self._save_pending = False
-        self._save()
+        self._save(target)
 
     def add(self, record: InstallationRecord):
         self._ensure_loaded()

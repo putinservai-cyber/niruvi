@@ -1,4 +1,5 @@
 import logging
+import threading
 from dataclasses import dataclass
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
@@ -71,11 +72,18 @@ class BackgroundUpdater(QObject):
         if self._check_in_progress:
             return
         self._check_in_progress = True
+        # Network checks run off the GUI thread so the UI never blocks.
+        thread = threading.Thread(target=self._check_all_worker, daemon=True)
+        thread.start()
+
+    def _check_all_worker(self):
         try:
             registry = InstallationRegistry()
             records = registry.get_all()
             apps_with_url = [r for r in records if r.update_url and r.auto_update]
             for record in apps_with_url:
+                if not self._enabled:
+                    break
                 channel = record.update_channel or "stable"
                 self._check_app(record.name, record.update_url, record.version, channel=channel)
         finally:

@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.build.page import BuildWorker, _flatten_appdir
+from niruvi.core.worker import start_worker
 from niruvi.ui.report_dialog import ErrorReportDialog
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
@@ -279,6 +280,7 @@ class DependenciesPage(QWizardPage):
         self.scan_btn.setEnabled(False)
         self.status_label.setText("Scanning...")
         self.result_text.clear()
+        tmpdir = None
         try:
             if wizard.page(0).is_folder_source():
                 appdir = src
@@ -360,6 +362,8 @@ class DependenciesPage(QWizardPage):
             self.status_label.setText("Dependency scan encountered an error.")
         finally:
             self.scan_btn.setEnabled(True)
+            if tmpdir:
+                shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class BuildConfigPage(QWizardPage):
@@ -570,7 +574,7 @@ class BuildProgressPage(QWizardPage):
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
-        self._worker.start()
+        start_worker(self._worker)
 
     def _on_log(self, msg: str):
         self.log_text.append(msg)
@@ -683,44 +687,7 @@ class BuildWizard(QWizard):
         progress_page.start_build(self)
 
     def _build_complete(self, out_path: str):
-        import hashlib
-
         _is_valid, _warnings = self._verify_appimage(out_path)
-        os.path.getsize(out_path) if os.path.isfile(out_path) else 0
-        is_elf = False
-        os.access(out_path, os.X_OK)
-        try:
-            with open(out_path, "rb") as f:
-                header = f.read(20)
-                is_elf = header[:4] == b"\x7fELF"
-                if is_elf and len(header) >= 20:
-                    ei_class = header[4]
-                    ei_data = header[5]
-                    e_machine_bytes = header[18:20]
-                    arch_map = {
-                        0: "None",
-                        3: "i386",
-                        62: "x86_64",
-                        40: "ARM",
-                        183: "AArch64",
-                        20: "PowerPC",
-                        21: "PowerPC64",
-                        43: "SPARC",
-                    }
-                    arch = "32-bit " if ei_class == 1 else "64-bit " if ei_class == 2 else ""
-                    arch += "LE" if ei_data == 1 else "BE" if ei_data == 2 else ""
-                    import struct
-
-                    e_machine = struct.unpack("<H" if ei_data == 1 else ">H", e_machine_bytes)[0]
-                    arch_map.get(e_machine, f"machine={e_machine}")
-                    if len(header) >= 12:
-                        f.seek(8)
-                        type_check = f.read(4)
-                        "Type 2" if type_check[:2] == b"AI" else "Type 1"
-                f.seek(0)
-                hashlib.sha256(f.read()).hexdigest()
-        except Exception as e:
-            logger.debug("Failed to read AppImage metadata for summary: %s", e, exc_info=True)
 
     def _verify_appimage(self, path: str):
         warnings = []

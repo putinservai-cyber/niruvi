@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import platform
+import shutil
 import stat
 import subprocess
 import time
@@ -12,6 +13,263 @@ HEALTH_DAYS_THRESHOLD = 60
 
 _fuse_available: bool | None = None
 _namespace_available: bool | None = None
+
+# Common AppImage shared libraries -> per-package-manager package names.
+# soname prefixes mapped to {dnf, apt-get, pacman, zypper, apk} package names.
+_COMMON_LIB_PACKAGES = {
+    "libfuse.so.2": {"dnf": "fuse2", "apt-get": "libfuse2", "pacman": "fuse2", "zypper": "fuse2", "apk": "fuse"},
+    "libnss3.so": {"dnf": "nss", "apt-get": "libnss3", "pacman": "nss", "zypper": "nss", "apk": "nss"},
+    "libnssutil3.so": {
+        "dnf": "nss-util",
+        "apt-get": "libnss3",
+        "pacman": "nss",
+        "zypper": "nss-util",
+        "apk": "nss-util",
+    },
+    "libX11.so.6": {"dnf": "libX11", "apt-get": "libx11-6", "pacman": "libx11", "zypper": "libX11-6", "apk": "libx11"},
+    "libXext.so.6": {
+        "dnf": "libXext",
+        "apt-get": "libxext6",
+        "pacman": "libxext",
+        "zypper": "libXext6",
+        "apk": "libxext",
+    },
+    "libxcb.so.1": {"dnf": "libxcb", "apt-get": "libxcb1", "pacman": "libxcb", "zypper": "libxcb1", "apk": "libxcb"},
+    "libGL.so.1": {"dnf": "libGL", "apt-get": "libgl1", "pacman": "libgl", "zypper": "Mesa-libGL1", "apk": "mesa-gl"},
+    "libEGL.so.1": {
+        "dnf": "libEGL",
+        "apt-get": "libegl1",
+        "pacman": "libegl",
+        "zypper": "Mesa-libEGL1",
+        "apk": "mesa-egl",
+    },
+    "libgtk-3.so.0": {"dnf": "gtk3", "apt-get": "libgtk-3-0", "pacman": "gtk3", "zypper": "gtk3", "apk": "gtk+3.0"},
+    "libgtk-4.so.1": {"dnf": "gtk4", "apt-get": "libgtk-4-1", "pacman": "gtk4", "zypper": "gtk4", "apk": "gtk4"},
+    "libgdk_pixbuf-2.0.so.0": {
+        "dnf": "gdk-pixbuf2",
+        "apt-get": "libgdk-pixbuf-2.0-0",
+        "pacman": "gdk-pixbuf2",
+        "zypper": "gdk-pixbuf",
+        "apk": "gdk-pixbuf",
+    },
+    "libcairo.so.2": {"dnf": "cairo", "apt-get": "libcairo2", "pacman": "cairo", "zypper": "cairo", "apk": "cairo"},
+    "libpango-1.0.so.0": {
+        "dnf": "pango",
+        "apt-get": "libpango-1.0-0",
+        "pacman": "pango",
+        "zypper": "pango",
+        "apk": "pango",
+    },
+    "libasound.so.2": {
+        "dnf": "alsa-lib",
+        "apt-get": "libasound2",
+        "pacman": "alsa-lib",
+        "zypper": "alsa-lib",
+        "apk": "alsa-lib",
+    },
+    "libpulse.so.0": {
+        "dnf": "pulseaudio-libs",
+        "apt-get": "libpulse0",
+        "pacman": "libpulse",
+        "zypper": "libpulse0",
+        "apk": "libpulse",
+    },
+    "libGLU.so.1": {"dnf": "libGLU", "apt-get": "libglu1-mesa", "pacman": "glu", "zypper": "libGLU1", "apk": "glu"},
+    "libSM.so.6": {"dnf": "libSM", "apt-get": "libsm6", "pacman": "libsm", "zypper": "libSM6", "apk": "libsm"},
+    "libICE.so.6": {"dnf": "libICE", "apt-get": "libice6", "pacman": "libice", "zypper": "libICE6", "apk": "libice"},
+    "libXinerama.so.1": {
+        "dnf": "libXinerama",
+        "apt-get": "libxinerama1",
+        "pacman": "libxinerama",
+        "zypper": "libXinerama1",
+        "apk": "libxinerama",
+    },
+    "libXrandr.so.2": {
+        "dnf": "libXrandr",
+        "apt-get": "libxrandr2",
+        "pacman": "libxrandr",
+        "zypper": "libXrandr2",
+        "apk": "libxrandr",
+    },
+    "libXcursor.so.1": {
+        "dnf": "libXcursor",
+        "apt-get": "libxcursor1",
+        "pacman": "libxcursor",
+        "zypper": "libXcursor1",
+        "apk": "libxcursor",
+    },
+    "libXfixes.so.3": {
+        "dnf": "libXfixes",
+        "apt-get": "libxfixes3",
+        "pacman": "libxfixes",
+        "zypper": "libXfixes3",
+        "apk": "libxfixes",
+    },
+    "libXi.so.6": {"dnf": "libXi", "apt-get": "libxi6", "pacman": "libxi", "zypper": "libXi6", "apk": "libxi"},
+    "libXtst.so.6": {
+        "dnf": "libXtst",
+        "apt-get": "libxtst6",
+        "pacman": "libxtst",
+        "zypper": "libXtst6",
+        "apk": "libxtst",
+    },
+    "libsecret-1.so.0": {
+        "dnf": "libsecret",
+        "apt-get": "libsecret-1-0",
+        "pacman": "libsecret",
+        "zypper": "libsecret-1-0",
+        "apk": "libsecret",
+    },
+    "libgconf-2.so.4": {
+        "dnf": "GConf2",
+        "apt-get": "libgconf-2-4",
+        "pacman": "gconf",
+        "zypper": "gconf2",
+        "apk": "gconf",
+    },
+    "libssl.so.3": {
+        "dnf": "openssl-libs",
+        "apt-get": "libssl3",
+        "pacman": "openssl",
+        "zypper": "libopenssl3",
+        "apk": "openssl",
+    },
+    "libcrypto.so.3": {
+        "dnf": "openssl-libs",
+        "apt-get": "libssl3",
+        "pacman": "openssl",
+        "zypper": "libopenssl3",
+        "apk": "openssl",
+    },
+    "libcurl.so.4": {"dnf": "libcurl", "apt-get": "libcurl4", "pacman": "curl", "zypper": "libcurl4", "apk": "curl"},
+    "libdbus-1.so.3": {
+        "dnf": "dbus-libs",
+        "apt-get": "libdbus-1-3",
+        "pacman": "dbus",
+        "zypper": "dbus-1",
+        "apk": "dbus-libs",
+    },
+    "libatk-1.0.so.0": {
+        "dnf": "atk",
+        "apt-get": "libatk1.0-0",
+        "pacman": "at-spi2-core",
+        "zypper": "atk",
+        "apk": "at-spi2-core",
+    },
+    "libgdk-3.so.0": {"dnf": "gtk3", "apt-get": "libgtk-3-0", "pacman": "gtk3", "zypper": "gtk3", "apk": "gtk+3.0"},
+    "libvulkan.so.1": {
+        "dnf": "vulkan-loader",
+        "apt-get": "libvulkan1",
+        "pacman": "vulkan-icd-loader",
+        "zypper": "libvulkan1",
+        "apk": "vulkan-loader",
+    },
+    "libva.so.2": {"dnf": "libva", "apt-get": "libva2", "pacman": "libva", "zypper": "libva2", "apk": "libva"},
+    "libappindicator3.so.1": {
+        "dnf": "libappindicator-gtk3",
+        "apt-get": "libappindicator3-1",
+        "pacman": "libappindicator-gtk3",
+        "zypper": "libappindicator3",
+        "apk": "libayatana-appindicator",
+    },
+}
+
+_INSTALL_CMD = {
+    "dnf": "sudo dnf install -y",
+    "apt-get": "sudo apt install -y",
+    "pacman": "sudo pacman -S --needed",
+    "zypper": "sudo zypper install -y",
+    "apk": "sudo apk add",
+}
+
+_pkg_manager: str | None = None
+
+
+def detect_package_manager() -> str | None:
+    """Detect the system package manager once."""
+    global _pkg_manager
+    if _pkg_manager is not None:
+        return _pkg_manager
+    for pm in ("dnf", "apt-get", "pacman", "zypper", "apk"):
+        if shutil.which(pm):
+            _pkg_manager = pm
+            return pm
+    _pkg_manager = ""
+    return None
+
+
+def _is_elf(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
+def _find_elf_target(app_dir: str) -> str | None:
+    """Find the main ELF executable to run ldd against."""
+    apprun = os.path.join(app_dir, "AppRun")
+    if os.path.isfile(apprun) and _is_elf(apprun):
+        return apprun
+    try:
+        entries = sorted(os.listdir(app_dir))
+    except OSError:
+        return None
+    for name in entries:
+        path = os.path.join(app_dir, name)
+        if os.path.isfile(path) and _is_elf(path):
+            try:
+                if os.access(path, os.X_OK):
+                    return path
+            except OSError:
+                pass
+    return None
+
+
+def scan_missing_libs(app_dir: str) -> list[str]:
+    """Run ldd on the app's main executable and return missing shared libraries."""
+    if not app_dir or not os.path.isdir(app_dir):
+        return []
+    target = _find_elf_target(app_dir)
+    if not target:
+        return []
+    try:
+        result = subprocess.run(
+            ["ldd", target],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    missing: list[str] = []
+    for line in result.stdout.splitlines():
+        if "not found" in line:
+            lib = line.split("=>")[0].strip()
+            if lib:
+                missing.append(lib)
+    return sorted(set(missing))
+
+
+def suggest_lib_fixes(missing_libs: list[str]) -> list[str]:
+    """Map missing shared libraries to distro package install commands."""
+    if not missing_libs:
+        return []
+    pm = detect_package_manager()
+    if not pm:
+        return []
+    cmd = _INSTALL_CMD.get(pm)
+    pkgs: set[str] = set()
+    for lib in missing_libs:
+        for soname, pkg_map in _COMMON_LIB_PACKAGES.items():
+            if lib.startswith(soname):
+                pkg = pkg_map.get(pm)
+                if pkg:
+                    pkgs.add(pkg)
+                break
+    if not pkgs:
+        return []
+    return [f"{cmd} {' '.join(sorted(pkgs))}"]
 
 
 def check_single_appimage_mount(path: str) -> dict:
@@ -72,6 +330,11 @@ def check_app_runnable(app_name: str, app_dir: str) -> dict:
                     issues.append(f"Interpreter not found: {interpreter_path}")
         except OSError as e:
             warnings.append(f"Cannot read AppRun: {e}")
+
+    missing_libs = scan_missing_libs(app_dir)
+    if missing_libs:
+        info["missing_libs"] = missing_libs
+        issues.append(f"Missing shared libraries: {', '.join(missing_libs[:5])}")
 
     return {
         "app_name": app_name,

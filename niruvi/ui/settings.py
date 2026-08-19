@@ -247,6 +247,14 @@ class SettingsPage(QWidget):
         self.auto_update_apps_row.setChecked(_settings.get("auto_update_apps", False))
         update_layout.addWidget(self.auto_update_apps_row)
 
+        self.delta_updates_row = _ToggleRow(
+            "Use delta updates (.zsync)",
+            "When enabled, Niruvi keeps the installed AppImage and updates "
+            "download only the changed blocks instead of the whole file",
+        )
+        self.delta_updates_row.setChecked(_settings.get("delta_updates", True))
+        update_layout.addWidget(self.delta_updates_row)
+
         interval_row = QHBoxLayout()
         interval_row.addWidget(QLabel("Check interval:"))
         self.update_interval_combo = QComboBox()
@@ -260,6 +268,28 @@ class SettingsPage(QWidget):
         update_layout.addLayout(interval_row)
 
         layout.addWidget(update_group)
+
+        tray_group = QGroupBox("System Tray")
+        tray_layout = QVBoxLayout(tray_group)
+        tray_layout.setSpacing(2)
+
+        self.tray_enabled_row = _ToggleRow(
+            "Keep tray icon",
+            "Show a persistent icon in the system tray so Niruvi can notify you "
+            "about updates while the window is closed",
+        )
+        self.tray_enabled_row.setChecked(_settings.get("tray_enabled", True))
+        tray_layout.addWidget(self.tray_enabled_row)
+
+        self.close_to_tray_row = _ToggleRow(
+            "Minimize to tray on close",
+            "Closing the window hides Niruvi to the tray instead of quitting "
+            "(use 'Quit' in the tray menu to exit completely)",
+        )
+        self.close_to_tray_row.setChecked(_settings.get("close_to_tray", False))
+        tray_layout.addWidget(self.close_to_tray_row)
+
+        layout.addWidget(tray_group)
 
         hooks_group = QGroupBox("Hooks")
         hooks_layout = QVBoxLayout(hooks_group)
@@ -288,6 +318,109 @@ class SettingsPage(QWidget):
         hooks_layout.addWidget(open_hooks_btn)
 
         layout.addWidget(hooks_group)
+
+        plugins_group = QGroupBox("Plugins")
+        plugins_layout = QVBoxLayout(plugins_group)
+        plugins_layout.setSpacing(4)
+
+        from niruvi.core.plugins import PLUGINS_DIR, ensure_plugins_dir, list_plugins, reload_plugins
+
+        ensure_plugins_dir()
+        plugins_label = QLabel(f"Plugins directory:<br><code>{PLUGINS_DIR}</code>")
+        plugins_label.setWordWrap(True)
+        plugins_label.setStyleSheet(placeholder_style("", 12))
+        plugins_layout.addWidget(plugins_label)
+
+        self.plugins_status_label = QLabel()
+        plugins_layout.addWidget(self.plugins_status_label)
+        self._refresh_plugins_status(list_plugins())
+
+        plugins_row = QHBoxLayout()
+        reload_btn = QPushButton(get_icon("view-refresh"), "Reload Plugins")
+        reload_btn.clicked.connect(
+            lambda: (
+                play_sound("click"),
+                self._refresh_plugins_status(reload_plugins()),
+            )
+        )
+        plugins_row.addWidget(reload_btn)
+        open_plugins_btn = QPushButton(get_icon("folder-open"), "Open Plugins Directory")
+        open_plugins_btn.clicked.connect(
+            lambda: (play_sound("click"), subprocess.Popen(["xdg-open", PLUGINS_DIR], start_new_session=True))
+        )
+        plugins_row.addWidget(open_plugins_btn)
+        plugins_row.addStretch()
+        plugins_layout.addLayout(plugins_row)
+
+        plugins_desc = QLabel(
+            "Drop Python modules here to extend Niruvi. A plugin declares a "
+            "<code>handlers</code> dict or a <code>register(api)</code> function "
+            "for events such as <code>app_installed</code>, <code>app_launched</code>, "
+            "<code>app_updated</code>, <code>app_removed</code>, <code>update_available</code>, "
+            "<code>scan_completed</code> and <code>settings_changed</code>."
+        )
+        plugins_desc.setWordWrap(True)
+        plugins_desc.setStyleSheet(placeholder_style("", 11))
+        plugins_layout.addWidget(plugins_desc)
+
+        layout.addWidget(plugins_group)
+
+        store_group = QGroupBox("App Store")
+        store_layout = QVBoxLayout(store_group)
+        store_layout.setSpacing(4)
+
+        store_desc = QLabel(
+            "Catalog URL for the App Store. The index must be a JSON document: "
+            'a list of entries or {"apps": [...]}, each with a <code>name</code> '
+            "and <code>url</code> (plus optional description, version, icon, "
+            "arch, categories). Downloads are cached for offline use."
+        )
+        store_desc.setWordWrap(True)
+        store_desc.setStyleSheet(placeholder_style("", 11))
+        store_layout.addWidget(store_desc)
+
+        url_row = QHBoxLayout()
+        url_row.addWidget(QLabel("Index URL:"))
+        self.store_url_edit = QLineEdit(_settings.get("store_index_url", ""))
+        self.store_url_edit.setPlaceholderText("https://example.org/niruvi-catalog.json")
+        url_row.addWidget(self.store_url_edit, 1)
+        store_layout.addLayout(url_row)
+
+        layout.addWidget(store_group)
+
+        vt_group = QGroupBox("VirusTotal")
+        vt_layout = QVBoxLayout(vt_group)
+        vt_layout.setSpacing(4)
+
+        vt_desc = QLabel(
+            "Optional: scan AppImages with VirusTotal before installing. "
+            "Files are uploaded to virustotal.com; only enable this if you "
+            "accept that. Get a free API key at "
+            "<a href='https://www.virustotal.com/'>virustotal.com</a>."
+        )
+        vt_desc.setWordWrap(True)
+        vt_desc.setOpenExternalLinks(True)
+        vt_desc.setStyleSheet(placeholder_style("", 11))
+        vt_layout.addWidget(vt_desc)
+
+        key_row = QHBoxLayout()
+        key_row.addWidget(QLabel("API key:"))
+        self.vt_key_edit = QLineEdit(_settings.get("virustotal_api_key", ""))
+        self.vt_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.vt_key_edit.setPlaceholderText("paste your API key here")
+        key_row.addWidget(self.vt_key_edit, 1)
+        vt_layout.addLayout(key_row)
+
+        vt_btn_row = QHBoxLayout()
+        self.vt_test_btn = QPushButton(get_icon("emblem-ok", "dialog-information"), "Test Key")
+        self.vt_test_btn.clicked.connect(self._test_vt_key)
+        vt_btn_row.addWidget(self.vt_test_btn)
+        self.vt_test_label = QLabel()
+        vt_btn_row.addWidget(self.vt_test_label)
+        vt_btn_row.addStretch()
+        vt_layout.addLayout(vt_btn_row)
+
+        layout.addWidget(vt_group)
 
         icon_group = QGroupBox("Icons")
         icon_layout = QVBoxLayout(icon_group)
@@ -557,6 +690,46 @@ class SettingsPage(QWidget):
             self.btn_install_tn.setEnabled(True)
             self.btn_remove_tn.setEnabled(False)
 
+    def _refresh_plugins_status(self, names: list[str]):
+        if names:
+            self.plugins_status_label.setText(f"Active plugins: {', '.join(names)}")
+        else:
+            self.plugins_status_label.setText("No plugins loaded.")
+
+    def _test_vt_key(self):
+        from niruvi.app.virustotal import test_key
+
+        key = self.vt_key_edit.text().strip()
+        if not key:
+            self.vt_test_label.setText("Enter a key first.")
+            return
+        self.vt_test_btn.setEnabled(False)
+        self.vt_test_label.setText("Testing...")
+        play_sound("click")
+        from PyQt6.QtCore import QThread, pyqtSignal
+
+        class _KeyTest(QThread):
+            done = pyqtSignal(bool, str)
+
+            def run(self):
+                try:
+                    ok = test_key(key)
+                    self.done.emit(ok, "")
+                except Exception as e:
+                    self.done.emit(False, str(e))
+
+        self._vt_test_thread = _KeyTest(self)
+        self._vt_test_thread.done.connect(self._on_vt_test_done)
+        self._vt_test_thread.finished.connect(self._vt_test_thread.deleteLater)
+        self._vt_test_thread.start()
+
+    def _on_vt_test_done(self, ok: bool, err: str):
+        self.vt_test_btn.setEnabled(True)
+        if ok:
+            self.vt_test_label.setText("Key is valid.")
+        else:
+            self.vt_test_label.setText(f"Invalid key ({err}).")
+
     def _install_thumbnailer(self):
         from niruvi.desktop.thumbnailer import install_thumbnailer
 
@@ -617,6 +790,9 @@ class SettingsPage(QWidget):
             or self.portable_config_row.isChecked() != _settings.get("portable_config", False)
             or self.auto_scan_row.isChecked() != _settings.get("auto_scan_before_install", True)
             or self.auto_update_apps_row.isChecked() != _settings.get("auto_update_apps", False)
+            or self.delta_updates_row.isChecked() != _settings.get("delta_updates", True)
+            or self.tray_enabled_row.isChecked() != _settings.get("tray_enabled", True)
+            or self.close_to_tray_row.isChecked() != _settings.get("close_to_tray", False)
             or self.update_interval_combo.currentText() != _settings.get("update_check_interval", "weekly")
             or self.icon_theme_radio.isChecked() != _settings.get("icon_in_theme", True)
             or self.shield_enabled_row.isChecked() != _settings.get("sandbox_default_enabled", True)
@@ -632,6 +808,8 @@ class SettingsPage(QWidget):
             or self.notif_volume_slider.value() != int(_settings.get("sound_volume_notifications", 1.0) * 100)
             or self.privacy_updates_row.isChecked() != _settings.get("privacy_allow_update_checks", True)
             or self.theme_combo.currentData() != _settings.get("theme_mode", "auto")
+            or self.vt_key_edit.text().strip() != _settings.get("virustotal_api_key", "").strip()
+            or self.store_url_edit.text().strip() != _settings.get("store_index_url", "").strip()
         )
 
     def apply(self) -> bool:
@@ -645,6 +823,7 @@ class SettingsPage(QWidget):
             )
             self.install_dir_edit.setText(_settings.get("install_dir", DEFAULT_INSTALL_DIR))
             return False
+        changed = self._changed_keys()
         _settings["install_dir"] = install_dir
         _settings["create_desktop"] = self.create_desktop_row.isChecked()
         _settings["create_shortcut"] = self.shortcut_row.isChecked()
@@ -652,6 +831,9 @@ class SettingsPage(QWidget):
         _settings["portable_config"] = self.portable_config_row.isChecked()
         _settings["auto_scan_before_install"] = self.auto_scan_row.isChecked()
         _settings["auto_update_apps"] = self.auto_update_apps_row.isChecked()
+        _settings["delta_updates"] = self.delta_updates_row.isChecked()
+        _settings["tray_enabled"] = self.tray_enabled_row.isChecked()
+        _settings["close_to_tray"] = self.close_to_tray_row.isChecked()
         _settings["update_check_interval"] = self.update_interval_combo.currentText()
         _settings["icon_in_theme"] = self.icon_theme_radio.isChecked()
         _settings["sandbox_default_enabled"] = self.shield_enabled_row.isChecked()
@@ -667,8 +849,77 @@ class SettingsPage(QWidget):
         _settings["sound_volume_notifications"] = self.notif_volume_slider.value() / 100.0
         _settings["privacy_allow_update_checks"] = self.privacy_updates_row.isChecked()
         _settings["theme_mode"] = self.theme_combo.currentData()
+        _settings["virustotal_api_key"] = self.vt_key_edit.text().strip()
+        _settings["store_index_url"] = self.store_url_edit.text().strip()
         save_settings()
+        from niruvi.core.plugins import emit
+
+        emit("settings_changed", keys=changed)
         return True
+
+    def _changed_keys(self) -> list:
+        changed = []
+        pairs = [
+            ("install_dir", self.install_dir_edit.text(), _settings.get("install_dir", DEFAULT_INSTALL_DIR)),
+            ("create_desktop", self.create_desktop_row.isChecked(), _settings.get("create_desktop", True)),
+            ("create_shortcut", self.shortcut_row.isChecked(), _settings.get("create_shortcut", False)),
+            ("portable_home", self.portable_home_row.isChecked(), _settings.get("portable_home", False)),
+            ("portable_config", self.portable_config_row.isChecked(), _settings.get("portable_config", False)),
+            (
+                "auto_scan_before_install",
+                self.auto_scan_row.isChecked(),
+                _settings.get("auto_scan_before_install", True),
+            ),
+            ("auto_update_apps", self.auto_update_apps_row.isChecked(), _settings.get("auto_update_apps", False)),
+            ("delta_updates", self.delta_updates_row.isChecked(), _settings.get("delta_updates", True)),
+            ("tray_enabled", self.tray_enabled_row.isChecked(), _settings.get("tray_enabled", True)),
+            ("close_to_tray", self.close_to_tray_row.isChecked(), _settings.get("close_to_tray", False)),
+            (
+                "update_check_interval",
+                self.update_interval_combo.currentText(),
+                _settings.get("update_check_interval", "weekly"),
+            ),
+            ("icon_in_theme", self.icon_theme_radio.isChecked(), _settings.get("icon_in_theme", True)),
+            (
+                "sandbox_default_enabled",
+                self.shield_enabled_row.isChecked(),
+                _settings.get("sandbox_default_enabled", True),
+            ),
+            (
+                "sandbox_default_backend",
+                self.backend_combo.currentData(),
+                _settings.get("sandbox_default_backend", "shield"),
+            ),
+            ("auto_remove_source", self.remove_source_row.isChecked(), _settings.get("auto_remove_source", False)),
+            ("sound_effects_enabled", self.sound_effects_row.isChecked(), _settings.get("sound_effects_enabled", True)),
+            (
+                "sound_feedback_enabled",
+                self.sound_feedback_row.isChecked(),
+                _settings.get("sound_feedback_enabled", True),
+            ),
+            (
+                "sound_navigation_enabled",
+                self.sound_navigation_row.isChecked(),
+                _settings.get("sound_navigation_enabled", True),
+            ),
+            (
+                "sound_notifications_enabled",
+                self.sound_notifications_row.isChecked(),
+                _settings.get("sound_notifications_enabled", True),
+            ),
+            (
+                "privacy_allow_update_checks",
+                self.privacy_updates_row.isChecked(),
+                _settings.get("privacy_allow_update_checks", True),
+            ),
+            ("theme_mode", self.theme_combo.currentData(), _settings.get("theme_mode", "auto")),
+            ("virustotal_api_key", self.vt_key_edit.text().strip(), _settings.get("virustotal_api_key", "").strip()),
+            ("store_index_url", self.store_url_edit.text().strip(), _settings.get("store_index_url", "").strip()),
+        ]
+        for key, new, old in pairs:
+            if new != old:
+                changed.append(key)
+        return changed
 
 
 class SettingsDialog(QDialog):

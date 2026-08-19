@@ -2,7 +2,7 @@
 
 Supports multiple backends:
   - SHIELD: native process hardening (rlimits, mlockall, ptrace disable)
-           + portable .home/.config (like AppManager)
+           + portable .home/.config
            + user namespace unsharing
            + Landlock LSM (Linux 5.13+) file system sandboxing
            + seccomp-bpf syscall filtering
@@ -20,6 +20,7 @@ import ctypes
 import ctypes.util
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -48,6 +49,9 @@ RLIMIT_NOFILE = 7
 RLIMIT_FSIZE = 1
 RLIMIT_CORE = 4
 RLIMIT_STACK = 3
+RLIMIT_CPU = 0
+RLIMIT_AS = 9
+RLIMIT_DATA = 2
 
 SECCOMP_SET_MODE_FILTER = 1
 
@@ -132,20 +136,63 @@ def _apply_ptrace_scope():
         logger.debug("PR_SET_PTRACER: %s", e)
 
 
-_SECCOMP_BLOCKED_SYSCALLS: dict[str, int] = {
-    "kexec_load": 246,
-    "process_vm_readv": 310,
-    "process_vm_writev": 311,
-    "kexec_file_load": 320,
-    "bpf": 321,
-    "userfaultfd": 323,
-    "iopl": 172,
-    "ioperm": 173,
-    "swapon": 87,
-    "swapoff": 88,
-    "pivot_root": 155,
-    "syslog": 103,
+_SECCOMP_SYSCALLS: dict[str, dict[str, int]] = {
+    "x86_64": {
+        "kexec_load": 246,
+        "process_vm_readv": 310,
+        "process_vm_writev": 311,
+        "kexec_file_load": 320,
+        "bpf": 321,
+        "userfaultfd": 323,
+        "iopl": 172,
+        "ioperm": 173,
+        "swapon": 87,
+        "swapoff": 88,
+        "pivot_root": 155,
+        "syslog": 103,
+    },
+    "aarch64": {
+        "kexec_load": 104,
+        "process_vm_readv": 270,
+        "process_vm_writev": 271,
+        "kexec_file_load": 294,
+        "bpf": 280,
+        "userfaultfd": 282,
+        "pivot_root": 41,
+        "swapon": 95,
+        "swapoff": 96,
+        "syslog": 116,
+    },
 }
+
+_AUDIT_ARCH: dict[str, int] = {
+    "x86_64": 0xC000003E,
+    "i386": 0x40000003,
+    "aarch64": 0xC00000B7,
+    "arm": 0x40000028,
+    "riscv64": 0xC00000F3,
+}
+
+
+def _seccomp_syscalls_for_arch() -> dict[str, int] | None:
+    """Return the blocked syscall table for the current architecture, if known."""
+    import platform
+
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return _SECCOMP_SYSCALLS["x86_64"]
+    if machine in ("aarch64", "arm64"):
+        return _SECCOMP_SYSCALLS["aarch64"]
+    if machine in ("i386", "i686", "arm", "armv7l", "riscv64"):
+        # No reliable syscall table — skip seccomp rather than risk killing apps.
+        return None
+    return None
+
+
+def _bpf(code, jt, jf, k) -> bytes:
+    import struct
+
+    return struct.pack("<HBBI", code, jt, jf, k)
 
 
 def _build_seccomp_filter() -> bytes:
@@ -163,7 +210,7 @@ def _build_seccomp_filter() -> bytes:
           __u32 k;     // generic multiuse field
       };
     """
-    import struct
+    import platform
 
     BPF_LD = 0x00
     BPF_W = 0x00
@@ -174,24 +221,24 @@ def _build_seccomp_filter() -> bytes:
     SECCOMP_RET_KILL = 0x00000000
     SECCOMP_RET_ALLOW = 0x7FFF0000
 
+    syscalls = _seccomp_syscalls_for_arch()
+    machine = platform.machine().lower()
+    audit_arch = _AUDIT_ARCH.get(machine)
+    if syscalls is None or audit_arch is None:
+        # Allow-everything filter — never kills the app, but the caller
+        # should skip seccomp entirely in that case.
+        return _bpf(BPF_RET, 0, 0, SECCOMP_RET_ALLOW)
+
     arch_offset = 4
     nr_offset = 0
 
-    instructions = []
-
-    def _bpf(code, jt, jf, k):
-        return struct.pack("<HBBI", code, jt, jf, k)
-
-    instructions.append(_bpf(BPF_LD | BPF_W | BPF_ABS, 0, 0, arch_offset))
-
-    AUDIT_ARCH_X86_64 = 0xC000003E
-    instructions.append(_bpf(BPF_JMP | BPF_JEQ, 0, 1, AUDIT_ARCH_X86_64))
+    instructions = [_bpf(BPF_LD | BPF_W | BPF_ABS, 0, 0, arch_offset)]
+    instructions.append(_bpf(BPF_JMP | BPF_JEQ, 0, 1, audit_arch))
     instructions.append(_bpf(BPF_RET, 0, 0, SECCOMP_RET_KILL))
 
     instructions.append(_bpf(BPF_LD | BPF_W | BPF_ABS, 0, 0, nr_offset))
 
-    blocked = sorted(set(_SECCOMP_BLOCKED_SYSCALLS.values()))
-    for nr in blocked:
+    for nr in sorted(set(syscalls.values())):
         instructions.append(_bpf(BPF_JMP | BPF_JEQ, 0, 1, nr))
         instructions.append(_bpf(BPF_RET, 0, 0, SECCOMP_RET_KILL))
 
@@ -201,8 +248,19 @@ def _build_seccomp_filter() -> bytes:
 
 
 def _apply_seccomp():
-    """Apply seccomp-bpf filter to block dangerous syscalls."""
+    """Apply seccomp-bpf filter to block dangerous syscalls.
+
+    Skipped on architectures without a known syscall table so that
+    non-x86_64/aarch64 apps are never killed by an incorrect filter.
+    """
     try:
+        import platform
+
+        syscalls = _seccomp_syscalls_for_arch()
+        machine = platform.machine().lower()
+        if syscalls is None or machine not in _AUDIT_ARCH:
+            logger.debug("seccomp: skipping, no syscall table for arch %r", machine)
+            return
         libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
         libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
         libc.prctl.restype = ctypes.c_int
@@ -245,7 +303,52 @@ def _apply_landlock(paths_readonly: list[str], paths_rw: list[str]):
         logger.debug("Landlock restrict failed: %s", e)
 
 
-def _make_preexec(ro_paths: list[str] | None = None, rw_paths: list[str] | None = None):
+def _parse_size_limit(value: str) -> int | None:
+    """Parse a size string like '512M', '2G', '1073741824' into bytes."""
+    if not value:
+        return None
+    m = re.match(r"^\s*(\d+(?:\.\d+)?)\s*([kmg]?)\s*$", value.strip().lower())
+    if not m:
+        logger.debug("Unparseable size limit: %r", value)
+        return None
+    number, suffix = m.group(1), m.group(2)
+    mult = {"": 1, "k": 1024, "m": 1024 * 1024, "g": 1024 * 1024 * 1024}[suffix]
+    return int(float(number) * mult)
+
+
+def _apply_resource_limits(memory_limit: str = "", cpu_limit: str = ""):
+    """Apply RLIMIT_AS/DATA (memory) and RLIMIT_CPU from ShieldConfig."""
+    mem = _parse_size_limit(memory_limit)
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        libc.getrlimit.argtypes = [ctypes.c_int, ctypes.c_void_p]
+        libc.setrlimit.argtypes = [ctypes.c_int, ctypes.c_void_p]
+        libc.getrlimit.restype = ctypes.c_int
+        libc.setrlimit.restype = ctypes.c_int
+
+        if mem:
+            for resource in (RLIMIT_AS, RLIMIT_DATA):
+                current = _RLimit()
+                if libc.getrlimit(resource, ctypes.byref(current)) == 0 and mem < current.rlim_cur:
+                    rl = _RLimit(mem, mem)
+                    libc.setrlimit(resource, ctypes.byref(rl))
+        if cpu_limit:
+            try:
+                seconds = int(float(cpu_limit))
+            except ValueError:
+                seconds = 0
+            if seconds > 0:
+                current = _RLimit()
+                if libc.getrlimit(RLIMIT_CPU, ctypes.byref(current)) == 0 and seconds < current.rlim_cur:
+                    rl = _RLimit(seconds, min(seconds + 5, current.rlim_max))
+                    libc.setrlimit(RLIMIT_CPU, ctypes.byref(rl))
+    except Exception as e:
+        logger.debug("Resource limits failed: %s", e)
+
+
+def _make_preexec(
+    ro_paths: list[str] | None = None, rw_paths: list[str] | None = None, memory_limit: str = "", cpu_limit: str = ""
+):
     """Return a preexec_fn closure that applies hardening + optional Landlock in the child."""
 
     def _preexec():
@@ -264,6 +367,11 @@ def _make_preexec(ro_paths: list[str] | None = None, rw_paths: list[str] | None 
             _apply_rlimits_ctypes()
         except Exception as e:
             logger.debug("rlimit hardening failed: %s", e)
+
+        try:
+            _apply_resource_limits(memory_limit, cpu_limit)
+        except Exception as e:
+            logger.debug("resource limit hardening failed: %s", e)
 
         try:
             with open("/proc/self/oom_score_adj", "w") as f:
@@ -583,9 +691,40 @@ def _bridge_audio_config(portable_home: str):
         pass
 
 
+class _ProcessWatchdog:
+    """Kills a sandboxed process group after a wall-clock timeout."""
+
+    def __init__(self, proc: subprocess.Popen, timeout_seconds: int):
+        self._proc = proc
+        self._timeout = timeout_seconds
+        self._thread: threading.Thread | None = None
+
+    def start(self):
+        self._thread = threading.Thread(target=self._watch, daemon=True)
+        self._thread.start()
+
+    def _watch(self):
+        try:
+            self._proc.wait(timeout=self._timeout)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        if self._proc.poll() is None:
+            logger.warning("Sandbox watchdog: killing process after %d s timeout", self._timeout)
+            try:
+                os.killpg(os.getpgid(self._proc.pid), 9)
+            except (ProcessLookupError, PermissionError):
+                pass
+            try:
+                self._proc.kill()
+            except Exception:
+                pass
+
+
 class Shield:
     def __init__(self, config: ShieldConfig):
         self.config = config
+        self._watchdog: _ProcessWatchdog | None = None
 
     def run(self, cmd: list[str], cwd: str | None = None, env: dict | None = None) -> subprocess.Popen | None:
         if not self.config.enabled:
@@ -635,13 +774,36 @@ class Shield:
             ro_paths = None
             rw_paths = None
             if self.config.landlock:
-                ro_paths = ["/usr", "/etc", "/lib", "/lib64"]
+                ro_paths = ["/usr", "/etc", "/lib", "/lib64", "/bin", "/sbin"]
                 rw_paths = []
+                if app_dir and os.path.isdir(app_dir):
+                    ro_paths.append(app_dir)
+                runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "")
+                if runtime_dir and os.path.isdir(runtime_dir):
+                    rw_paths.append(runtime_dir)
+                home = os.path.expanduser("~")
                 if self.config.portable_home and app_dir:
                     rw_paths.append(os.path.join(app_dir, ".home"))
+                elif not self.config.portable_home:
+                    rw_paths.append(home)
                 if self.config.portable_config and app_dir:
                     rw_paths.append(os.path.join(app_dir, ".config"))
-            preexec_fn = _make_preexec(ro_paths, rw_paths)
+                elif not self.config.portable_config:
+                    rw_paths.append(os.path.join(home, ".config"))
+            preexec_fn = _make_preexec(
+                ro_paths,
+                rw_paths,
+                memory_limit=self.config.memory_limit,
+                cpu_limit=self.config.cpu_limit,
+            )
+        elif self.config.memory_limit or self.config.cpu_limit:
+            # Resource limits apply even when hardening is disabled
+            preexec_fn = _make_preexec(
+                None,
+                None,
+                memory_limit=self.config.memory_limit,
+                cpu_limit=self.config.cpu_limit,
+            )
         else:
             preexec_fn = None
 
@@ -650,18 +812,31 @@ class Shield:
         if self.config.portable_config and app_dir:
             os.makedirs(os.path.join(app_dir, ".config"), exist_ok=True)
 
+        if self.config.private_tmp and app_dir:
+            app_tmp = os.path.join(app_dir, ".tmp")
+            os.makedirs(app_tmp, exist_ok=True)
+            env["TMPDIR"] = app_tmp
+            env["TMP"] = app_tmp
+            env["TEMP"] = app_tmp
+
         cmd_to_run = cmd
         if self.config.use_namespace and not self.config.enable_network:
-            runner = ["unshare", "--user", "--mount", "--net"]
+            runner = ["unshare", "--map-root-user", "--mount", "--net"]
             cmd_to_run = runner + cmd
 
-        return subprocess.Popen(
+        p = subprocess.Popen(
             cmd_to_run,
             cwd=cwd or os.getcwd(),
             env=env,
             start_new_session=True,
             preexec_fn=preexec_fn,
         )
+
+        if self.config.timeout and self.config.timeout > 0:
+            self._watchdog = _ProcessWatchdog(p, self.config.timeout)
+            self._watchdog.start()
+
+        return p
 
     def _run_firejail(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen | None:
         app_dir = cwd or ""
@@ -702,6 +877,7 @@ class Shield:
 
     def _run_bwrap(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen | None:
         app_dir = cwd or ""
+        home = env.get("HOME") or os.path.expanduser("~")
         bwrap_cmd = [
             "bwrap",
             "--unshare-all",
@@ -725,15 +901,24 @@ class Shield:
         bwrap_cmd.extend(["--symlink", "/usr/lib", "/lib"])
         bwrap_cmd.extend(["--symlink", "/usr/lib64", "/lib64"])
 
+        if app_dir and os.path.isdir(app_dir):
+            bwrap_cmd.extend(["--ro-bind", app_dir, app_dir])
+
         if self.config.portable_home and app_dir:
             home_dir = os.path.join(app_dir, ".home")
             os.makedirs(home_dir, exist_ok=True)
-            bwrap_cmd.extend(["--bind", home_dir, os.path.expanduser("~")])
+            bwrap_cmd.extend(["--bind", home_dir, home])
+        elif os.path.isdir(os.path.expanduser("~")):
+            bwrap_cmd.extend(["--bind", os.path.expanduser("~"), home])
 
         if self.config.portable_config and app_dir:
             cfg_dir = os.path.join(app_dir, ".config")
             os.makedirs(cfg_dir, exist_ok=True)
-            bwrap_cmd.extend(["--bind", cfg_dir, os.path.expanduser("~/.config")])
+            bwrap_cmd.extend(["--bind", cfg_dir, os.path.join(home, ".config")])
+
+        runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "")
+        if runtime_dir and os.path.isdir(runtime_dir):
+            bwrap_cmd.extend(["--bind", runtime_dir, runtime_dir])
 
         if self.config.private_tmp:
             app_tmp = os.path.join(app_dir or os.getcwd(), ".tmp")

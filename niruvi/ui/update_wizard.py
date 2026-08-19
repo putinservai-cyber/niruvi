@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.app.update_sources import UpdateInfo, resolve_update_source
-from niruvi.core.worker import DownloadWorker, extract_appimage_sync
+from niruvi.core.worker import DownloadWorker, extract_appimage_sync, start_worker
 from niruvi.desktop.desktop_utils import get_version, refresh_desktop_database
 from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.utils import get_icon
@@ -333,6 +333,15 @@ class UpdateInstallWorker(QThread):
 
             self.task_changed.emit("Cleaning temporary files...", 95)
             if os.path.isfile(self.downloaded_path):
+                from niruvi.config import get_settings
+
+                if get_settings().get("delta_updates", True):
+                    seed_target = os.path.join(self.dest_dir, f"{self.app_name}.AppImage")
+                    try:
+                        shutil.copy2(self.downloaded_path, seed_target)
+                        os.chmod(seed_target, 0o755)
+                    except OSError as e:
+                        self.log_message.emit(f"Could not keep delta seed: {e}")
                 Path(self.downloaded_path).unlink(missing_ok=True)
             if self._backup_dir and os.path.isdir(self._backup_dir):
                 shutil.rmtree(self._backup_dir, ignore_errors=True)
@@ -508,14 +517,24 @@ class UpdateWizard(QWizard):
         fd, self._downloaded_path = tempfile.mkstemp(suffix=".AppImage")
         os.close(fd)
 
+        seed_path = ""
+        from niruvi.config import get_settings
+
+        if get_settings().get("delta_updates", True):
+            from niruvi.desktop.appimageupdate import find_appimage_in_dir
+
+            seed_path = find_appimage_in_dir(self.app_dir) or ""
+
         self._download_worker = DownloadWorker(
             self._update_info.download_url,
             self._downloaded_path,
             self._update_info.sha256 or "",
             self,
+            seed_path=seed_path,
         )
         self._download_worker.progress_updated.connect(self._download_page.update_progress)
         self._download_worker.speed_updated.connect(self._download_page.update_speed)
+        self._download_worker.status_changed.connect(lambda s: self._download_page.status_label.setText(s))
         self._download_worker.finished.connect(self._on_download_finished)
         self._download_worker.error.connect(self._on_download_error)
 
@@ -535,7 +554,7 @@ class UpdateWizard(QWizard):
             logger.debug("Failed to get download content length: %s", e, exc_info=True)
             self._download_total = 0
         self._download_page.update_downloaded(0, self._download_total)
-        self._download_worker.start()
+        start_worker(self._download_worker)
 
     def _update_download_eta(self):
         if not self._downloaded_path or not os.path.isfile(self._downloaded_path):
@@ -586,7 +605,7 @@ class UpdateWizard(QWizard):
         self._install_worker.log_message.connect(self._install_page.append_log)
         self._install_worker.finished.connect(self._on_install_finished)
         self._install_worker.error.connect(self._on_install_error)
-        self._install_worker.start()
+        start_worker(self._install_worker)
 
     def _on_install_finished(self):
         from niruvi.utils.sound_manager import play as play_sound
@@ -620,10 +639,10 @@ class UpdateWizard(QWizard):
         play_sound("navigation")
         if self._download_worker and self._download_worker.isRunning():
             self._download_worker.cancel()
-            self._download_worker.wait()
+            self._download_worker.wait(2000)
         if self._install_worker and self._install_worker.isRunning():
             self._install_worker.rollback()
-            self._install_worker.wait()
+            self._install_worker.wait(2000)
         self._cleanup()
         super().reject()
 

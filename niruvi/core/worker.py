@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.request
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -12,6 +13,41 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from niruvi.core.scanner import extract_safely
 
 logger = logging.getLogger(__name__)
+
+_live_workers: list[QThread] = []
+
+
+def start_worker(worker: QThread) -> None:
+    """Start a QThread worker and keep it referenced until it finishes.
+
+    Prevents the Qt fatal "QThread: Destroyed while thread is still running"
+    (SIGABRT) that happens when a running worker's last Python reference is
+    dropped — e.g. a slot reassigns the worker attribute or a dialog is
+    closed mid-operation.
+    """
+    if worker not in _live_workers:
+        _live_workers.append(worker)
+        worker.finished.connect(lambda w=worker: _finish_worker(w))
+    worker.start()
+
+
+def _finish_worker(worker: QThread) -> None:
+    if worker in _live_workers:
+        _live_workers.remove(worker)
+    worker.deleteLater()
+
+
+def wait_for_workers(timeout_ms: int = 10000) -> None:
+    """Wait for still-running workers. Call after the event loop has exited."""
+    deadline = time.monotonic() * 1000 + timeout_ms
+    for worker in list(_live_workers):
+        if not worker.isRunning():
+            continue
+        remaining = deadline - time.monotonic() * 1000
+        if remaining <= 0:
+            break
+        worker.wait(int(remaining))
+
 
 _REMOVABLE_PREFIXES = ("mtp:", "gvfs", "/media/", "/run/media/", "/mnt/")
 
@@ -133,7 +169,35 @@ def extract_appimage_sync(appimage_path: str, dest_dir: str) -> None:
     """Extract an AppImage synchronously (no Qt threading), atomic install."""
     with tempfile.TemporaryDirectory() as extract_dir:
         extracted_dir = _run_extraction(appimage_path, extract_dir)
+        _check_junest_destination(extracted_dir, dest_dir)
         _atomic_install(extracted_dir, dest_dir)
+
+
+def _check_junest_destination(extracted_dir: str, dest_dir: str) -> None:
+    """Refuse to install a JuNest container app into a path with spaces.
+
+    JuNest's bundled bubblewrap/proot scripts word-split unquoted shell
+    variables, so any space in the path breaks the app at launch.  Raising
+    here happens *before* anything is copied to the destination.
+    """
+    from niruvi.installer.junest import JunestPathError, junest_destination_error
+
+    error = junest_destination_error(extracted_dir, dest_dir)
+    if error:
+        from niruvi.installer.junest import suggest_space_free_path
+
+        logger.error("Refusing JuNest install into path with spaces: %s", dest_dir)
+        raise JunestPathError(
+            error,
+            suggested_path=suggest_space_free_path(dest_dir),
+        )
+
+
+def _check_junest_destination_soft(extracted_dir: str, dest_dir: str) -> str | None:
+    """Non-raising variant for the GUI worker: returns the error message or None."""
+    from niruvi.installer.junest import junest_destination_error
+
+    return junest_destination_error(extracted_dir, dest_dir)
 
 
 class ExtractionWorker(QThread):
@@ -164,6 +228,12 @@ class ExtractionWorker(QThread):
                 )
                 if _proc_tracker:
                     self._process = _proc_tracker[0]
+
+                junest_error = _check_junest_destination_soft(extracted_dir_path, self.dest_dir)
+                if junest_error:
+                    self.log_message.emit(f"ERROR: {junest_error}")
+                    self.extraction_error.emit("JUNEST_PATH:" + junest_error)
+                    return
 
                 self.progress_updated.emit(50)
                 self.log_message.emit("Extraction complete. Copying files...")
@@ -202,22 +272,62 @@ class ExtractionWorker(QThread):
 
 
 class DownloadWorker(QThread):
-    """Downloads an AppImage from a URL with progress reporting."""
+    """Downloads an AppImage from a URL with progress reporting.
+
+    When `seed_path` points at a previous copy of the file, a zsync
+    delta transfer is attempted first (HTTP Range requests for only the
+    changed blocks), falling back to a full download on any failure.
+    """
 
     progress_updated = pyqtSignal(int)
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
     speed_updated = pyqtSignal(str)
+    status_changed = pyqtSignal(str)
 
-    def __init__(self, url: str, dest_path: str, expected_sha256: str = "", parent=None):
+    def __init__(
+        self,
+        url: str,
+        dest_path: str,
+        expected_sha256: str = "",
+        parent=None,
+        seed_path: str = "",
+    ):
         super().__init__(parent)
         self.url = url
         self.dest_path = dest_path
         self.expected_sha256 = expected_sha256
+        self.seed_path = seed_path
         self._cancelled = False
 
     def run(self):
         try:
+            if self.seed_path and self.url.startswith(("http://", "https://")):
+                self.status_changed.emit("Checking for delta update (.zsync)...")
+                from niruvi.desktop.zsync import try_delta_download
+
+                def on_progress(got: int, total: int):
+                    if total > 0:
+                        self.progress_updated.emit(int((got / total) * 100))
+
+                ok, msg = try_delta_download(self.url, self.seed_path, self.dest_path, progress_cb=on_progress)
+                if self._cancelled:
+                    self.error.emit("cancelled")
+                    return
+                if ok:
+                    if self.expected_sha256:
+                        with open(self.dest_path, "rb") as f:
+                            actual_sha = hashlib.sha256(f.read()).hexdigest()
+                        if actual_sha.lower() != self.expected_sha256.lower():
+                            self.error.emit(f"SHA256 mismatch\nExpected: {self.expected_sha256}\nActual: {actual_sha}")
+                            if os.path.exists(self.dest_path):
+                                os.unlink(self.dest_path)
+                            return
+                    self.status_changed.emit("Delta update applied")
+                    self.finished.emit(self.dest_path)
+                    return
+                self.status_changed.emit(f"Delta unavailable ({msg}) - downloading full file")
+
             from niruvi.utils.http import _create_ssl_context
 
             resp = urllib.request.urlopen(self.url, timeout=120, context=_create_ssl_context())
@@ -233,6 +343,7 @@ class DownloadWorker(QThread):
             with open(self.dest_path, "wb") as f:
                 while True:
                     if self._cancelled:
+                        self.error.emit("cancelled")
                         return
                     chunk = resp.read(chunk_size)
                     if not chunk:
@@ -273,6 +384,7 @@ class InstallQueueWorker(QThread):
     task_progress = pyqtSignal(int)
     task_finished = pyqtSignal(str)
     task_error = pyqtSignal(str)
+    task_log = pyqtSignal(str)
     all_finished = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -303,6 +415,7 @@ class InstallQueueWorker(QThread):
             worker.progress_updated.connect(self.task_progress.emit)
             worker.extraction_finished.connect(self.task_finished.emit)
             worker.extraction_error.connect(self.task_error.emit)
+            worker.log_message.connect(self.task_log.emit)
             worker.run()
             worker.wait()
 

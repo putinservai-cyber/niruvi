@@ -6,6 +6,7 @@ from PyQt6.QtGui import QColor, QIcon, QPalette, QPixmap, QPixmapCache
 from PyQt6.QtWidgets import QApplication
 
 _svg_cache: dict[str, str] = {}
+_svg_path_cache: dict[str, str] = {}
 _known_icon_names: set[str] = set()
 _colorized_dir: str | None = None
 _icon_theme_initialized = False
@@ -59,17 +60,21 @@ def _load_svg(name: str) -> str | None:
             try:
                 with open(svg_path) as f:
                     _svg_cache[name] = f.read()
+                    _svg_path_cache[name] = svg_path
                     return _svg_cache[name]
             except OSError:
                 pass
     return None
 
 
-def _get_colorized_dir() -> str:
+def _get_colorized_dir() -> str | None:
     global _colorized_dir
     if _colorized_dir is None:
         _colorized_dir = os.path.join(tempfile.gettempdir(), "niruvi_phosphor")
-        os.makedirs(_colorized_dir, exist_ok=True)
+        try:
+            os.makedirs(_colorized_dir, exist_ok=True)
+        except OSError:
+            _colorized_dir = None
     return _colorized_dir
 
 
@@ -82,19 +87,24 @@ def _current_color_hex() -> str:
     return f"#{color.red():02x}{color.green():02x}{color.blue():02x}"
 
 
-def _colorized_icon_path(name: str, svg: str) -> str:
-    dest = os.path.join(_get_colorized_dir(), f"{name}.svg")
-    colored = svg.replace("currentColor", _current_color_hex())
-    with open(dest, "w") as f:
-        f.write(colored)
-    _known_icon_names.add(name)
-    return dest
+def _colorized_icon_path(name: str, svg: str) -> str | None:
+    d = _get_colorized_dir()
+    if d is None:
+        return None
+    dest = os.path.join(d, f"{name}.svg")
+    try:
+        with open(dest, "w") as f:
+            f.write(svg.replace("currentColor", _current_color_hex()))
+        _known_icon_names.add(name)
+        return dest
+    except OSError:
+        return None
 
 
 def _rebuild_icons():
     d = _get_colorized_dir()
-    if not os.path.isdir(d):
-        os.makedirs(d, exist_ok=True)
+    if d is None:
+        return
     color = _current_color_hex()
     for name in list(_known_icon_names):
         svg = _load_svg(name)
@@ -134,6 +144,8 @@ def get_icon(*names: str) -> QIcon:
         svg = _load_svg(name)
         if svg:
             path = _colorized_icon_path(name, svg)
+            if path is None:
+                path = _svg_path_cache.get(name)
             icon = QIcon(path)
             if not icon.isNull():
                 return icon

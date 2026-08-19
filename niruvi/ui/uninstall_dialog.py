@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
     QWizardPage,
 )
 
+from niruvi.core.worker import start_worker
 from niruvi.desktop.desktop_utils import (
     find_desktop_for_app,
     find_desktop_shortcut,
@@ -542,7 +543,7 @@ class UninstallWizard(QWizard):
         self.worker.step_changed.connect(self._progress_page.update_step)
         self.worker.finished.connect(self._on_finished)
         self.worker.error.connect(self._on_error)
-        self.worker.start()
+        start_worker(self.worker)
 
     def _start_repair(self):
         self.button(QWizard.WizardButton.BackButton).setEnabled(False)

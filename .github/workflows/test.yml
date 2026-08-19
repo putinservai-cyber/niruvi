@@ -44,6 +44,13 @@ jobs:
           from niruvi.ui.manager import AppManager
           from niruvi.build.page import BuildWorker
           from niruvi.core.signing import list_secret_keys
+          from niruvi.core.plugin import EventPlugin
+          from niruvi.core.plugins import reload_plugins
+          from niruvi.app.tags import infer_tags
+          from niruvi.app.store import fetch_index
+          from niruvi.app.virustotal import scan_file
+          from niruvi.ui.store_dialog import StoreDialog
+          from niruvi.launcher import run_app_headless
           from niruvi.desktop.installation_registry import InstallationRegistry
           from niruvi.app.health_check import check_system_compatibility
           from niruvi.utils import get_icon
