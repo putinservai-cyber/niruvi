@@ -4,6 +4,18 @@
   <img src="asset/screenshot/Screenshot_20260627_152504.png" alt="Niruvi Main Window" width="720">
 </p>
 
+<p align="center">
+  <a href="https://ko-fi.com/putinservai">
+    <img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Ko--fi-FF5E5B" alt="Buy me a coffee">
+  </a>
+  
+  </a>
+  <a href="https://github.com/putinservai-cyber/niruvi/releases">
+    <img src="https://img.shields.io/github/v/release/putinservai-cyber/niruvi" alt="Latest release">
+  </a>
+  <img src="https://img.shields.io/github/license/putinservai-cyber/niruvi" alt="License">
+</p>
+
 Niruvi is a desktop application for **installing**, **managing**, **updating**, and **building**
 AppImage applications on Linux. It combines a clean Qt6 interface with robust safety features
 and a powerful AppImage builder that supports both traditional packages and local project folders.
@@ -203,6 +215,10 @@ Settings are stored in `~/.config/niruvi/settings.json`. Open **File → Setting
 | `icon_in_theme` | `true` | Install app icons to the XDG icon theme |
 | `check_updates` | `true` | Automatically check for Niruvi updates |
 
+The installed-app registry is stored in `~/.config/niruvi/registry.db`
+(SQLite with per-row HMAC integrity checks; legacy `registry.json` files are
+auto-migrated on first run).
+
 ---
 
 ## Security
@@ -230,45 +246,68 @@ niruvi/                         # Core application package
 ├── __init__.py                 # Package exports
 ├── __main__.py                 # Entry point for `python -m niruvi`
 ├── _version.py                 # Version string
-├── appimage_assets.py          # Asset extraction from AppImage files
-├── appimage_metadata.py        # ELF header parsing and metadata
-├── app_info_dialog.py          # App info dialog (details, customization, GPU)
-├── background_updater.py       # Background update checker thread
-├── build_dialog.py             # AppImage build dialog (Qt6 UI)
-├── build_page.py               # Build worker thread and utilities
-├── builder_bootstrap.py        # Install script generation
-├── constants.py                # Application-wide constants
-├── desktop_utils.py            # .desktop entry and shortcut management
-├── health_check.py             # App health monitoring (staleness, FUSE check)
-├── help_dialog.py              # Built-in help system and license viewer
-├── hooks.py                    # Runtime hooks system (pre-launch scripts)
-├── icon_utils.py               # Icon format conversion utilities
-├── installation_registry.py    # JSON-based installation registry
 ├── main.py                     # CLI entry point and argument parsing
-├── manager.py                  # Main window (AppManager)
-├── report_dialog.py            # Error report and build summary dialogs
-├── report_page.py              # GitHub issues reporting page
-├── scanner.py                  # Static security analysis
-├── self_install.py             # Self-installing AppImage logic
-├── self_installer_wizard.py    # Self-installer Qt6 wizard
-├── self_update.py              # Automatic update checking and installation
-├── settings.py                 # Settings management
-├── toggle_switch.py            # Toggle switch widget
-├── uninstall_dialog.py         # Uninstall wizard
-├── update_sources.py           # Update source resolution (GitHub/GitLab/direct)
-├── utils.py                    # General utility functions
-├── wizard.py                   # Installation wizard
-└── worker.py                   # Extraction worker thread
+├── launcher.py                 # Headless sandbox-aware app launcher (--run)
+├── app/                        # Background services
+│   ├── background_updater.py   # Background update checker thread
+│   ├── health_check.py         # App health monitoring (staleness, FUSE check)
+│   ├── self_install.py         # Self-installing AppImage logic
+│   ├── self_update.py          # GPG-verified Niruvi self-update
+│   ├── store.py                # App store catalog
+│   ├── tags.py                 # App category tags
+│   ├── update_sources.py       # Update source resolution (GitHub/GitLab/direct)
+│   └── virustotal.py           # Opt-in VirusTotal scanning
+├── build/                      # AppImage builder
+│   ├── page.py                 # Build worker thread, package extraction
+│   └── appimage_builder.py     # AppDir assembly
+├── core/                       # Business logic (no UI)
+│   ├── broker.py               # Sandbox permission broker daemon
+│   ├── hooks.py                # Pre-launch hook system
+│   ├── manifest.py             # AppDir manifest validation
+│   ├── plugins.py              # Plugin event system
+│   ├── repair.py               # App repair / re-integration
+│   ├── sandbox.py              # Shield/firejail/bwrap sandbox backends
+│   ├── scanner.py              # Static security analysis (no execution)
+│   ├── verification.py         # SHA-256 / GPG / desktop-file verification
+│   └── worker.py               # Extraction/download QThread workers
+├── desktop/                    # XDG desktop integration
+│   ├── appimage_assets.py      # Asset extraction from AppImages
+│   ├── appimage_metadata.py    # ELF/AppImage header parsing
+│   ├── desktop_utils.py        # .desktop entries, icons, MIME handlers
+│   ├── icon_utils.py           # Icon format conversion
+│   ├── installation_registry.py # SQLite registry (HMAC-signed rows)
+│   └── zsync.py                # Delta downloads via zsync/HTTP Range
+├── installer/                  # Generated install scripts
+│   ├── junest.py               # JuNest container path validation
+│   ├── sanitize.py             # Shell-injection-safe string sanitization
+│   └── scripts.py              # Install script template generation
+├── ui/                         # PyQt6 widgets/dialogs
+│   ├── manager.py              # Main window (AppManager)
+│   ├── settings.py             # Settings dialog
+│   ├── wizard.py               # Install wizard
+│   ├── build_wizard.py         # Build wizard
+│   ├── store_dialog.py         # App store dialog
+│   ├── self_installer_wizard.py# Self-installer wizard
+│   ├── uninstall_dialog.py     # Uninstall wizard
+│   ├── update_wizard.py        # App update wizard
+│   ├── app_info_dialog.py      # App info / GPU diagnostics
+│   ├── help_dialog.py          # Built-in help system
+│   ├── report_dialog.py        # Error report / build summary
+│   └── toggle_switch.py        # Toggle switch widget
+├── utils/                      # Shared helpers
+│   ├── http.py                 # Verified SSL HTTP helpers
+│   ├── integrity.py            # HMAC signing/verification
+│   ├── qt_compat.py            # Qt/AppImage platform-path shims
+│   ├── sound_manager.py        # Sound effect playback
+│   ├── styles.py               # Theme stylesheets
+│   └── theme_engine.py         # Dark/light theme switching
+tests/                          # Test suite (229 tests)
 asset/                          # Build assets
-├── LICENSE                     # GPL-3.0 license file
 ├── appimagetool-x86_64.AppImage
 ├── niruvi.desktop
 ├── niruvi.png
 ├── niruvi.svg
 ├── screenshot/                 # Application screenshots
-│   ├── Screenshot_20260627_152504.png
-│   ├── Screenshot_20260627_152628.png
-│   └── Screenshot_20260627_153009.png
 └── icons/                      # Phosphor icon theme (52 icons)
 ```
 
@@ -309,8 +348,23 @@ Niruvi incorporates the following open-source components:
 
 ---
 
-## Support
+## Support & Donations
 
-- **Documentation**: Press `F1` within the application
-- **Bug reports**: Use **Help → Report Issue** from the menu bar
-- **GitHub**: [https://github.com/putinservai-cyber/niruvi](https://github.com/putinservai-cyber/niruvi)
+Niruvi is developed and maintained by a single developer in their spare time.
+It is **free and open source** (GPL-3.0), with no ads, no telemetry, and no
+paywalls. If the project saves you time or you simply enjoy using it, please
+consider supporting the work:
+
+- ☕ **Buy me a coffee** — [ko-fi.com/putinservai](https://ko-fi.com/putinservai)
+- ❤️ **Become a GitHub Sponsor** — [github.com/sponsors/putinservai-cyber](https://github.com/sponsors/putinservai-cyber)
+
+Donations help cover hosting, code-signing keys, appimagetool tooling, and
+development time. Every contribution — however small — is genuinely appreciated.
+You can also support the project by:
+
+- ⭐ **Starring the repository** on GitHub
+- 🐛 **Reporting bugs** via **Help → Report Issue** or the [issue tracker](https://github.com/putinservai-cyber/niruvi/issues)
+- 🌐 **Translating** the app or **improving the documentation**
+- 💻 **Contributing code** — see [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Thank you! 🙏
