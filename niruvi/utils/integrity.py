@@ -1,8 +1,9 @@
 """Data integrity verification for Niruvi stored data.
 
 Provides HMAC-based integrity checking for JSON data files
-(settings.json, registry.json, permissions.json) to detect
-tampering or corruption.
+(settings.json, permissions.json) and per-row HMAC signing for the
+SQLite installation registry (registry.db) to detect tampering or
+corruption.
 """
 
 import hashlib

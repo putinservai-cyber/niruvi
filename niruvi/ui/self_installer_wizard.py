@@ -385,6 +385,8 @@ class InstallWorker(QThread):
 
     def _register_in_niruvi(self):
         try:
+            from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
+
             app_name = self.config.get("app_name", "")
             if not app_name:
                 return
@@ -397,43 +399,27 @@ class InstallWorker(QThread):
                 "NIRUVI_DATA_DIR",
                 os.path.expanduser("~/.config/niruvi"),
             )
-            registry_path = os.path.join(data_dir, "registry.json")
             os.makedirs(data_dir, exist_ok=True)
             sha256 = ""
             if self.self_appimage and os.path.isfile(self.self_appimage):
                 sha256 = _sha256_file(self.self_appimage)
-            record = {
-                "name": app_name,
-                "path": install_dir,
-                "version": version,
-                "install_date": datetime.now().isoformat(),
-                "install_type": "self-install",
-                "source_sha256": sha256,
-                "desktop_file": desktop_file,
-                "desktop_shortcut": desktop_file,
-                "update_url": self.config.get("updater_url", ""),
-                "architecture": "",
-                "display_name_override": self.config.get("brand_name", ""),
-                "custom_icon_path": "",
-                "env_vars": {},
-                "run_args": "",
-                "auto_update": False,
-                "update_channel": "stable",
-                "sandbox_config": {},
-            }
-            existing = []
-            if os.path.isfile(registry_path):
-                try:
-                    with open(registry_path) as f:
-                        existing = json.load(f)
-                except (json.JSONDecodeError, OSError):
-                    existing = []
-            existing = [r for r in existing if r.get("name") != app_name]
-            existing.append(record)
-            tmp = registry_path + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump(existing, f, indent=2)
-            os.replace(tmp, registry_path)
+            record = InstallationRecord(
+                name=app_name,
+                path=install_dir,
+                version=version,
+                install_date=datetime.now().isoformat(),
+                install_type="self-install",
+                source_sha256=sha256,
+                desktop_file=desktop_file,
+                desktop_shortcut=desktop_file,
+                update_url=self.config.get("updater_url", ""),
+                display_name_override=self.config.get("brand_name", ""),
+                sandbox_config={},
+            )
+            registry = InstallationRegistry()
+            registry.remove(app_name)
+            registry.add(record)
+            registry.flush()
             self.log.emit(f"Registered {app_name} in Niruvi ({install_dir})")
         except Exception as e:
             self.log.emit(f"Note: could not register in Niruvi: {e}")
@@ -474,23 +460,13 @@ class UninstallWorker(QThread):
         try:
             if not app_name:
                 return
-            data_dir = os.environ.get(
-                "NIRUVI_DATA_DIR",
-                os.path.expanduser("~/.config/niruvi"),
-            )
-            registry_path = os.path.join(data_dir, "registry.json")
-            if not os.path.isfile(registry_path):
+            from niruvi.desktop.installation_registry import InstallationRegistry
+
+            registry = InstallationRegistry()
+            if registry.get(app_name) is None:
                 return
-            with open(registry_path) as f:
-                records = json.load(f)
-            before = len(records)
-            records = [r for r in records if r.get("name") != app_name]
-            if len(records) == before:
-                return
-            tmp = registry_path + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump(records, f, indent=2)
-            os.replace(tmp, registry_path)
+            registry.remove(app_name)
+            registry.flush()
         except Exception as e:
             logger.debug("Failed to unregister from Niruvi: %s", e, exc_info=True)
 

@@ -88,7 +88,7 @@ def _migrate_old_data(data_dir: str):
     """Migrate settings + registry from ~/.config/niruvi/ to the new data dir."""
     if not os.path.isdir(OLD_CONFIG_DIR):
         return
-    for fname in ("settings.json", "registry.json"):
+    for fname in ("settings.json", "registry.json", "registry.db"):
         src = os.path.join(OLD_CONFIG_DIR, fname)
         dst = os.path.join(data_dir, fname)
         if os.path.isfile(src) and not os.path.isfile(dst):

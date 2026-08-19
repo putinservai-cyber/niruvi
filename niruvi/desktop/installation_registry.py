@@ -1,9 +1,74 @@
+"""SQLite-backed installation registry.
+
+Tracks installed AppImages in ``registry.db`` (SQLite) with metadata such as
+name, version, install date, source URL, sandbox config and tags. Each row is
+HMAC-signed so tampering is detected on load (same key as the JSON settings
+file). A legacy ``registry.json`` file is automatically migrated on first run.
+
+The public API (``add``/``remove``/``get``/``get_all``/``lookup_*``/``flush``)
+is unchanged from the previous JSON implementation, so callers do not need to
+know the storage backend.
+"""
+
+import json
+import logging
 import os
+import sqlite3
 import threading
 from datetime import datetime
 
 from niruvi.config import get_data_dir
-from niruvi.utils.integrity import read_json_with_hmac, write_json_with_hmac
+from niruvi.utils.integrity import read_json_with_hmac, sign_data, verify_data
+
+logger = logging.getLogger(__name__)
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS installed_apps (
+    name TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '',
+    install_date TEXT NOT NULL DEFAULT '',
+    install_type TEXT NOT NULL DEFAULT 'extract',
+    source_sha256 TEXT NOT NULL DEFAULT '',
+    desktop_file TEXT NOT NULL DEFAULT '',
+    desktop_shortcut TEXT NOT NULL DEFAULT '',
+    update_url TEXT NOT NULL DEFAULT '',
+    architecture TEXT NOT NULL DEFAULT '',
+    display_name_override TEXT NOT NULL DEFAULT '',
+    custom_icon_path TEXT NOT NULL DEFAULT '',
+    env_vars_json TEXT NOT NULL DEFAULT '{}',
+    run_args TEXT NOT NULL DEFAULT '',
+    auto_update INTEGER NOT NULL DEFAULT 0,
+    update_channel TEXT NOT NULL DEFAULT 'stable',
+    sandbox_config_json TEXT NOT NULL DEFAULT '{}',
+    size INTEGER NOT NULL DEFAULT 0,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    hmac TEXT NOT NULL DEFAULT ''
+)
+"""
+
+_COLUMNS = [
+    "name",
+    "path",
+    "version",
+    "install_date",
+    "install_type",
+    "source_sha256",
+    "desktop_file",
+    "desktop_shortcut",
+    "update_url",
+    "architecture",
+    "display_name_override",
+    "custom_icon_path",
+    "env_vars_json",
+    "run_args",
+    "auto_update",
+    "update_channel",
+    "sandbox_config_json",
+    "size",
+    "tags_json",
+    "hmac",
+]
 
 
 class InstallationRecord:
@@ -125,53 +190,126 @@ class InstallationRegistry:
             self._load()
             self._loaded = True
 
-    def _registry_file(self):
+    def _db_path(self):
+        return os.path.join(get_data_dir(), "registry.db")
+
+    def _legacy_json_path(self):
         return os.path.join(get_data_dir(), "registry.json")
 
+    def _connect(self) -> sqlite3.Connection:
+        db = self._db_path()
+        os.makedirs(os.path.dirname(db), exist_ok=True)
+        conn = sqlite3.connect(db, timeout=10)
+        conn.row_factory = sqlite3.Row
+        conn.execute(_SCHEMA)
+        return conn
+
     def _load(self):
-        rf = self._registry_file()
-        if not os.path.exists(rf):
+        db = self._db_path()
+        if os.path.exists(db):
+            self._load_db()
             return
-        raw = read_json_with_hmac(rf)
-        if raw is None:
+        legacy = self._legacy_json_path()
+        if os.path.exists(legacy):
+            self._migrate_from_json(legacy)
+
+    def _load_db(self):
+        conn = None
+        try:
+            conn = self._connect()
+            rows = conn.execute("SELECT * FROM installed_apps").fetchall()
+        except sqlite3.Error as e:
+            logger.warning("Could not read SQLite registry: %s", e)
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
             return
-        data = raw
-        items = []
-        if isinstance(data, dict):
-            items = data.get("records", [])
-            if not items:
-                items = [v for v in data.values() if isinstance(v, dict) and "name" in v]
-        elif isinstance(data, list):
-            items = data
-        for item in items:
-            record = InstallationRecord.from_dict(item)
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+        for row in rows:
+            record_dict = _row_to_record_dict(row)
+            stored_hmac = row["hmac"] or ""
+            if stored_hmac and not verify_data(record_dict, stored_hmac):
+                logger.warning("Registry entry %r failed HMAC check — skipping", record_dict.get("name"))
+                continue
+            record = InstallationRecord.from_dict(record_dict)
             self._records[record.name] = record
             if record.path:
                 self._path_index[record.path] = record.name
 
+    def _migrate_from_json(self, legacy_path: str):
+        """Import records from a legacy (HMAC-protected) registry.json file."""
+        raw = read_json_with_hmac(legacy_path)
+        items = []
+        if isinstance(raw, dict):
+            items = raw.get("records", [])
+            if not items:
+                items = [v for v in raw.values() if isinstance(v, dict) and "name" in v]
+        elif isinstance(raw, list):
+            items = raw
+        imported = 0
+        for item in items:
+            if not isinstance(item, dict) or not item.get("name"):
+                continue
+            record = InstallationRecord.from_dict(item)
+            self._records[record.name] = record
+            if record.path:
+                self._path_index[record.path] = record.name
+            imported += 1
+        if imported:
+            self._save()
+            logger.info("Migrated %d record(s) from %s to SQLite registry", imported, legacy_path)
+        else:
+            logger.debug("No records to migrate from %s", legacy_path)
+
     def _save(self, target: str | None = None):
-        rf = target or self._registry_file()
-        data_dir = os.path.dirname(rf)
-        os.makedirs(data_dir, exist_ok=True)
-        data = [r.to_dict() for r in self._records.values()]
-        write_json_with_hmac(rf, {"records": data})
+        if target is not None:
+            # Keep the deferred-save plumbing simple: only the DB path is used now.
+            target = None
+        db = self._db_path()
+        os.makedirs(os.path.dirname(db), exist_ok=True)
+        conn = sqlite3.connect(db, timeout=10)
+        try:
+            conn.execute(_SCHEMA)
+            with conn:
+                conn.execute("DELETE FROM installed_apps")
+                for record in self._records.values():
+                    data = record.to_dict()
+                    conn.execute(
+                        f"INSERT INTO installed_apps ({', '.join(_COLUMNS)}) "
+                        f"VALUES ({', '.join('?' for _ in _COLUMNS)})",
+                        _record_to_row(data),
+                    )
+        except sqlite3.Error as e:
+            logger.warning("Could not write SQLite registry: %s", e)
+        finally:
+            conn.close()
+        try:
+            os.chmod(db, 0o600)
+        except OSError:
+            pass
 
     def _deferred_save(self):
         with self._save_lock:
             if self._save_pending:
                 return
             self._save_pending = True
-            target = self._registry_file()
         if self._save_timer is not None:
             self._save_timer.cancel()
-        self._save_timer = threading.Timer(0.5, self._flush_save, args=(target,))
+        self._save_timer = threading.Timer(0.5, self._flush_save)
         self._save_timer.daemon = True
         self._save_timer.start()
 
-    def _flush_save(self, target: str | None = None):
+    def _flush_save(self):
         with self._save_lock:
             self._save_pending = False
-        self._save(target)
+        self._save()
 
     def add(self, record: InstallationRecord):
         self._ensure_loaded()
@@ -213,3 +351,67 @@ class InstallationRegistry:
     def flush(self):
         """Force immediate save (for shutdown)."""
         self._flush_save()
+
+    def reset(self):
+        """Clear all in-memory state and pending saves (for tests).
+
+        The on-disk database is left intact so callers can re-trigger a load;
+        tests use an isolated data dir via NIRUVI_DATA_DIR instead.
+        """
+        with self._save_lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+                self._save_timer = None
+            self._save_pending = False
+        self._records.clear()
+        self._path_index.clear()
+        self._loaded = False
+
+
+def _record_to_row(data: dict) -> tuple:
+    return (
+        data["name"],
+        data["path"],
+        data.get("version", ""),
+        data.get("install_date", ""),
+        data.get("install_type", "extract"),
+        data.get("source_sha256", ""),
+        data.get("desktop_file", ""),
+        data.get("desktop_shortcut", ""),
+        data.get("update_url", ""),
+        data.get("architecture", ""),
+        data.get("display_name_override", ""),
+        data.get("custom_icon_path", ""),
+        json.dumps(data.get("env_vars", {}), sort_keys=True),
+        data.get("run_args", ""),
+        1 if data.get("auto_update", False) else 0,
+        data.get("update_channel", "stable"),
+        json.dumps(data.get("sandbox_config", {}), sort_keys=True),
+        int(data.get("size", 0)),
+        json.dumps(data.get("tags", []), sort_keys=True),
+        sign_data(data),
+    )
+
+
+def _row_to_record_dict(row: sqlite3.Row) -> dict:
+    return {
+        "name": row["name"],
+        "path": row["path"],
+        "version": row["version"],
+        "install_date": row["install_date"],
+        "install_type": row["install_type"],
+        "source_sha256": row["source_sha256"],
+        "desktop_file": row["desktop_file"],
+        "desktop_shortcut": row["desktop_shortcut"],
+        "update_url": row["update_url"],
+        "architecture": row["architecture"],
+        "display_name_override": row["display_name_override"],
+        "custom_icon_path": row["custom_icon_path"],
+        "env_vars": json.loads(row["env_vars_json"] or "{}"),
+        "run_args": row["run_args"],
+        "auto_update": bool(row["auto_update"]),
+        "update_channel": row["update_channel"],
+        "sandbox_config": json.loads(row["sandbox_config_json"] or "{}"),
+        "size": row["size"],
+        "tags": json.loads(row["tags_json"] or "[]"),
+    }

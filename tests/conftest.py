@@ -6,8 +6,6 @@ InstallationRegistry is a process-wide singleton; it is reset between tests
 so records written by one test never leak into another.
 """
 
-import shutil
-
 import pytest
 
 
@@ -20,14 +18,6 @@ def _isolated_data_dir(tmp_path, monkeypatch):
     from niruvi.desktop.installation_registry import InstallationRegistry
 
     reg = InstallationRegistry()
-    reg._records.clear()
-    reg._path_index.clear()
-    reg._loaded = False
-    if reg._save_timer is not None:
-        reg._save_timer.cancel()
-        reg._save_timer = None
-    reg._save_pending = False
+    reg.reset()
     yield data_dir
-    if reg._save_timer is not None:
-        reg._save_timer.cancel()
-    shutil.rmtree(data_dir, ignore_errors=True)
+    reg.reset()
