@@ -421,10 +421,14 @@ class _InstallCoordinator(QObject):
             if reply == QMessageBox.StandardButton.Yes:
                 QProcess.startDetached(str(dest), [])
                 # Force a full teardown so the old instance does not linger in the
-                # tray and contend for the SQLite registry; bypasses the tray-aware
-                # closeEvent that parent.close() would otherwise honour.
+                # tray and contend for the SQLite registry. Setting _really_quit
+                # bypasses the tray-aware closeEvent that parent.close() would
+                # otherwise honour (it would hide to tray and keep running).
                 app = QApplication.instance()
                 if app is not None:
+                    for w in app.topLevelWidgets():
+                        if hasattr(w, "_really_quit"):
+                            w._really_quit = True
                     app.quit()
         except Exception as e:
             orig_error = e
