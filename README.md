@@ -107,6 +107,8 @@ Niruvi makes this workflow smarter:
 - **appimagetool** — included in the `asset/` directory for building AppImages
 
 Optional dependencies:
+- `PyQt6-Multimedia` — enables `QSoundEffect`-based sound effects; without it Niruvi
+  falls back to a subprocess audio player (`pip install ".[multimedia]"`)
 - `librsvg` (`rsvg-convert`) — better SVG icon conversion
 - `unsquashfs` — enables static security scanning without executing AppImages
 - `ClamAV` (`clamscan`) — optional malware scanning

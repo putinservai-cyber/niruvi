@@ -10,10 +10,13 @@ license = {text = "GPL-3.0-only"}
 requires-python = ">=3.10"
 dependencies = [
     "PyQt6>=6.5",
-    "PyQt6-Multimedia>=6.5",
 ]
 
 [project.optional-dependencies]
+# PyQt6-Multimedia provides QSoundEffect; niruvi falls back to a subprocess
+# player when it is absent, so it is optional. Some minimal/CI environments
+# cannot resolve a PyQt6-Multimedia wheel, so it is not a hard dependency.
+multimedia = ["PyQt6-Multimedia>=6.5"]
 all = []
 dev = ["pytest>=7.0", "pytest-mock>=3.10", "pytest-qt>=4.0", "ruff>=0.4", "mypy>=1.10"]
 
