@@ -1,4 +1,5 @@
 import argparse
+import gc
 import logging
 import logging.handlers
 import os
@@ -462,18 +463,14 @@ def main():
 
     wait_for_workers(10000)
     for _ in range(3):
-        import gc as _gc
-
-        _gc.collect()
+        gc.collect()
     for _attr in ("last_exc", "last_value", "last_traceback", "last_type"):
         try:
             setattr(sys, _attr, None)
         except AttributeError:
             pass
     for _ in range(3):
-        import gc as _gc
-
-        _gc.collect()
+        gc.collect()
     window = None
     app = None
     from niruvi.utils.sound_manager import cleanup as _sound_cleanup

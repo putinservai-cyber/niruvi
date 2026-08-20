@@ -824,8 +824,6 @@ class AppManager(QMainWindow):
             icon_path = self._find_app_icon(app_dir)
             display_name = record.display_name_override or record.name
             cust_icon = record.custom_icon_path or icon_path
-            from niruvi.app.tags import infer_tags
-
             app_tags = record.tags if record.tags else infer_tags(display_name)
             self._add_app_to_list(
                 record.name,

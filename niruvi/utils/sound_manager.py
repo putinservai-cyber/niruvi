@@ -330,7 +330,6 @@ def _spawn(args: list[str]):
 
 def _play_subprocess_fallback():
     """Play the fallback WAV via aplay/paplay."""
-    global _fallback_wav
     path = _fallback_wav or _generate_fallback_wav()
     if not path or not os.path.isfile(path):
         return
