@@ -7,6 +7,31 @@ import tempfile
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
+
+class SecurityError(Exception):
+    """Raised when an extracted package attempts a path-traversal escape."""
+
+
+def _guard_extraction(dest: str) -> None:
+    """Belt-and-braces check that nothing escaped the extraction directory.
+
+    Walks *dest* and refuses to leave if any entry resolves outside it.
+    """
+    dest_resolved = Path(dest).resolve()
+    for entry in Path(dest).rglob("*"):
+        try:
+            entry.resolve().relative_to(dest_resolved)
+        except ValueError:
+            raise SecurityError(f"Path traversal detected: {entry}")
+
+
+def _safe_member_names(dest: str) -> None:
+    """Ar member names must be flat (no path separators) — reject otherwise."""
+    for name in os.listdir(dest):
+        if "/" in name or "\\" in name or name in ("..", "."):
+            raise SecurityError(f"Unsafe archive member name: {name}")
+
+
 TOOLCHAIN_DIR = Path.home() / '.cache' / 'niruvi' / 'builder'
 APPIMAGETOOL_BIN = TOOLCHAIN_DIR / 'appimagetool-x86_64.AppImage'
 ASSETS_DIR = Path(__file__).parent.parent.parent / 'asset'
@@ -84,7 +109,8 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
         if t == 'deb':
             if not shutil.which('ar'):
                 return False, "'ar' not found (needed for .deb extraction, install 'binutils')"
-            subprocess.run(['ar', 'x', src], cwd=dest, capture_output=True, timeout=60, check=True)
+            subprocess.run(['ar', 'x', '--', src], cwd=dest, capture_output=True, timeout=60, check=True)
+            _safe_member_names(dest)
             for f in os.listdir(dest):
                 if f.startswith('data.tar'):
                     decompress = []
@@ -92,12 +118,13 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
                         if shutil.which('zstd'):
                             decompress = ['--zstd']
                     subprocess.run(
-                        ['tar', '-xf', os.path.join(dest, f), '-C', dest] + decompress,
+                        ['tar', '-xf', '--no-same-owner', '--no-same-permissions', os.path.join(dest, f), '-C', dest] + decompress,
                         capture_output=True, timeout=60, check=True,
                     )
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
                 elif f.startswith('control.tar') or f == 'debian-binary':
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
+            _guard_extraction(dest)
             return True, ""
         elif t == 'rpm':
             errors = []
@@ -108,9 +135,11 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
                         ['rpm2cpio', src], capture_output=True, timeout=120, check=True
                     )
                     subprocess.run(
-                        ['cpio', '-idm'], input=cpio_result.stdout,
+                        ['cpio', '-idm', '--no-absolute-filenames', '--no-preserve-owner'],
+                        input=cpio_result.stdout,
                         capture_output=True, timeout=120, cwd=dest, check=True,
                     )
+                    _guard_extraction(dest)
                     return True, ""
                 except subprocess.CalledProcessError as e:
                     err = e.stderr.decode(errors='ignore')[:200].strip()
@@ -128,9 +157,10 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
                         capture_output=True, timeout=120, check=True,
                     )
                     subprocess.run(
-                        ['tar', '-xzf', tmp_path, '-C', dest],
+                        ['tar', '-xzf', '--no-same-owner', '--no-same-permissions', tmp_path, '-C', dest],
                         capture_output=True, timeout=120, check=True,
                     )
+                    _guard_extraction(dest)
                     return True, ""
                 except subprocess.CalledProcessError as e:
                     err = e.stderr.decode(errors='ignore')[:200].strip()
@@ -150,7 +180,11 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
                 missing.append('rpm2archive')
             return False, f"Missing tools for RPM extraction: {', '.join(missing)}"
         elif t == 'tar':
-            subprocess.run(['tar', '-xf', src, '-C', dest], capture_output=True, timeout=120, check=True)
+            subprocess.run(
+                ['tar', '-xf', '--no-same-owner', '--no-same-permissions', src, '-C', dest],
+                capture_output=True, timeout=120, check=True,
+            )
+            _guard_extraction(dest)
             return True, ""
     except subprocess.CalledProcessError as e:
         return False, f"Extraction failed (exit {e.returncode}): {e.stderr.decode(errors='ignore')[:200]}"

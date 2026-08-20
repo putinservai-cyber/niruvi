@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import shutil
 import sys
@@ -176,10 +177,38 @@ def _resolve_path(raw: str) -> str:
     return resolved
 
 
+def _configure_logging():
+    """Configure application-wide logging to a rotating file + stderr.
+
+    Without this, the project's many ``logger.debug/info`` calls are silently
+    dropped (Python's "last resort" handler only prints WARNING+ to stderr).
+    """
+    log_dir = Path(os.path.join(get_data_dir(), "logs"))
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    log_file = log_dir / "niruvi.log"
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    try:
+        handlers.append(
+            logging.handlers.RotatingFileHandler(log_file, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+        )
+    except OSError:
+        pass
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        handlers=handlers,
+        force=True,
+    )
+
+
 def main():
     # Silence benign Qt/KDE/FFmpeg log noise and disable FFmpeg hardware decode
     # probing (triggers the libvdpau_nvidia.so warning) BEFORE QApplication.
     configure_runtime_env()
+    _configure_logging()
 
     parser = argparse.ArgumentParser(
         prog="Niruvi",

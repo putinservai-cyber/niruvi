@@ -201,6 +201,9 @@ class InstallationRegistry:
         os.makedirs(os.path.dirname(db), exist_ok=True)
         conn = sqlite3.connect(db, timeout=10)
         conn.row_factory = sqlite3.Row
+        # Wait up to 10s for a lock to clear instead of raising immediately; this
+        # lets a second process (e.g. the post-update ghost) retry rather than fail.
+        conn.execute("PRAGMA busy_timeout = 10000")
         conn.execute(_SCHEMA)
         return conn
 
@@ -274,22 +277,34 @@ class InstallationRegistry:
             target = None
         db = self._db_path()
         os.makedirs(os.path.dirname(db), exist_ok=True)
-        conn = sqlite3.connect(db, timeout=10)
-        try:
-            conn.execute(_SCHEMA)
-            with conn:
-                conn.execute("DELETE FROM installed_apps")
-                for record in self._records.values():
-                    data = record.to_dict()
-                    conn.execute(
-                        f"INSERT INTO installed_apps ({', '.join(_COLUMNS)}) "
-                        f"VALUES ({', '.join('?' for _ in _COLUMNS)})",
-                        _record_to_row(data),
-                    )
-        except sqlite3.Error as e:
-            logger.warning("Could not write SQLite registry: %s", e)
-        finally:
-            conn.close()
+        col_list = ", ".join(_COLUMNS)
+        placeholders = ", ".join("?" for _ in _COLUMNS)
+        update_cols = ", ".join(f"{c} = excluded.{c}" for c in _COLUMNS if c != "name")
+        upsert_sql = (
+            f"INSERT INTO installed_apps ({col_list}) VALUES ({placeholders}) "
+            f"ON CONFLICT(name) DO UPDATE SET {update_cols}"
+        )
+        for attempt in range(3):
+            conn = sqlite3.connect(db, timeout=10)
+            try:
+                conn.execute(_SCHEMA)
+                with conn:
+                    for record in self._records.values():
+                        data = record.to_dict()
+                        conn.execute(upsert_sql, _record_to_row(data))
+                    names = list(self._records.keys())
+                    if names:
+                        qmarks = ", ".join("?" for _ in names)
+                        conn.execute(f"DELETE FROM installed_apps WHERE name NOT IN ({qmarks})", names)
+                    else:
+                        conn.execute("DELETE FROM installed_apps")
+                break
+            except sqlite3.OperationalError as e:
+                logger.warning("Registry write retried (attempt %d): %s", attempt + 1, e)
+                if attempt == 2:
+                    logger.warning("Could not write SQLite registry after retries: %s", e)
+            finally:
+                conn.close()
         try:
             os.chmod(db, 0o600)
         except OSError:

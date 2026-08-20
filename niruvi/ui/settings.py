@@ -519,9 +519,6 @@ class SettingsPage(QWidget):
             "Play sound effects", "Play sounds for installation, errors, and navigation"
         )
         self.sound_effects_row.setChecked(_settings.get("sound_effects_enabled", True))
-        self.sound_effects_row.toggle.toggled.connect(
-            lambda checked: _settings.update({"sound_effects_enabled": checked})
-        )
         audio_layout.addWidget(self.sound_effects_row)
 
         vol_row = QHBoxLayout()
