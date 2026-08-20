@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
@@ -32,9 +33,9 @@ def _safe_member_names(dest: str) -> None:
             raise SecurityError(f"Unsafe archive member name: {name}")
 
 
-TOOLCHAIN_DIR = Path.home() / '.cache' / 'niruvi' / 'builder'
-APPIMAGETOOL_BIN = TOOLCHAIN_DIR / 'appimagetool-x86_64.AppImage'
-ASSETS_DIR = Path(__file__).parent.parent.parent / 'asset'
+TOOLCHAIN_DIR = Path.home() / ".cache" / "niruvi" / "builder"
+APPIMAGETOOL_BIN = TOOLCHAIN_DIR / "appimagetool-x86_64.AppImage"
+ASSETS_DIR = Path(__file__).parent.parent.parent / "asset"
 
 #: Arch identifiers appimagetool understands (used in tool names, ARCH= and output names).
 SUPPORTED_ARCHES = ("x86_64", "aarch64", "armhf", "arm", "i686")
@@ -63,8 +64,8 @@ def _toolchain_path(arch: str) -> Path:
 
 def _find_appimagetool(arch: str):
     candidates = [
-        ('cached', _toolchain_path(arch)),
-        ('bundled', ASSETS_DIR / f'appimagetool-{arch}.AppImage'),
+        ("cached", _toolchain_path(arch)),
+        ("bundled", ASSETS_DIR / f"appimagetool-{arch}.AppImage"),
     ]
     for label, path in candidates:
         if path.exists() and path.stat().st_size > 1_000_000:
@@ -83,8 +84,7 @@ def _ensure_toolchain(arch: str = "x86_64"):
     found = _find_appimagetool(arch)
     if found is None:
         raise RuntimeError(
-            f'appimagetool for {arch} not found.\n\n'
-            f'Place appimagetool-{arch}.AppImage in the assets/ folder.'
+            f"appimagetool for {arch} not found.\n\nPlace appimagetool-{arch}.AppImage in the assets/ folder."
         )
     TOOLCHAIN_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(found), str(tool_bin))
@@ -94,76 +94,84 @@ def _ensure_toolchain(arch: str = "x86_64"):
 
 def detect_package_type(path: str) -> str:
     low = path.lower()
-    if low.endswith('.deb'):
-        return 'deb'
-    if low.endswith('.rpm'):
-        return 'rpm'
-    if any(low.endswith(e) for e in ('.tar.gz', '.tar.xz', '.tar.bz2', '.tgz', '.txz', '.tbz2', '.tar')):
-        return 'tar'
-    return 'unknown'
+    if low.endswith(".deb"):
+        return "deb"
+    if low.endswith(".rpm"):
+        return "rpm"
+    if any(low.endswith(e) for e in (".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".tbz2", ".tar")):
+        return "tar"
+    return "unknown"
 
 
 def extract_package(src: str, dest: str) -> tuple[bool, str]:
     t = detect_package_type(src)
     try:
-        if t == 'deb':
-            if not shutil.which('ar'):
+        if t == "deb":
+            if not shutil.which("ar"):
                 return False, "'ar' not found (needed for .deb extraction, install 'binutils')"
-            subprocess.run(['ar', 'x', '--', src], cwd=dest, capture_output=True, timeout=60, check=True)
+            subprocess.run(["ar", "x", "--", src], cwd=dest, capture_output=True, timeout=60, check=True)
             _safe_member_names(dest)
             for f in os.listdir(dest):
-                if f.startswith('data.tar'):
+                if f.startswith("data.tar"):
                     decompress = []
-                    if f.endswith('.zst'):
-                        if shutil.which('zstd'):
-                            decompress = ['--zstd']
+                    if f.endswith(".zst"):
+                        if shutil.which("zstd"):
+                            decompress = ["--zstd"]
                     subprocess.run(
-                        ['tar', '-xf', '--no-same-owner', '--no-same-permissions', os.path.join(dest, f), '-C', dest] + decompress,
-                        capture_output=True, timeout=60, check=True,
+                        ["tar", "-xf", "--no-same-owner", "--no-same-permissions", os.path.join(dest, f), "-C", dest]
+                        + decompress,
+                        capture_output=True,
+                        timeout=60,
+                        check=True,
                     )
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
-                elif f.startswith('control.tar') or f == 'debian-binary':
+                elif f.startswith("control.tar") or f == "debian-binary":
                     Path(os.path.join(dest, f)).unlink(missing_ok=True)
             _guard_extraction(dest)
             return True, ""
-        elif t == 'rpm':
+        elif t == "rpm":
             errors = []
             # Try rpm2cpio → cpio pipe first (no intermediate temp file, less disk space)
-            if shutil.which('rpm2cpio') and shutil.which('cpio'):
+            if shutil.which("rpm2cpio") and shutil.which("cpio"):
                 try:
-                    cpio_result = subprocess.run(
-                        ['rpm2cpio', src], capture_output=True, timeout=120, check=True
-                    )
+                    cpio_result = subprocess.run(["rpm2cpio", src], capture_output=True, timeout=120, check=True)
                     subprocess.run(
-                        ['cpio', '-idm', '--no-absolute-filenames', '--no-preserve-owner'],
+                        ["cpio", "-idm", "--no-absolute-filenames", "--no-preserve-owner"],
                         input=cpio_result.stdout,
-                        capture_output=True, timeout=120, cwd=dest, check=True,
+                        capture_output=True,
+                        timeout=120,
+                        cwd=dest,
+                        check=True,
                     )
                     _guard_extraction(dest)
                     return True, ""
                 except subprocess.CalledProcessError as e:
-                    err = e.stderr.decode(errors='ignore')[:200].strip()
+                    err = e.stderr.decode(errors="ignore")[:200].strip()
                     errors.append(f"rpm2cpio→cpio: {err or 'exit ' + str(e.returncode)}")
                 except Exception as e:
                     errors.append(f"rpm2cpio→cpio: {e}")
             # Fallback: rpm2archive → tar (requires temp file)
-            if shutil.which('rpm2archive'):
-                tmp = tempfile.NamedTemporaryFile(suffix='.tgz', delete=False)
+            if shutil.which("rpm2archive"):
+                tmp = tempfile.NamedTemporaryFile(suffix=".tgz", delete=False)
                 tmp_path = tmp.name
                 tmp.close()
                 try:
                     subprocess.run(
-                        ['rpm2archive', src, '-o', tmp_path],
-                        capture_output=True, timeout=120, check=True,
+                        ["rpm2archive", src, "-o", tmp_path],
+                        capture_output=True,
+                        timeout=120,
+                        check=True,
                     )
                     subprocess.run(
-                        ['tar', '-xzf', '--no-same-owner', '--no-same-permissions', tmp_path, '-C', dest],
-                        capture_output=True, timeout=120, check=True,
+                        ["tar", "-xzf", "--no-same-owner", "--no-same-permissions", tmp_path, "-C", dest],
+                        capture_output=True,
+                        timeout=120,
+                        check=True,
                     )
                     _guard_extraction(dest)
                     return True, ""
                 except subprocess.CalledProcessError as e:
-                    err = e.stderr.decode(errors='ignore')[:200].strip()
+                    err = e.stderr.decode(errors="ignore")[:200].strip()
                     errors.append(f"rpm2archive: {err or 'exit ' + str(e.returncode)}")
                 except Exception as e:
                     errors.append(f"rpm2archive: {e}")
@@ -172,17 +180,19 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
             if errors:
                 return False, "RPM extraction failed: " + "; ".join(errors)
             missing = []
-            if not shutil.which('rpm2cpio'):
-                missing.append('rpm2cpio')
-            if not shutil.which('cpio'):
-                missing.append('cpio')
-            if not shutil.which('rpm2archive'):
-                missing.append('rpm2archive')
+            if not shutil.which("rpm2cpio"):
+                missing.append("rpm2cpio")
+            if not shutil.which("cpio"):
+                missing.append("cpio")
+            if not shutil.which("rpm2archive"):
+                missing.append("rpm2archive")
             return False, f"Missing tools for RPM extraction: {', '.join(missing)}"
-        elif t == 'tar':
+        elif t == "tar":
             subprocess.run(
-                ['tar', '-xf', '--no-same-owner', '--no-same-permissions', src, '-C', dest],
-                capture_output=True, timeout=120, check=True,
+                ["tar", "-xf", "--no-same-owner", "--no-same-permissions", src, "-C", dest],
+                capture_output=True,
+                timeout=120,
+                check=True,
             )
             _guard_extraction(dest)
             return True, ""
@@ -200,16 +210,16 @@ def _flatten_appdir(appdir: str):
     if a proper Linux filesystem structure (usr/bin, usr/lib, etc.) already exists
     in the candidate, since that structure is needed for post-install operation.
     """
-    HAS_USR_STRUCTURE = frozenset({'usr', 'opt', 'etc', 'lib64', 'lib'})
-    SKIP = frozenset({'usr', 'opt', 'etc', 'lib', 'lib64', 'bin', 'sbin'})
-    entries = [e for e in os.listdir(appdir) if not e.startswith('.')]
+    HAS_USR_STRUCTURE = frozenset({"usr", "opt", "etc", "lib64", "lib"})
+    SKIP = frozenset({"usr", "opt", "etc", "lib", "lib64", "bin", "sbin"})
+    entries = [e for e in os.listdir(appdir) if not e.startswith(".")]
     for name in list(entries):
         if name in SKIP:
             continue
         candidate = os.path.join(appdir, name)
         if not os.path.isdir(candidate):
             continue
-        has_desktop = any(f.endswith('.desktop') for _, _, files in os.walk(candidate) for f in files)
+        has_desktop = any(f.endswith(".desktop") for _, _, files in os.walk(candidate) for f in files)
         if not has_desktop:
             continue
         # Check if candidate already has a proper usr/ structure — if so, don't flatten
@@ -235,9 +245,9 @@ def _fix_absolute_symlinks(root: str):
             if not os.path.islink(path):
                 continue
             target = os.readlink(path)
-            if not target.startswith('/'):
+            if not target.startswith("/"):
                 continue
-            rel = os.path.relpath(os.path.join(root, target.lstrip('/')), os.path.dirname(path))
+            rel = os.path.relpath(os.path.join(root, target.lstrip("/")), os.path.dirname(path))
             os.unlink(path)
             os.symlink(rel, path)
 
@@ -246,70 +256,70 @@ def _find_metadata(appdir: str, default_name: str):
     desktop_file = None
     for root, _, files in os.walk(appdir):
         for f in files:
-            if f.endswith('.desktop'):
+            if f.endswith(".desktop"):
                 desktop_file = os.path.join(root, f)
                 break
         if desktop_file:
             break
 
-    info = {'Name': default_name, 'Exec': '', 'Icon': ''}
+    info = {"Name": default_name, "Exec": "", "Icon": ""}
     if desktop_file:
-        with open(desktop_file, encoding='utf-8', errors='ignore') as f:
+        with open(desktop_file, encoding="utf-8", errors="ignore") as f:
             in_desktop = False
             for line in f:
                 s = line.strip()
-                if s == '[Desktop Entry]':
+                if s == "[Desktop Entry]":
                     in_desktop = True
                     continue
-                if in_desktop and s.startswith('[') and s.endswith(']'):
+                if in_desktop and s.startswith("[") and s.endswith("]"):
                     break
-                if in_desktop and '=' in s:
-                    k, v = s.split('=', 1)
+                if in_desktop and "=" in s:
+                    k, v = s.split("=", 1)
                     k = k.strip()
                     v = v.strip()
-                    if k == 'Name':
-                        info['Name'] = v
-                    elif k == 'Exec':
-                        info['Exec'] = v
-                    elif k == 'Icon':
-                        info['Icon'] = v
+                    if k == "Name":
+                        info["Name"] = v
+                    elif k == "Exec":
+                        info["Exec"] = v
+                    elif k == "Icon":
+                        info["Icon"] = v
 
-    exec_name = info.get('Exec', '').split()[0] if info.get('Exec') else default_name
-    for tok in ('%f', '%F', '%u', '%U'):
-        exec_name = exec_name.replace(tok, '').strip()
+    exec_name = info.get("Exec", "").split()[0] if info.get("Exec") else default_name
+    for tok in ("%f", "%F", "%u", "%U"):
+        exec_name = exec_name.replace(tok, "").strip()
     exec_name = os.path.basename(exec_name) if exec_name else default_name
 
     icon = None
-    icon_name = info.get('Icon', '')
+    icon_name = info.get("Icon", "")
     if icon_name:
         for root, _, files in os.walk(appdir):
             for f in files:
-                if icon_name in f and f.endswith(('.png', '.svg', '.xpm')):
+                if icon_name in f and f.endswith((".png", ".svg", ".xpm")):
                     icon = os.path.join(root, f)
                     break
             if icon:
                 break
 
     return {
-        'name': info['Name'],
-        'exec_name': exec_name,
-        'icon': icon,
-        'desktop_file': desktop_file,
-        'desktop_info': info,
+        "name": info["Name"],
+        "exec_name": exec_name,
+        "icon": icon,
+        "desktop_file": desktop_file,
+        "desktop_info": info,
     }
 
 
-_SAFE_EXEC_RE = re.compile(r'^[a-zA-Z0-9_./-]+$')
+_SAFE_EXEC_RE = re.compile(r"^[a-zA-Z0-9_./-]+$")
 
 
 def _sanitize_exec_path(path: str) -> str:
     """Sanitize an executable path for safe embedding in a bash script.
-    
+
     Strips shell metacharacters and only allows safe characters.
     """
     if not path:
         return "./app"
-    safe = re.sub(r'[^a-zA-Z0-9_./-]', '', path)
+    safe = re.sub(r"[^a-zA-Z0-9_./-]", "", path)
     safe = safe[:200]
     if not safe:
         return "./app"
@@ -318,25 +328,25 @@ def _sanitize_exec_path(path: str) -> str:
 
 def _create_apprun(appdir: str, exec_path: str) -> str:
     exec_path = _sanitize_exec_path(exec_path)
-    if exec_path.startswith('/'):
-        exec_rel = '.' + exec_path
+    if exec_path.startswith("/"):
+        exec_rel = "." + exec_path
     else:
         exec_rel = exec_path
 
     lines = [
-        '#!/bin/bash',
-        '',
-        '# ── AppImageLauncher bypass ──',
-        'export APPIMAGE_LAUNCHER_DISABLE=1',
-        'unset APPIMAGE',
-        '# ──────────────────────────────',
-        '',
+        "#!/bin/bash",
+        "",
+        "# ── AppImageLauncher bypass ──",
+        "export APPIMAGE_LAUNCHER_DISABLE=1",
+        "unset APPIMAGE",
+        "# ──────────────────────────────",
+        "",
         'HERE=$(dirname "$(readlink -f "$0")")',
-        '',
+        "",
         'export PATH="${HERE}/usr/bin:${HERE}/usr/sbin:${HERE}/bin:${HERE}/sbin:$PATH"',
         'export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"',
-        '',
-        '# ── Library path ──',
+        "",
+        "# ── Library path ──",
         '_add_lib() { [ -d "$1" ] && LIB="${LIB:+$LIB:}$1"; }',
         'LIB=""',
         '_add_lib "${HERE}/usr/lib"',
@@ -344,30 +354,30 @@ def _create_apprun(appdir: str, exec_path: str) -> str:
         '_add_lib "${HERE}/lib"',
         '_add_lib "${HERE}/lib/x86_64-linux-gnu"',
         '[ -n "$LIB" ] && export LD_LIBRARY_PATH="${LIB}:$LD_LIBRARY_PATH"',
-        '',
-        '# ── Python ──',
+        "",
+        "# ── Python ──",
         '_add_pythonpath() { [ -d "$1" ] && PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$1"; }',
         'PYTHONPATH=""',
         '_add_pythonpath "${HERE}/usr/lib/python3/dist-packages"',
         '_add_pythonpath "${HERE}/usr/lib/python3/site-packages"',
         '[ -n "$PYTHONPATH" ] && export PYTHONPATH="$PYTHONPATH"',
-        'unset _add_lib _add_pythonpath',
-        '',
-        '# ── Qt platform plugins ──',
+        "unset _add_lib _add_pythonpath",
+        "",
+        "# ── Qt platform plugins ──",
         'if [ -z "$QT_QPA_PLATFORM_PLUGIN_PATH" ] || [ ! -d "$QT_QPA_PLATFORM_PLUGIN_PATH" ]; then',
         '    for _d in "${HERE}/usr/lib/qt6/plugins/platforms" "${HERE}/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms"; do',
         '        if [ -d "$_d" ] && ls "$_d"/libq*.so &>/dev/null 2>&1; then',
         '            export QT_QPA_PLATFORM_PLUGIN_PATH="${_d%/platforms}"',
-        '            break',
-        '        fi',
-        '    done',
-        'fi',
-        '',
+        "            break",
+        "        fi",
+        "    done",
+        "fi",
+        "",
         f'exec "$HERE/{exec_rel}" "$@"',
     ]
-    path = os.path.join(appdir, 'AppRun')
-    with open(path, 'w') as f:
-        f.write('\n'.join(lines) + '\n')
+    path = os.path.join(appdir, "AppRun")
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
     os.chmod(path, 0o755)
     return path
 
@@ -375,22 +385,22 @@ def _create_apprun(appdir: str, exec_path: str) -> str:
 def _create_desktop(appdir: str, name: str, exec_name: str = None, icon_name: str = None) -> str:
     bare_exec = os.path.basename(exec_name) if exec_name else name
     content = (
-        '[Desktop Entry]\n'
-        f'Name={name}\n'
-        f'Exec={bare_exec}\n'
-        f'Icon={icon_name or name}\n'
-        'Type=Application\n'
-        'Categories=Utility;\n'
-        'Terminal=false\n'
+        "[Desktop Entry]\n"
+        f"Name={name}\n"
+        f"Exec={bare_exec}\n"
+        f"Icon={icon_name or name}\n"
+        "Type=Application\n"
+        "Categories=Utility;\n"
+        "Terminal=false\n"
     )
-    d = os.path.join(appdir, 'usr', 'share', 'applications')
+    d = os.path.join(appdir, "usr", "share", "applications")
     Path(d).mkdir(parents=True, exist_ok=True)
-    p = os.path.join(d, f'{name}.desktop')
-    with open(p, 'w') as f:
+    p = os.path.join(d, f"{name}.desktop")
+    with open(p, "w") as f:
         f.write(content)
-    root_p = os.path.join(appdir, f'{name}.desktop')
+    root_p = os.path.join(appdir, f"{name}.desktop")
     if not os.path.exists(root_p):
-        with open(root_p, 'w') as f:
+        with open(root_p, "w") as f:
             f.write(content)
     return p
 
@@ -398,23 +408,23 @@ def _create_desktop(appdir: str, name: str, exec_name: str = None, icon_name: st
 def _detect_version(src: str) -> str:
     t = detect_package_type(src)
     try:
-        if t == 'rpm' and shutil.which('rpm'):
-            proc = subprocess.run(['rpm', '-qp', '--queryformat', '%{VERSION}', src],
-                                  capture_output=True, text=True, timeout=30)
+        if t == "rpm" and shutil.which("rpm"):
+            proc = subprocess.run(
+                ["rpm", "-qp", "--queryformat", "%{VERSION}", src], capture_output=True, text=True, timeout=30
+            )
             if proc.returncode == 0 and proc.stdout.strip():
                 return proc.stdout.strip()
-        if t == 'deb' and shutil.which('dpkg-deb'):
-            proc = subprocess.run(['dpkg-deb', '-f', src, 'Version'],
-                                  capture_output=True, text=True, timeout=30)
+        if t == "deb" and shutil.which("dpkg-deb"):
+            proc = subprocess.run(["dpkg-deb", "-f", src, "Version"], capture_output=True, text=True, timeout=30)
             if proc.returncode == 0 and proc.stdout.strip():
                 return proc.stdout.strip()
     except Exception:
         pass
     stem = Path(src).stem
-    m = re.search(r'[_-](\d+[.\-]\d+(?:[.\-]\d+)*)', stem)
+    m = re.search(r"[_-](\d+[.\-]\d+(?:[.\-]\d+)*)", stem)
     if m:
         return m.group(1)
-    return '1.0.0'
+    return "1.0.0"
 
 
 class BuildWorker(QThread):
@@ -423,16 +433,29 @@ class BuildWorker(QThread):
     log = pyqtSignal(str)
     progress = pyqtSignal(int)
 
-    def __init__(self, source_path, output_dir, app_name=None, app_version=None,
-                 self_installing=False, default_install_dir=None,
-                 installer_style="qt6",
-                 brand_name="", license_file="",
-                 components=None, pre_install_script="",
-                 post_install_script="", enable_rollback=True,
-                 enable_silent=True,
-                 updater_url="", welcome_message="",
-                 finish_message="", enable_launch_at_finish=True,
-                 is_folder_source=False, arch="x86_64"):
+    def __init__(
+        self,
+        source_path,
+        output_dir,
+        app_name=None,
+        app_version=None,
+        self_installing=False,
+        default_install_dir=None,
+        installer_style="qt6",
+        brand_name="",
+        license_file="",
+        components=None,
+        pre_install_script="",
+        post_install_script="",
+        enable_rollback=True,
+        enable_silent=True,
+        updater_url="",
+        welcome_message="",
+        finish_message="",
+        enable_launch_at_finish=True,
+        is_folder_source=False,
+        arch="x86_64",
+    ):
         super().__init__()
         self.source_path = source_path
         self.output_dir = output_dir
@@ -474,18 +497,34 @@ class BuildWorker(QThread):
             appimagetool = _ensure_toolchain(self.arch)
             self.log.emit(f"Using appimagetool: {appimagetool} (arch: {self.arch})")
             self.progress.emit(10)
+            # Run pre-build hooks
+            pre_hooks = self.config.get("pre_hooks", [])
+            for hook in pre_hooks:
+                try:
+                    subprocess.run(
+                        hook,
+                        shell=True,
+                        timeout=30,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                    self.log.emit(f"Pre-build hook executed: {hook[:50]}...")
+                except Exception as e:
+                    self.log.emit(f"Pre-build hook failed: {e}")
+                self.progress.emit(55)
 
             Path(self.output_dir).mkdir(parents=True, exist_ok=True)
 
-            with tempfile.TemporaryDirectory(prefix='aim-builder-') as tmpdir:
-                appdir = os.path.join(tmpdir, 'AppDir')
+            with tempfile.TemporaryDirectory(prefix="aim-builder-") as tmpdir:
+                appdir = os.path.join(tmpdir, "AppDir")
                 Path(appdir).mkdir(parents=True, exist_ok=True)
 
                 if self.is_folder_source:
                     self.log.emit("Copying project folder contents into AppDir...")
                     self.progress.emit(15)
                     for item in os.listdir(self.source_path):
-                        if item.startswith('.') or item == '__pycache__':
+                        if item.startswith(".") or item == "__pycache__":
                             continue
                         src = os.path.join(self.source_path, item)
                         dst = os.path.join(appdir, item)
@@ -500,18 +539,18 @@ class BuildWorker(QThread):
                     meta = _find_metadata(appdir, self.app_name or Path(self.source_path).name)
 
                     # If no AppRun found, auto-create a basic one
-                    apprun_path = os.path.join(appdir, 'AppRun')
+                    apprun_path = os.path.join(appdir, "AppRun")
                     if not os.path.exists(apprun_path):
                         candidates = []
                         for f in os.listdir(appdir):
                             fp = os.path.join(appdir, f)
-                            if os.path.isfile(fp) and os.access(fp, os.X_OK) and not f.startswith('.'):
+                            if os.path.isfile(fp) and os.access(fp, os.X_OK) and not f.startswith("."):
                                 candidates.append(f)
-                        for f in ('main.py', 'app.py', '__main__.py', 'run.py', 'start.py'):
+                        for f in ("main.py", "app.py", "__main__.py", "run.py", "start.py"):
                             if os.path.isfile(os.path.join(appdir, f)):
                                 candidates.insert(0, f)
                         if not candidates:
-                            candidates = [os.listdir(appdir)[0]] if os.listdir(appdir) else ['app']
+                            candidates = [os.listdir(appdir)[0]] if os.listdir(appdir) else ["app"]
                         exec_target = candidates[0]
                         self.log.emit(f"Auto-creating AppRun -> {exec_target}")
                         _create_apprun(appdir, exec_target)
@@ -519,7 +558,7 @@ class BuildWorker(QThread):
                     self.log.emit("Extracting package...")
                     self.progress.emit(20)
                     pkg_type = detect_package_type(self.source_path)
-                    if pkg_type == 'unknown':
+                    if pkg_type == "unknown":
                         self.error.emit(f"Unsupported package type: {Path(self.source_path).suffix}")
                         return
                     self.log.emit(f"Detected package type: {pkg_type}")
@@ -533,55 +572,59 @@ class BuildWorker(QThread):
                 self.log.emit("Detecting application metadata...")
                 meta = _find_metadata(appdir, self.app_name or Path(self.source_path).stem)
 
-                if meta['icon']:
+                if meta["icon"]:
                     self.log.emit(f"Found icon: {meta['icon']}")
-                if meta['desktop_file']:
+                if meta["desktop_file"]:
                     self.log.emit(f"Found desktop: {meta['desktop_file']}")
-                    root_desktop = os.path.join(appdir, os.path.basename(meta['desktop_file']))
+                    root_desktop = os.path.join(appdir, os.path.basename(meta["desktop_file"]))
                     if not os.path.exists(root_desktop):
-                        shutil.copy2(meta['desktop_file'], root_desktop)
+                        shutil.copy2(meta["desktop_file"], root_desktop)
                 else:
                     self.log.emit(f"Creating desktop file for {meta['name']}")
-                    _create_desktop(appdir, meta['name'], meta['exec_name'])
+                    _create_desktop(appdir, meta["name"], meta["exec_name"])
                 self.progress.emit(50)
 
-                icon_name = meta['desktop_info'].get('Icon', '') or meta['name']
-                if meta['icon']:
-                    icon_dir = os.path.join(appdir, 'usr', 'share', 'icons', 'hicolor', '256x256', 'apps')
+                icon_name = meta["desktop_info"].get("Icon", "") or meta["name"]
+                if meta["icon"]:
+                    icon_dir = os.path.join(appdir, "usr", "share", "icons", "hicolor", "256x256", "apps")
                     Path(icon_dir).mkdir(parents=True, exist_ok=True)
                     dest_icon = os.path.join(icon_dir, f"{icon_name}{Path(meta['icon']).suffix}")
-                    if meta['icon'] != dest_icon:
-                        shutil.copy2(meta['icon'], dest_icon)
+                    if meta["icon"] != dest_icon:
+                        shutil.copy2(meta["icon"], dest_icon)
                     root_icon = os.path.join(appdir, f"{icon_name}{Path(meta['icon']).suffix}")
                     if not os.path.exists(root_icon):
-                        shutil.copy2(meta['icon'], root_icon)
+                        shutil.copy2(meta["icon"], root_icon)
                 else:
                     # Find any reasonable icon even if name doesn't match
                     found_icon = None
                     best_score = -1
                     for root, _, files in os.walk(appdir):
                         for f in files:
-                            if f.endswith(('.png', '.svg')):
+                            if f.endswith((".png", ".svg")):
                                 score = 0
-                                if '256' in f: score = 3
-                                elif '128' in f: score = 2
-                                elif 'logo' in f.lower(): score = 1
-                                else: score = -1
+                                if "256" in f:
+                                    score = 3
+                                elif "128" in f:
+                                    score = 2
+                                elif "logo" in f.lower():
+                                    score = 1
+                                else:
+                                    score = -1
                                 if score > best_score:
                                     best_score = score
                                     found_icon = os.path.join(root, f)
                     if found_icon:
-                        icon_dir = os.path.join(appdir, 'usr', 'share', 'icons', 'hicolor', '256x256', 'apps')
+                        icon_dir = os.path.join(appdir, "usr", "share", "icons", "hicolor", "256x256", "apps")
                         Path(icon_dir).mkdir(parents=True, exist_ok=True)
                         shutil.copy2(found_icon, os.path.join(icon_dir, f"{icon_name}{Path(found_icon).suffix}"))
                         shutil.copy2(found_icon, os.path.join(appdir, f"{icon_name}{Path(found_icon).suffix}"))
 
-                app_name = meta['name']
-                exec_name = meta['exec_name']
+                app_name = meta["name"]
+                exec_name = meta["exec_name"]
                 version = self.app_version or _detect_version(self.source_path)
 
                 # Fix wrapper scripts that call binaries in the same directory
-                exec_in_appdir = os.path.join(appdir, 'usr', 'bin', exec_name)
+                exec_in_appdir = os.path.join(appdir, "usr", "bin", exec_name)
                 if os.path.isfile(exec_in_appdir):
                     with open(exec_in_appdir) as f:
                         content = f.read(4096)
@@ -603,12 +646,13 @@ class BuildWorker(QThread):
                     os.makedirs(backup_dir, exist_ok=True)
                     apprun_path = os.path.join(appdir, "AppRun")
                     if not os.path.exists(apprun_path):
-                        exec_path = f'/usr/bin/{exec_name}'
+                        exec_path = f"/usr/bin/{exec_name}"
                         _create_apprun(appdir, exec_path)
                     shutil.copy2(apprun_path, os.path.join(backup_dir, "apprun-backup.sh"))
 
                     self.log.emit("Injecting self-installer bootstrap...")
                     from niruvi.build.builder_bootstrap import inject_bootstrap
+
                     inject_bootstrap(
                         appdir=appdir,
                         app_name=app_name,
@@ -630,35 +674,44 @@ class BuildWorker(QThread):
                     self.log.emit("Self-installer injected: AppRun, install.sh, uninstall.sh")
                 else:
                     self.log.emit("Creating AppRun...")
-                    exec_path = f'/usr/bin/{exec_name}'
+                    exec_path = f"/usr/bin/{exec_name}"
                     _create_apprun(appdir, exec_path)
                 self.progress.emit(60)
 
                 self.log.emit(f"Version: {version}")
-                out_name = f'{app_name}-{version}-{self.arch}.AppImage'
+                out_name = f"{app_name}-{version}-{self.arch}.AppImage"
                 out_path = os.path.join(self.output_dir, out_name)
+
+                # Prevent overwrites: append -1, -2, etc. if output exists
+                base, ext = os.path.splitext(out_path)
+                counter = 0
+                while os.path.exists(out_path):
+                    counter += 1
+                    out_path = f"{base}-{counter}{ext}"
 
                 self.log.emit("Running appimagetool...")
                 self.progress.emit(70)
                 env = os.environ.copy()
-                env['ARCH'] = self.arch
+                env["ARCH"] = self.arch
                 if version:
-                    env['VERSION'] = version
+                    env["VERSION"] = version
 
                 # Write to temp file then atomically rename to avoid "Text file busy"
-                tmp_out = out_path + '.tmp.' + str(os.getpid())
+                tmp_out = out_path + ".tmp." + str(os.getpid())
 
                 def _run_appimagetool(tool_bin):
                     proc = subprocess.Popen(
                         [tool_bin, "--no-appstream", appdir, tmp_out],
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        text=True, env=env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        env=env,
                     )
                     timeout = 600
                     elapsed = 0
                     while elapsed < timeout and not self._cancelled:
                         try:
-                            line = proc.stdout.readline() if proc.stdout else ''
+                            line = proc.stdout.readline() if proc.stdout else ""
                             if line:
                                 line = line.strip()
                                 if line:
@@ -666,6 +719,7 @@ class BuildWorker(QThread):
                             if proc.poll() is not None:
                                 break
                             import time
+
                             time.sleep(0.5)
                             elapsed += 0.5
                         except Exception:
@@ -678,7 +732,7 @@ class BuildWorker(QThread):
                         proc.kill()
                         proc.wait()
                         return None, "Build timed out (10 minute limit)"
-                    stderr = proc.stderr.read() if proc.stderr else ''
+                    stderr = proc.stderr.read() if proc.stderr else ""
                     return proc.returncode, stderr
 
                 ret, err = _run_appimagetool(appimagetool)
@@ -688,22 +742,23 @@ class BuildWorker(QThread):
                 if ret != 0 and not os.path.isfile(tmp_out):
                     # Fallback: extract appimagetool and run directly
                     cache_dir = os.path.dirname(appimagetool)
-                    extract_dir = os.path.join(cache_dir, 'appimagetool-extracted')
+                    extract_dir = os.path.join(cache_dir, "appimagetool-extracted")
                     if not os.path.isdir(extract_dir):
                         self.log.emit("appimagetool FUSE failed, extracting...")
-                        sqfs = os.path.join(cache_dir, 'squashfs-root')
+                        sqfs = os.path.join(cache_dir, "squashfs-root")
                         if os.path.isdir(sqfs):
                             shutil.rmtree(sqfs, ignore_errors=True)
-                        subprocess.run([appimagetool, '--appimage-extract'],
-                                       cwd=cache_dir, capture_output=True, timeout=120)
+                        subprocess.run(
+                            [appimagetool, "--appimage-extract"], cwd=cache_dir, capture_output=True, timeout=120
+                        )
                         if os.path.isdir(sqfs):
                             shutil.move(sqfs, extract_dir)
                     if os.path.isdir(extract_dir):
-                        inner_tool = os.path.join(extract_dir, 'usr', 'bin', 'appimagetool')
+                        inner_tool = os.path.join(extract_dir, "usr", "bin", "appimagetool")
                         if not os.path.isfile(inner_tool):
                             for root, _, files in os.walk(extract_dir):
-                                if 'appimagetool' in files:
-                                    inner_tool = os.path.join(root, 'appimagetool')
+                                if "appimagetool" in files:
+                                    inner_tool = os.path.join(root, "appimagetool")
                                     break
                         if os.path.isfile(inner_tool):
                             self.log.emit("Retrying with extracted appimagetool...")
@@ -712,13 +767,13 @@ class BuildWorker(QThread):
                                 self.error.emit(err2)
                                 return
                             if ret2 == 0 and os.path.isfile(tmp_out):
-                                ret, err = 0, ''
+                                ret, err = 0, ""
                             else:
                                 err = err2
                     if ret != 0:
                         if os.path.exists(tmp_out):
                             os.unlink(tmp_out)
-                        self.error.emit(f'appimagetool failed: {err.strip()}')
+                        self.error.emit(f"appimagetool failed: {err.strip()}")
                         return
 
                 # Atomically rename temp output to final path
@@ -730,12 +785,28 @@ class BuildWorker(QThread):
                 try:
                     os.rename(tmp_out, out_path)
                 except OSError as e:
-                    self.error.emit(f'Could not write output file: {e}')
+                    self.error.emit(f"Could not write output file: {e}")
                     return
 
                 self.progress.emit(100)
                 self.log.emit(f"Build successful: {out_path}")
                 self.finished.emit(out_path)
+                # Run post-build hooks
+                post_hooks = self.config.get("post_hooks", [])
+                for hook in post_hooks:
+                    try:
+                        subprocess.run(
+                            hook,
+                            shell=True,
+                            timeout=30,
+                            args=[out_path],
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        )
+                        self.log.emit(f"Post-build hook executed: {hook[:50]}...")
+                    except Exception as e:
+                        self.log.emit(f"Post-build hook failed: {e}")
 
         except RuntimeError as e:
             self.error.emit(str(e))

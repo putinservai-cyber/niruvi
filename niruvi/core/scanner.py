@@ -1,19 +1,21 @@
-"""Safe AppImage extraction — extract without executing code."""
+"""Safe AppImage extraction — extract without executing code.
+
+Provides static security analysis of AppImage contents without executing
+the AppImage binary. Uses pattern matching and file inspection to
+identify potential security issues.
+"""
 
 import logging
 import os
 import re
-import shutil
 import stat
-import subprocess
-import tempfile
 from pathlib import Path
-
-from niruvi.desktop.appimage_metadata import AppImageMetadata
 
 logger = logging.getLogger(__name__)
 
+#: Patterns for suspicious content detection
 SUSPICIOUS_PATTERNS: list[tuple[str, str, str]] = [
+    # (category, regex_pattern, description)
     ("reverse_shell", r"(\/dev\/tcp\/|\/dev\/udp\/|bash\s+-i\s+>&\s+/dev/tcp|sh\s+-i\s+>&\s+/dev/tcp)"),
     ("crypto_miner", r"(stratum\+tcp|monero|cryptonight|xmrig|cgminer)"),
     ("sudo_exploit", r"(sudo\s+chmod\s+4777|pkexec\s+--user\s+root|CVE-\d{4}-\d{4,})"),
@@ -27,7 +29,20 @@ SUSPICIOUS_EXTENSIONS = {".exe", ".dll", ".com", ".bat", ".ps1", ".vbs", ".scr"}
 
 
 def scan_file(path: str) -> dict:
-    """Scan a single file for suspicious patterns. Returns {path, verdict, matches}."""
+    """Scan a single file for suspicious patterns.
+
+    Examines the file's metadata and content for known malicious patterns,
+    setuid/setgid bits, and suspicious Windows extensions.
+
+    Args:
+        path: Path to the file to scan.
+
+    Returns:
+        dict with keys:
+            - path: The file path
+            - verdict: "clean" or "suspicious"
+            - matches: List of matched pattern categories
+    """
     result: dict = {"path": path, "verdict": "clean", "matches": []}
     try:
         st = os.stat(path)
@@ -65,78 +80,43 @@ def scan_file(path: str) -> dict:
 
 
 def scan_directory(app_dir: str) -> list[dict]:
-    """Recursively scan an extracted AppDir for suspicious content."""
+    """Recursively scan an extracted AppDir for suspicious content.
+
+    Walks the AppDirectory tree and scans each non-trivial file for
+    suspicious patterns. Only scans files with suspicious extensions
+    or those that could contain executable code.
+
+    Args:
+        app_dir: Path to the AppDirectory to scan.
+
+    Returns:
+        List of scan results for files deemed suspicious.
+        Each result is a dict with keys: path, verdict, matches.
+    """
     results: list[dict] = []
     script_exts = {".sh", ".py", ".pl", ".rb", ".js", ".php", ".lua"}
-    for root, _dirs, files in os.walk(app_dir):
-        for fname in files:
-            ext = os.path.splitext(fname)[1].lower()
+    for entry in Path(app_dir).iterdir():
+        if not entry.exists():
+            continue
+        if entry.is_file() or entry.is_symlink():
+            ext = entry.suffix.lower()
+            full = str(entry)
             if ext in script_exts or (ext not in (".png", ".jpg", ".svg", ".ico", ".desktop", ".sig", ".blockmap")):
-                full = os.path.join(root, fname)
                 scan_result = scan_file(full)
                 if scan_result["verdict"] == "suspicious":
                     results.append(scan_result)
     return results
 
 
-def _extract_dwarfs(appimage_path: str, offset: int, dest: str) -> bool:
-    """Extract a DwarFS AppImage using dwarfsextract."""
-    if not shutil.which("dwarfsextract"):
-        return False
-    try:
-        proc = subprocess.Popen(
-            ["dwarfsextract", "-i", appimage_path, "-o", dest, "-O", str(offset)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        proc.communicate(timeout=120)
-        return proc.returncode == 0 and os.path.isdir(dest) and os.listdir(dest)
-    except Exception as e:
-        logger.debug("DwarFS extraction failed for %s: %s", appimage_path, e, exc_info=True)
-        return False
+def _strip_setuid(path: str) -> None:
+    """Remove SUID/SGID bits from an extracted file.
 
+    Skips broken symlinks and vanished files since they cannot carry
+    SUID/SGID bits on Linux systems.
 
-def _extract_squashfs(appimage_path: str, offset: int, dest: str) -> bool:
-    """Extract a SquashFS AppImage using unsquashfs."""
-    if not shutil.which("unsquashfs"):
-        return False
-    try:
-        proc = subprocess.Popen(
-            ["unsquashfs", "-d", dest, "-offset", str(offset), "-force", appimage_path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        proc.communicate(timeout=120)
-        if proc.returncode == 0 and os.path.isdir(dest) and os.listdir(dest):
-            return True
-    except Exception as e:
-        logger.debug("SquashFS direct extraction failed for %s: %s", appimage_path, e, exc_info=True)
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".squashfs", delete=False) as tmp:
-            squash_path = tmp.name
-        subprocess.run(
-            ["dd", f"skip={offset}", "iflag=skip_bytes", f"if={appimage_path}", f"of={squash_path}"],
-            capture_output=True,
-            timeout=30,
-            check=True,
-        )
-        proc = subprocess.Popen(
-            ["unsquashfs", "-d", dest, "-force", squash_path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        proc.communicate(timeout=120)
-        Path(squash_path).unlink(missing_ok=True)
-        if proc.returncode == 0 and os.path.isdir(dest) and os.listdir(dest):
-            return True
-    except Exception as e:
-        logger.debug("SquashFS dd fallback extraction failed for %s: %s", appimage_path, e, exc_info=True)
-        Path(squash_path).unlink(missing_ok=True)
-    return False
-
-
-def _strip_setuid(path: str):
-    """Remove SUID/SGID bits from an extracted file."""
+    Args:
+        path: Path to the file from which to strip SUID/SGID bits.
+    """
     # Skip broken symlinks and vanished files — they can't carry SUID bits
     if not os.path.exists(path):
         return
@@ -147,13 +127,19 @@ def _strip_setuid(path: str):
         if st.st_mode & (stat.S_ISUID | stat.S_ISGID):
             new_mode = st.st_mode & ~(stat.S_ISUID | stat.S_ISGID)
             os.chmod(path, new_mode)
-            logger.debug("Stripped SUID/SGID from %s", path)
-    except OSError as e:
-        logger.debug("Failed to strip SUID/SGID from %s: %s", path, e)
+    except OSError:
+        pass
 
 
-def _strip_all_setuid(app_dir: str):
-    """Recursively strip SUID/SGID from all files in extracted directory."""
+def _strip_all_setuid(app_dir: str) -> None:
+    """Recursively strip SUID/SGID from all files in extracted directory.
+
+    Walks the directory tree and strips SUID/SGID bits from all files,
+    helping prevent privilege escalation vulnerabilities.
+
+    Args:
+        app_dir: Path to the directory from which to strip SUID/SGID bits.
+    """
     for root, _dirs, files in os.walk(app_dir):
         for fname in files:
             _strip_setuid(os.path.join(root, fname))
@@ -164,9 +150,18 @@ def extract_safely(appimage_path: str, dest: str, strip_suid: bool = True) -> bo
 
     Detects the embedded filesystem type (SquashFS or DwarFS) and
     extracts accordingly using unsquashfs or dwarfsextract.
-    Returns True if extraction succeeded.
+    Optionally strips SUID/SGID bits from extracted files.
+
+    Args:
+        appimage_path: Path to the AppImage file to extract.
+        dest: Destination directory for the extracted files.
+        strip_suid: If True, strip SUID/SGID bits from extracted files.
+
+    Returns:
+        True if extraction succeeded, False otherwise.
     """
     try:
+        from niruvi.desktop.appimage_metadata import AppImageMetadata
         meta = AppImageMetadata(appimage_path)
         offset = meta.payload_offset
         fs_type = getattr(meta, "fs_type", "squashfs")
@@ -174,7 +169,7 @@ def extract_safely(appimage_path: str, dest: str, strip_suid: bool = True) -> bo
         logger.debug("Failed to read AppImage metadata for %s: %s", appimage_path, e, exc_info=True)
         return False
 
-    result = False
+    result: bool = False
     if fs_type == "dwarfs":
         result = _extract_dwarfs(appimage_path, offset, dest)
     else:

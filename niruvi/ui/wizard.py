@@ -273,8 +273,8 @@ class DestinationPage(QWizardPage):
         return os.path.join(default_base, getattr(self, "_app_name", "app"))
 
     def set_space_info(self, size_mb: float):
-        import shutil
         import os
+        import shutil
 
         dest = self.path_edit.text() or os.path.expanduser("~")
         # Walk up to the nearest existing directory so disk_usage doesn't fail
