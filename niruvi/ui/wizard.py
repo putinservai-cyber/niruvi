@@ -1082,9 +1082,10 @@ class InstallWizard(QWizard):
         self.next()
 
     def _on_extraction_error(self, error_msg: str):
-        self._stop_progress_animation()
-        play_sound("error")
-        self._progress_page.append_log(f"ERROR: {error_msg}")
+        logger.error("Extraction failed: %s", error_msg)
+        # Ensure we don't touch a deleted worker
+        if self._worker_alive():
+            self.worker = None
         if error_msg.startswith("JUNEST_PATH:"):
             error_msg = error_msg[len("JUNEST_PATH:") :]
             self._progress_page.set_task("Installation failed", error_msg)
@@ -1226,25 +1227,38 @@ class InstallWizard(QWizard):
                 except Exception as e:
                     logger.debug("Failed to launch app after install: %s", e, exc_info=True)
 
+    def _worker_alive(self) -> bool:
+        """Return True only if the worker object still exists in C++."""
+        worker = getattr(self, "worker", None)
+        if worker is None:
+            return False
+        try:
+            return worker.isRunning()  # or any harmless method
+        except RuntimeError:
+            # C++ object deleted; clean up the Python wrapper
+            self.worker = None
+            return False
+
     def reject(self):
-        play_sound("navigation")
-        if self.worker and self.worker.isRunning():
-            play_sound("warning")
-            reply = QMessageBox.question(
-                self,
-                "Cancel Installation?",
-                "Installation is in progress. Cancel anyway?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-            self.worker.stop()
-            self.worker.wait()
-            if self.dest_dir and os.path.isdir(self.dest_dir):
-                try:
-                    shutil.rmtree(self.dest_dir)
-                except OSError:
-                    pass
-        self._restore_backup()
-        self._cleanup_backup()
-        super().reject()
+        if getattr(self, "_rejecting", False):
+            return
+        self._rejecting = True
+        try:
+            play_sound("navigation")
+            if self._worker_alive() and self.worker and self.worker.isRunning():
+                    play_sound("warning")
+                    reply = QMessageBox.question(
+                        self,
+                        "Cancel Installation?",
+                        "Installation is in progress. Cancel anyway?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    )
+                    if reply != QMessageBox.StandardButton.Yes:
+                        return
+                    self.worker.stop()
+                    if not self.worker.wait(3000):
+                        logger.warning("ExtractionWorker did not stop gracefully")
+            self._restore_backup()
+            self._cleanup_backup()
+        finally:
+            self._rejecting = False

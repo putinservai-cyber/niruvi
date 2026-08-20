@@ -137,6 +137,11 @@ def _extract_squashfs(appimage_path: str, offset: int, dest: str) -> bool:
 
 def _strip_setuid(path: str):
     """Remove SUID/SGID bits from an extracted file."""
+    # Skip broken symlinks and vanished files — they can't carry SUID bits
+    if not os.path.exists(path):
+        return
+    if os.path.islink(path):
+        return
     try:
         st = os.stat(path)
         if st.st_mode & (stat.S_ISUID | stat.S_ISGID):
