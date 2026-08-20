@@ -15,6 +15,25 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_install_name(name: str) -> str:
+    """Replace spaces and unsafe characters with hyphens for JuNest/bwrap compatibility.
+
+    JuNest and bubblewrap cannot handle spaces in install paths. This function
+    replaces them so the directory name is safe while preserving readability.
+    """
+    # Replace any character that isn't a word char, hyphen, or period with a hyphen
+    sanitized = re.sub(r"[^\w\-.]", "-", name)
+    # Collapse multiple hyphens into one
+    sanitized = re.sub(r"-+", "-", sanitized)
+    # Strip leading/trailing hyphens
+    sanitized = sanitized.strip("-")
+    # Prevent empty result
+    return sanitized or "app"
+
+
+logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -255,18 +274,27 @@ class DestinationPage(QWizardPage):
 
     def set_space_info(self, size_mb: float):
         import shutil
+        import os
 
         dest = self.path_edit.text() or os.path.expanduser("~")
-        parent = os.path.dirname(dest) if os.path.isfile(dest) else dest
+        # Walk up to the nearest existing directory so disk_usage doesn't fail
+        # on paths that don't exist yet (e.g. a new folder with spaces)
+        check_path = Path(dest)
+        while check_path and not check_path.exists():
+            check_path = check_path.parent
+        if not check_path or not check_path.exists():
+            logger.warning("No valid path found for disk usage check: %s", dest)
+            self.space_label.setText(f"Required space: <b>{size_mb:.0f} MB</b> &nbsp;|&nbsp; Available: unavailable")
+            return
         try:
-            usage = shutil.disk_usage(parent)
+            usage = shutil.disk_usage(str(check_path))
             avail_gb = usage.free / (1024**3)
             self.space_label.setText(
                 f"Required space: <b>{size_mb:.0f} MB</b> &nbsp;|&nbsp; Available: <b>{avail_gb:.1f} GB</b>"
             )
-        except Exception as e:
-            logger.debug("Failed to get disk usage info: %s", e, exc_info=True)
-            self.space_label.setText(f"Required space: <b>{size_mb:.0f} MB</b>")
+        except OSError as e:
+            logger.debug("Failed to get disk usage info: %s", e)
+            self.space_label.setText(f"Required space: <b>{size_mb:.0f} MB</b> &nbsp;|&nbsp; Available: unavailable")
 
 
 class ComponentsPage(QWizardPage):
@@ -816,6 +844,12 @@ class InstallWizard(QWizard):
             QMessageBox.critical(self, "Error", f"AppImage file not found:\n{self.appimage_path}")
             self.reject()
             return
+        ok, msg = self.validate_install_path(self.dest_dir)
+        if not ok:
+            play_sound("warning")
+            QMessageBox.warning(self, "Invalid Install Path", msg)
+            self.reject()
+            return
         self._extraction_started = True
 
         self.button(QWizard.WizardButton.BackButton).setEnabled(False)
@@ -1239,6 +1273,22 @@ class InstallWizard(QWizard):
             self.worker = None
             return False
 
+    def validate_install_path(self, path: str) -> tuple[bool, str]:
+        """Return (ok, message). Blocks install if path is invalid.
+
+        Currently checks for spaces in the path (JuNest/bwrap incompatible)
+        and verifies the parent directory exists.
+        """
+        if " " in path:
+            safe = sanitize_install_name(os.path.basename(path))
+            suggested = os.path.join(os.path.dirname(path), safe)
+            return False, (
+                f"This app uses a JuNest container which cannot handle spaces in paths.\nSuggested path: {suggested}"
+            )
+        if not os.path.exists(os.path.dirname(path)):
+            return False, f"Parent directory does not exist: {os.path.dirname(path)}"
+        return True, ""
+
     def reject(self):
         if getattr(self, "_rejecting", False):
             return
@@ -1246,18 +1296,18 @@ class InstallWizard(QWizard):
         try:
             play_sound("navigation")
             if self._worker_alive() and self.worker and self.worker.isRunning():
-                    play_sound("warning")
-                    reply = QMessageBox.question(
-                        self,
-                        "Cancel Installation?",
-                        "Installation is in progress. Cancel anyway?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    )
-                    if reply != QMessageBox.StandardButton.Yes:
-                        return
-                    self.worker.stop()
-                    if not self.worker.wait(3000):
-                        logger.warning("ExtractionWorker did not stop gracefully")
+                play_sound("warning")
+                reply = QMessageBox.question(
+                    self,
+                    "Cancel Installation?",
+                    "Installation is in progress. Cancel anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+                self.worker.stop()
+                if not self.worker.wait(3000):
+                    logger.warning("ExtractionWorker did not stop gracefully")
             self._restore_backup()
             self._cleanup_backup()
         finally:
