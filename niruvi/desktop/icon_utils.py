@@ -29,7 +29,7 @@ def to_png_bytes(data: bytes) -> bytes | None:
         buf = QBuffer()
         buf.open(QIODevice.OpenModeFlag.WriteOnly)
         image.save(buf, "PNG")
-        result = bytes(buf.data())
+        result = buf.data().data()
         if result[:4] == b"\x89PNG":
             return result
     return None
@@ -96,7 +96,7 @@ def _svg_to_png(data: bytes, target_size: int = 256) -> bytes | None:
             buf = QBuffer()
             buf.open(QIODevice.OpenModeFlag.WriteOnly)
             image.save(buf, "PNG")
-            result = bytes(buf.data())
+            result = buf.data().data()
             if result[:4] == b"\x89PNG":
                 return result
         except Exception as e:

@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import time
 import wave
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QTimer, QUrl
@@ -249,7 +250,7 @@ def _get_qsound() -> _SoundEffectPlayer | None:
     return _qsound_player
 
 
-def play(sound_name: str):
+def play(sound_name: str) -> None:
     global _last_play_time
     if not _settings.get("sound_effects_enabled", True):
         return
@@ -292,27 +293,39 @@ def play(sound_name: str):
             qs.play(filepath, vol)
         return
 
-    vol_flag = _VOLUME_PLAYERS.get(_player)
+    player = _player
+    if player is None:
+        return
+    vol_flag = _VOLUME_PLAYERS.get(player, "")
     try:
-        if _player == "ffplay":
+        if player == "ffplay":
             vol_int = max(0, min(100, int(vol * 100)))
-            args = [_player, "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", str(vol_int), filepath]
+            args = [player, "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", str(vol_int), filepath]
             _spawn(args)
-        elif _player == "paplay":
+        elif player == "paplay":
             vol_val = str(max(0, min(65535, int(vol * 65535))))
-            _spawn([_player, vol_flag, vol_val, filepath])
-        elif _player == "pw-play":
+            _spawn([player, vol_flag, vol_val, filepath])
+        elif player == "pw-play":
             vol_val = f"{vol:.2f}"
-            _spawn([_player, vol_flag, vol_val, filepath])
-        elif _player == "canberra-gtk-play":
+            _spawn([player, vol_flag, vol_val, filepath])
+        elif player == "canberra-gtk-play":
             vol_val = str(int(vol * 100))
-            _spawn([_player, "--file", filepath, "--volume", vol_val])
-        elif _player == "cvlc":
-            _spawn([_player, "--play-and-exit", "--no-video", filepath])
+            _spawn([player, "--file", filepath, "--volume", vol_val])
+        elif player == "cvlc":
+            _spawn([player, "--play-and-exit", "--no-video", filepath])
         else:
-            _spawn([_player, filepath])
+            _spawn([player, filepath])
     except Exception as e:
         logger.debug("failed to play sound '%s': %s", sound_name, e, exc_info=True)
+
+
+def play_and(sound_name: str, action: Callable[[], object], *extra: Callable[[], object]) -> object:
+    """Play a sound effect, then run one or more zero-argument callables in order."""
+    play(sound_name)
+    last: object = None
+    for fn in (action, *extra):
+        last = fn()
+    return last
 
 
 def _spawn(args: list[str]):

@@ -8,13 +8,15 @@ identify potential security issues.
 import logging
 import os
 import re
+import shutil
 import stat
+import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 #: Patterns for suspicious content detection
-SUSPICIOUS_PATTERNS: list[tuple[str, str, str]] = [
+SUSPICIOUS_PATTERNS: list[tuple[str, str]] = [
     # (category, regex_pattern, description)
     ("reverse_shell", r"(\/dev\/tcp\/|\/dev\/udp\/|bash\s+-i\s+>&\s+/dev/tcp|sh\s+-i\s+>&\s+/dev/tcp)"),
     ("crypto_miner", r"(stratum\+tcp|monero|cryptonight|xmrig|cgminer)"),
@@ -145,6 +147,58 @@ def _strip_all_setuid(app_dir: str) -> None:
             _strip_setuid(os.path.join(root, fname))
 
 
+def _extract_squashfs(appimage_path: str, offset: int, dest: str) -> bool:
+    """Extract a SquashFS payload using unsquashfs.
+
+    Args:
+        appimage_path: Path to the AppImage file.
+        offset: Byte offset of the SquashFS payload within the file.
+        dest: Destination directory for the extracted files.
+
+    Returns:
+        True if extraction succeeded, False otherwise.
+    """
+    if not shutil.which("unsquashfs"):
+        logger.debug("unsquashfs not available; cannot extract SquashFS payload")
+        return False
+    try:
+        proc = subprocess.run(
+            ["unsquashfs", "-q", "-o", str(offset), "-d", dest, appimage_path],
+            capture_output=True,
+            timeout=120,
+        )
+        return proc.returncode == 0
+    except Exception as e:
+        logger.debug("unsquashfs extraction failed for %s: %s", appimage_path, e, exc_info=True)
+        return False
+
+
+def _extract_dwarfs(appimage_path: str, offset: int, dest: str) -> bool:
+    """Extract a DwarFS payload using dwarfsextract.
+
+    Args:
+        appimage_path: Path to the AppImage file.
+        offset: Byte offset of the DwarFS payload within the file.
+        dest: Destination directory for the extracted files.
+
+    Returns:
+        True if extraction succeeded, False otherwise.
+    """
+    if not shutil.which("dwarfsextract"):
+        logger.debug("dwarfsextract not available; cannot extract DwarFS payload")
+        return False
+    try:
+        proc = subprocess.run(
+            ["dwarfsextract", "-o", str(offset), "-d", dest, appimage_path],
+            capture_output=True,
+            timeout=120,
+        )
+        return proc.returncode == 0
+    except Exception as e:
+        logger.debug("dwarfsextract extraction failed for %s: %s", appimage_path, e, exc_info=True)
+        return False
+
+
 def extract_safely(appimage_path: str, dest: str, strip_suid: bool = True) -> bool:
     """Extract an AppImage without executing its code.
 
@@ -162,6 +216,7 @@ def extract_safely(appimage_path: str, dest: str, strip_suid: bool = True) -> bo
     """
     try:
         from niruvi.desktop.appimage_metadata import AppImageMetadata
+
         meta = AppImageMetadata(appimage_path)
         offset = meta.payload_offset
         fs_type = getattr(meta, "fs_type", "squashfs")

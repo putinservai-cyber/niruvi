@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QButtonGroup,
     QCheckBox,
     QGroupBox,
@@ -229,15 +230,14 @@ class UninstallProgressPage(QWizardPage):
 
         self.btn_toggle = QPushButton(get_icon("format-justify-left"), "Show Details")
         self.btn_toggle.setCheckable(True)
-        self.btn_toggle.toggled.connect(
-            lambda c: (
-                self.log_text.setVisible(c),
-                self.btn_toggle.setText("Hide Details" if c else "Show Details"),
-            )
-        )
+        self.btn_toggle.toggled.connect(self._on_toggle_details)
         layout.addWidget(self.btn_toggle)
 
         layout.addStretch()
+
+    def _on_toggle_details(self, visible: bool) -> None:
+        self.log_text.setVisible(visible)
+        self.btn_toggle.setText("Hide Details" if visible else "Show Details")
 
     def update_step(self, msg: str, pct: int):
         self.step_label.setText(msg)
@@ -401,6 +401,12 @@ class UninstallWorker(QThread):
 
 
 class UninstallWizard(QWizard):
+
+    def _wbutton(self, button: QWizard.WizardButton) -> QAbstractButton:
+        btn = self.button(button)
+        assert btn is not None
+        return btn
+
     def __init__(self, app_name, app_dir, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Uninstall {app_name}")
@@ -484,14 +490,14 @@ class UninstallWizard(QWizard):
 
     def _configure_buttons(self):
         self.setButtonText(QWizard.WizardButton.CancelButton, "Cancel")
-        self.button(QWizard.WizardButton.CancelButton).setIcon(get_icon("dialog-cancel"))
+        self._wbutton(QWizard.WizardButton.CancelButton).setIcon(get_icon("dialog-cancel"))
         self.setButtonText(QWizard.WizardButton.BackButton, "Back")
-        self.button(QWizard.WizardButton.BackButton).setIcon(get_icon("go-previous"))
+        self._wbutton(QWizard.WizardButton.BackButton).setIcon(get_icon("go-previous"))
         self.setButtonText(QWizard.WizardButton.NextButton, "Next")
-        self.button(QWizard.WizardButton.NextButton).setIcon(get_icon("go-next"))
+        self._wbutton(QWizard.WizardButton.NextButton).setIcon(get_icon("go-next"))
         self.setButtonText(QWizard.WizardButton.FinishButton, "Finish")
-        self.button(QWizard.WizardButton.FinishButton).setIcon(get_icon("dialog-ok"))
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.FinishButton).setIcon(get_icon("dialog-ok"))
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(False)
 
     def nextId(self):
         cid = self.currentId()
@@ -514,7 +520,7 @@ class UninstallWizard(QWizard):
             checks = self._options_page.get_checks()
             self._confirm_page.set_items(checks, self.app_dir)
             self.setButtonText(QWizard.WizardButton.NextButton, "Uninstall")
-            self.button(QWizard.WizardButton.NextButton).setIcon(get_icon("edit-delete"))
+            self._wbutton(QWizard.WizardButton.NextButton).setIcon(get_icon("edit-delete"))
         elif page_id == self._page_progress:
             if self._redirected_to_repair:
                 self._start_repair()
@@ -524,19 +530,19 @@ class UninstallWizard(QWizard):
     def _on_page_changed(self, idx):
         play_sound("navigation")
         if idx == self._page_progress:
-            self.button(QWizard.WizardButton.BackButton).hide()
-            self.button(QWizard.WizardButton.NextButton).hide()
-            self.button(QWizard.WizardButton.FinishButton).hide()
-        elif self.currentPage() and self.currentPage().isFinalPage():
-            self.button(QWizard.WizardButton.BackButton).hide()
+            self._wbutton(QWizard.WizardButton.BackButton).hide()
+            self._wbutton(QWizard.WizardButton.NextButton).hide()
+            self._wbutton(QWizard.WizardButton.FinishButton).hide()
+        elif (page := self.currentPage()) is not None and page.isFinalPage():
+            self._wbutton(QWizard.WizardButton.BackButton).hide()
 
     def _start_uninstall(self):
         if self._uninstall_started:
             return
         self._uninstall_started = True
 
-        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
-        self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.CancelButton).setEnabled(False)
 
         checks = self._options_page.get_checks()
         self.worker = UninstallWorker(self.app_name, self.app_dir, checks, self)
@@ -546,8 +552,8 @@ class UninstallWizard(QWizard):
         start_worker(self.worker)
 
     def _start_repair(self):
-        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
-        self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.CancelButton).setEnabled(False)
 
         from niruvi.core.repair import repair_full
 
@@ -582,9 +588,9 @@ class UninstallWizard(QWizard):
             self._finish_page.restart_check.hide()
             self._finish_page.logs_check.hide()
         play_sound("success")
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
-        self.button(QWizard.WizardButton.FinishButton).show()
-        self.button(QWizard.WizardButton.CancelButton).hide()
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).show()
+        self._wbutton(QWizard.WizardButton.CancelButton).hide()
         self.next()
 
     def _on_error(self, msg):

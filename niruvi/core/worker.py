@@ -111,11 +111,12 @@ def _check_disk_space(path: str, extract_dir: str) -> None:
 
 
 def _format_bytes(n: int) -> str:
+    size = float(n)
     for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024:
-            return f"{n:.0f} {unit}"
-        n /= 1024
-    return f"{n:.1f} TB"
+        if size < 1024:
+            return f"{size:.0f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_tracker: list | None = None):
@@ -335,12 +336,12 @@ class DownloadWorker(QThread):
             chunk_size = 65536
             downloaded = 0
             sha256_hash = hashlib.sha256()
-            start_time = 0
+            start_time = 0.0
             import time
 
             start_time = time.time()
 
-            with open(self.dest_path, "wb") as f:
+            with open(self.dest_path, "wb") as fh:
                 while True:
                     if self._cancelled:
                         self.error.emit("cancelled")
@@ -348,7 +349,7 @@ class DownloadWorker(QThread):
                     chunk = resp.read(chunk_size)
                     if not chunk:
                         break
-                    f.write(chunk)
+                    fh.write(chunk)
                     sha256_hash.update(chunk)
                     downloaded += len(chunk)
                     if total > 0:

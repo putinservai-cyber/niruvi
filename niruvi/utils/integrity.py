@@ -11,6 +11,7 @@ import hmac
 import json
 import logging
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ def read_json_with_hmac(path: str) -> dict | None:
     if not isinstance(payload, dict):
         return None
     sig = payload.get("_hmac", "")
-    data = payload.get("_data")
+    data: dict[str, Any] | None = payload.get("_data")
     if data is not None and sig:
         if verify_data(data, sig):
             return data

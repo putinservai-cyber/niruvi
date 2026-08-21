@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QCheckBox,
     QFileDialog,
@@ -47,6 +48,7 @@ from PyQt6.QtWidgets import (
 from niruvi.core.worker import start_worker
 from niruvi.installer.junest import path_has_spaces, suggest_space_free_path
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 
 
 def _sha256_file(path: str) -> str:
@@ -724,7 +726,7 @@ class DirectoryPage(QWizardPage):
         row = QHBoxLayout()
         row.addWidget(self.dir_edit, 1)
         btn = QPushButton("Browse...")
-        btn.clicked.connect(lambda: (play_sound("click"), self._browse()))
+        btn.clicked.connect(lambda: play_and("click", self._browse))
         row.addWidget(btn)
         layout.addLayout(row)
         layout.addStretch()
@@ -830,12 +832,12 @@ class FinishPage(QWizardPage):
 
         btn_layout = QHBoxLayout()
         self._open_folder_btn = QPushButton(_theme_icon("folder-open"), "Open Install Folder")
-        self._open_folder_btn.clicked.connect(lambda: (play_sound("click"), self._on_open_folder()))
+        self._open_folder_btn.clicked.connect(lambda: play_and("click", self._on_open_folder))
         self._open_folder_btn.setVisible(False)
         btn_layout.addWidget(self._open_folder_btn)
 
         self._show_in_niruvi_btn = QPushButton(_theme_icon("go-home"), "Show in Niruvi")
-        self._show_in_niruvi_btn.clicked.connect(lambda: (play_sound("click"), self._on_show_in_niruvi()))
+        self._show_in_niruvi_btn.clicked.connect(lambda: play_and("click", self._on_show_in_niruvi))
         self._show_in_niruvi_btn.setVisible(False)
         btn_layout.addWidget(self._show_in_niruvi_btn)
 
@@ -902,6 +904,11 @@ class FinishPage(QWizardPage):
 
 
 class SelfInstallWizard(QWizard):
+    def _wbutton(self, button: QWizard.WizardButton) -> QAbstractButton:
+        btn = self.button(button)
+        assert btn is not None
+        return btn
+
     def __init__(self, config, self_appimage, mode="install"):
         super().__init__()
         self.config = config
@@ -921,8 +928,8 @@ class SelfInstallWizard(QWizard):
         elif mode == "update":
             self._build_update_pages()
 
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
-        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).setEnabled(False)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
         self.setFixedSize(560, 480)
 
@@ -1018,9 +1025,9 @@ class SelfInstallWizard(QWizard):
                 f"The install destination contains spaces:\n\n{dest}\n\n"
                 "This may cause launching issues. "
                 "Would you like to install to a space-free path instead?",
-                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if choice == QMessageBox.Yes:
+            if choice == QMessageBox.StandardButton.Yes:
                 dest = suggest_space_free_path(dest)
         self._worker = InstallWorker(self.config, dest, self.self_appimage)
         self._worker.progress.connect(self._progress_page.progress.setValue)
@@ -1028,12 +1035,12 @@ class SelfInstallWizard(QWizard):
         self._worker.finished.connect(self._on_install_finished)
         self._worker.error.connect(self._on_worker_error)
         start_worker(self._worker)
-        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).setEnabled(False)
 
     def _on_install_finished(self, dest):
         play_sound("success")
         self._progress_page.setComplete(True)
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
         self._finish_appimage = os.path.join(dest, "AppRun")
         self._finish_page.setDest(dest)
 
@@ -1093,7 +1100,7 @@ class SelfInstallWizard(QWizard):
 
     def _on_uninstall_finished(self):
         self._progress_page.setComplete(True)
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
 
     def _on_update_page_changed(self, idx):
         play_sound("navigation")
@@ -1113,12 +1120,12 @@ class SelfInstallWizard(QWizard):
     def _on_update_available(self, manifest):
         self._manifest = manifest
         self._check_label.setText("Update found!")
-        self.button(QWizard.WizardButton.NextButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.NextButton).setEnabled(True)
 
     def _on_no_update(self):
         self._check_label.setText("Already up to date.")
         self._progress_page.setComplete(True)
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
 
     def _start_update_download(self):
         self._progress_page.log.clear()
@@ -1131,7 +1138,7 @@ class SelfInstallWizard(QWizard):
 
     def _on_update_finished(self, dest):
         self._progress_page.setComplete(True)
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
 
 
 # ── Entry point ──

@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 from niruvi.core.worker import DownloadWorker, start_worker
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class StoreDialog(QDialog):
         header_row.addWidget(title)
         header_row.addStretch()
         self.refresh_btn = QPushButton(get_icon("view-refresh"), "Refresh")
-        self.refresh_btn.clicked.connect(lambda: (play_sound("click"), self._refresh()))
+        self.refresh_btn.clicked.connect(lambda: play_and("click", self._refresh))
         header_row.addWidget(self.refresh_btn)
         layout.addLayout(header_row)
 
@@ -108,7 +109,7 @@ class StoreDialog(QDialog):
         self.install_btn.clicked.connect(self._install_selected)
         btn_row.addWidget(self.install_btn)
         self.close_btn = QPushButton("Close")
-        self.close_btn.clicked.connect(lambda: (play_sound("navigation"), self.reject()))
+        self.close_btn.clicked.connect(lambda: play_and("navigation", self.reject))
         btn_row.addWidget(self.close_btn)
         layout.addLayout(btn_row)
 

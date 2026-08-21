@@ -28,6 +28,8 @@ class RepairAction:
         self._repair_fn = repair_fn
         self.success = False
         self.error: str | None = None
+        self.ran = False
+        self.new_path: str = ""
 
     def execute(self) -> bool:
         try:

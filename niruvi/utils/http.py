@@ -4,6 +4,7 @@ import json
 import logging
 import ssl
 import urllib.request
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ def fetch_json(url: str, timeout: int = 15) -> dict:
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
-        return json.loads(resp.read().decode("utf-8"))
+        data: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+        return data
     except urllib.error.URLError as e:
         logger.warning("SSL/URL error fetching %s: %s", url, e)
         raise
@@ -35,7 +37,8 @@ def fetch_bytes(url: str, timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, headers={"Accept": "*/*"})
     try:
         resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
-        return resp.read()
+        data: bytes = resp.read()
+        return data
     except urllib.error.URLError as e:
         logger.warning("SSL/URL error fetching %s: %s", url, e)
         raise

@@ -22,6 +22,7 @@ import os
 import struct
 import urllib.error
 import urllib.request
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,7 @@ def md4(data: bytes) -> bytes:
 def parse_zsync_metadata(zsync_bytes: bytes, zsync_url: str) -> dict:
     """Parse the text header of a .zsync file. Returns a dict with the
     header fields plus the binary block-sum section as raw bytes."""
-    meta = {}
+    meta: dict[str, Any] = {}
     pos = 0
     header_lines = []
     while pos < len(zsync_bytes):
@@ -217,7 +218,8 @@ def _block_strong(block: bytes, checksum_bytes: int) -> bytes:
 def _fetch_url(url: str, timeout: int = 30, headers: dict | None = None) -> bytes:
     req = urllib.request.Request(url, headers=headers or {})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+        data: bytes = resp.read()
+        return data
 
 
 def _fetch_range(url: str, start: int, end: int, timeout: int = 120) -> bytes:
@@ -227,7 +229,7 @@ def _fetch_range(url: str, start: int, end: int, timeout: int = 120) -> bytes:
         headers={"Range": f"bytes={start}-{end}", "Accept-Encoding": "identity"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = resp.read()
+        data: bytes = resp.read()
     expected = end - start + 1
     if len(data) != expected:
         raise ZSyncError(f"Range request returned {len(data)} bytes, expected {expected}")
@@ -246,7 +248,7 @@ class _SeedScanner:
         self._a = 0
         self._b = 0
         self._shift = block_size.bit_length() - 1
-        self._window = None
+        self._window: bytes = b""
         self._first = True
         try:
             self._file = open(seed_path, "rb")
@@ -336,12 +338,12 @@ def delta_update(
     checksum_bytes = len(entries[0][2])
 
     # rsum -> list of block ids
-    rsum_index = {}
+    rsum_index: dict[tuple[int, int], list[int]] = {}
     for bid, (a, b, _strong) in enumerate(entries):
         rsum_index.setdefault((a, b), []).append(bid)
 
     filled = [False] * nblocks
-    seed_data: dict = {}
+    seed_data: dict[int, bytes] = {}
 
     def report():
         if progress_cb:

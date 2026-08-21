@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QButtonGroup,
     QHBoxLayout,
     QLabel,
@@ -191,15 +192,14 @@ class UpdateInstallPage(QWizardPage):
 
         self.btn_toggle = QPushButton(get_icon("format-justify-left"), "Show Details")
         self.btn_toggle.setCheckable(True)
-        self.btn_toggle.toggled.connect(
-            lambda c: (
-                self.log_text.setVisible(c),
-                self.btn_toggle.setText("Hide Details" if c else "Show Details"),
-            )
-        )
+        self.btn_toggle.toggled.connect(self._on_toggle_details)
         layout.addWidget(self.btn_toggle)
 
         layout.addStretch()
+
+    def _on_toggle_details(self, visible: bool) -> None:
+        self.log_text.setVisible(visible)
+        self.btn_toggle.setText("Hide Details" if visible else "Show Details")
 
     def set_task(self, task: str, pct: int):
         self.task_label.setText(task)
@@ -208,7 +208,8 @@ class UpdateInstallPage(QWizardPage):
     def append_log(self, msg: str):
         self.log_text.append(msg)
         sb = self.log_text.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        if sb is not None:
+            sb.setValue(sb.maximum())
 
 
 class UpdateFinishPage(QWizardPage):
@@ -370,6 +371,12 @@ class UpdateInstallWorker(QThread):
 
 
 class UpdateWizard(QWizard):
+
+    def _wbutton(self, button: QWizard.WizardButton) -> QAbstractButton:
+        btn = self.button(button)
+        assert btn is not None
+        return btn
+
     def __init__(
         self,
         app_name: str,
@@ -398,11 +405,11 @@ class UpdateWizard(QWizard):
         self._install_worker: UpdateInstallWorker | None = None
         self._rollback_performed = False
 
-        self._changelog_page: ChangelogPage | None = None
-        self._download_page: DownloadPage | None = None
-        self._install_page: UpdateInstallPage | None = None
-        self._finish_page: UpdateFinishPage | None = None
-        self._rollback_page: UpdateRollbackPage | None = None
+        self._changelog_page: ChangelogPage = None  # type: ignore[assignment]
+        self._download_page: DownloadPage = None  # type: ignore[assignment]
+        self._install_page: UpdateInstallPage = None  # type: ignore[assignment]
+        self._finish_page: UpdateFinishPage = None  # type: ignore[assignment]
+        self._rollback_page: UpdateRollbackPage = None  # type: ignore[assignment]
         self._page_ids: dict[str, int] = {}
         self._has_update = False
 
@@ -441,14 +448,14 @@ class UpdateWizard(QWizard):
 
     def _configure_buttons(self):
         self.setButtonText(QWizard.WizardButton.CancelButton, "Cancel")
-        self.button(QWizard.WizardButton.CancelButton).setIcon(get_icon("dialog-cancel"))
+        self._wbutton(QWizard.WizardButton.CancelButton).setIcon(get_icon("dialog-cancel"))
         self.setButtonText(QWizard.WizardButton.BackButton, "Back")
-        self.button(QWizard.WizardButton.BackButton).setIcon(get_icon("go-previous"))
+        self._wbutton(QWizard.WizardButton.BackButton).setIcon(get_icon("go-previous"))
         self.setButtonText(QWizard.WizardButton.NextButton, "Next")
-        self.button(QWizard.WizardButton.NextButton).setIcon(get_icon("go-next"))
+        self._wbutton(QWizard.WizardButton.NextButton).setIcon(get_icon("go-next"))
         self.setButtonText(QWizard.WizardButton.FinishButton, "Finish")
-        self.button(QWizard.WizardButton.FinishButton).setIcon(get_icon("dialog-ok"))
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.FinishButton).setIcon(get_icon("dialog-ok"))
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(False)
 
     def _on_page_changed(self, idx):
         play_sound("navigation")
@@ -483,7 +490,7 @@ class UpdateWizard(QWizard):
             self._changelog_page.set_info(
                 self.current_version, self._update_info.version, self._update_info.changelog or ""
             )
-            self.button(QWizard.WizardButton.NextButton).setEnabled(True)
+            self._wbutton(QWizard.WizardButton.NextButton).setEnabled(True)
             self.next()
             return
         try:
@@ -495,7 +502,7 @@ class UpdateWizard(QWizard):
                     self._update_info = info
                     self._has_update = True
                     self._changelog_page.set_info(self.current_version, info.version, info.changelog or "")
-                    self.button(QWizard.WizardButton.NextButton).setEnabled(True)
+                    self._wbutton(QWizard.WizardButton.NextButton).setEnabled(True)
                     self.next()
                     return
             play_sound("info")
@@ -511,8 +518,8 @@ class UpdateWizard(QWizard):
     def _start_download(self):
         if not self._update_info or not self._update_info.download_url:
             return
-        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
-        self.button(QWizard.WizardButton.CancelButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.BackButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.CancelButton).setEnabled(True)
 
         fd, self._downloaded_path = tempfile.mkstemp(suffix=".AppImage")
         os.close(fd)
@@ -582,8 +589,8 @@ class UpdateWizard(QWizard):
         self._download_page.status_label.setText("Download complete!")
         self._download_page.progress_bar.setValue(100)
         play_sound("progress")
-        self.button(QWizard.WizardButton.NextButton).setEnabled(True)
-        self.button(QWizard.WizardButton.NextButton).setText("Install")
+        self._wbutton(QWizard.WizardButton.NextButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.NextButton).setText("Install")
         self.next()
 
     def _on_download_error(self, error_msg: str):
@@ -596,9 +603,9 @@ class UpdateWizard(QWizard):
         if not self._downloaded_path or not os.path.isfile(self._downloaded_path):
             self._show_rollback("Downloaded file not found.")
             return
-        self.button(QWizard.WizardButton.BackButton).hide()
-        self.button(QWizard.WizardButton.NextButton).setEnabled(False)
-        self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).hide()
+        self._wbutton(QWizard.WizardButton.NextButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.CancelButton).setEnabled(False)
 
         self._install_worker = UpdateInstallWorker(self._downloaded_path, self.app_dir, self.app_name, self)
         self._install_worker.task_changed.connect(self._install_page.set_task)
@@ -615,8 +622,8 @@ class UpdateWizard(QWizard):
             refresh_desktop_database()
         except Exception:
             pass
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
-        self.button(QWizard.WizardButton.FinishButton).show()
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).show()
         version = get_version(self.app_dir) or self._update_info.version if self._update_info else ""
         self._finish_page.set_completed(self.app_name, version)
         self.next()
@@ -630,8 +637,8 @@ class UpdateWizard(QWizard):
         if self._install_worker:
             self._install_worker.rollback()
         self._rollback_page.set_rollback_progress(100, "Previous version restored.")
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
-        self.button(QWizard.WizardButton.FinishButton).setText("Finish")
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).setText("Finish")
         if self.currentId() != self._page_ids.get("rollback"):
             self.next()
 

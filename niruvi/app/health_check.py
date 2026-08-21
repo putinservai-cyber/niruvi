@@ -6,6 +6,7 @@ import shutil
 import stat
 import subprocess
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -348,7 +349,7 @@ def check_app_runnable(app_name: str, app_dir: str) -> dict:
 def check_app_health(app_name: str, app_dir: str, record) -> dict:
     issues = []
     warnings = []
-    info = {}
+    info: dict[str, Any] = {}
     now = time.time()
 
     apprun_path = os.path.join(app_dir, "AppRun")
@@ -487,8 +488,8 @@ def check_appimage_magic(path: str) -> dict:
 
 
 def check_system_compatibility() -> dict:
-    issues = []
-    info = {}
+    issues: list[str] = []
+    info: dict[str, Any] = {}
     u = os.uname()
     info["os"] = f"{u.sysname} {u.release}"
     try:

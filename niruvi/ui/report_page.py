@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 
 from niruvi.constants import REPORT_ISSUES_URL
 from niruvi.utils import get_icon
-from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 
 
 class ReportPage(QWidget):
@@ -47,7 +47,10 @@ class ReportPage(QWidget):
         subtitle.setWordWrap(True)
         main_layout.addWidget(subtitle)
 
-        main_layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine, frameShadow=QFrame.Shadow.Sunken))
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        main_layout.addWidget(sep)
 
         self.btn_github = QPushButton(
             get_icon("go-next", "arrow-right", "media-skip-forward"), "Open GitHub Issues Page"
@@ -65,4 +68,4 @@ class ReportPage(QWidget):
 
         main_layout.addStretch()
 
-        self.btn_github.clicked.connect(lambda: (play_sound("click"), webbrowser.open(REPORT_ISSUES_URL)))
+        self.btn_github.clicked.connect(lambda: play_and("click", lambda: webbrowser.open(REPORT_ISSUES_URL)))

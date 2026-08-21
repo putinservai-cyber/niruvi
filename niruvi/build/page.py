@@ -23,7 +23,7 @@ def _guard_extraction(dest: str) -> None:
         try:
             entry.resolve().relative_to(dest_resolved)
         except ValueError:
-            raise SecurityError(f"Path traversal detected: {entry}")
+            raise SecurityError(f"Path traversal detected: {entry}") from None
 
 
 def _safe_member_names(dest: str) -> None:
@@ -67,7 +67,7 @@ def _find_appimagetool(arch: str):
         ("cached", _toolchain_path(arch)),
         ("bundled", ASSETS_DIR / f"appimagetool-{arch}.AppImage"),
     ]
-    for label, path in candidates:
+    for _label, path in candidates:
         if path.exists() and path.stat().st_size > 1_000_000:
             return path
     return None
@@ -114,12 +114,21 @@ def extract_package(src: str, dest: str) -> tuple[bool, str]:
             for f in os.listdir(dest):
                 if f.startswith("data.tar"):
                     decompress = []
-                    if f.endswith(".zst"):
-                        if shutil.which("zstd"):
-                            decompress = ["--zstd"]
+                    if f.endswith(".zst") and shutil.which("zstd"):
+                        decompress = ["--zstd"]
                     subprocess.run(
-                        ["tar", "-xf", "--no-same-owner", "--no-same-permissions", os.path.join(dest, f), "-C", dest]
-                        + decompress,
+                        [
+                            *[
+                                "tar",
+                                "-xf",
+                                "--no-same-owner",
+                                "--no-same-permissions",
+                                os.path.join(dest, f),
+                                "-C",
+                                dest,
+                            ],
+                            *decompress,
+                        ],
                         capture_output=True,
                         timeout=60,
                         check=True,
@@ -264,9 +273,9 @@ def _find_metadata(appdir: str, default_name: str):
 
     info = {"Name": default_name, "Exec": "", "Icon": ""}
     if desktop_file:
-        with open(desktop_file, encoding="utf-8", errors="ignore") as f:
+        with open(desktop_file, encoding="utf-8", errors="ignore") as df:
             in_desktop = False
-            for line in f:
+            for line in df:
                 s = line.strip()
                 if s == "[Desktop Entry]":
                     in_desktop = True
@@ -382,7 +391,7 @@ def _create_apprun(appdir: str, exec_path: str) -> str:
     return path
 
 
-def _create_desktop(appdir: str, name: str, exec_name: str = None, icon_name: str = None) -> str:
+def _create_desktop(appdir: str, name: str, exec_name: str | None = None, icon_name: str | None = None) -> str:
     bare_exec = os.path.basename(exec_name) if exec_name else name
     content = (
         "[Desktop Entry]\n"
@@ -455,6 +464,7 @@ class BuildWorker(QThread):
         enable_launch_at_finish=True,
         is_folder_source=False,
         arch="x86_64",
+        config=None,
     ):
         super().__init__()
         self.source_path = source_path
@@ -477,6 +487,7 @@ class BuildWorker(QThread):
         self.enable_launch_at_finish = enable_launch_at_finish
         self.is_folder_source = is_folder_source
         self.arch = arch if arch in SUPPORTED_ARCHES else "x86_64"
+        self.config = config or {}
         self._process = None
         self._cancelled = False
 
@@ -505,9 +516,7 @@ class BuildWorker(QThread):
                         hook,
                         shell=True,
                         timeout=30,
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        capture_output=True,
                     )
                     self.log.emit(f"Pre-build hook executed: {hook[:50]}...")
                 except Exception as e:
@@ -626,8 +635,8 @@ class BuildWorker(QThread):
                 # Fix wrapper scripts that call binaries in the same directory
                 exec_in_appdir = os.path.join(appdir, "usr", "bin", exec_name)
                 if os.path.isfile(exec_in_appdir):
-                    with open(exec_in_appdir) as f:
-                        content = f.read(4096)
+                    with open(exec_in_appdir) as ef:
+                        content = ef.read(4096)
                     m = re.search(r'\$HERE/([^"\s]+)', content)
                     if m:
                         dep = m.group(1)
@@ -708,7 +717,7 @@ class BuildWorker(QThread):
                         env=env,
                     )
                     timeout = 600
-                    elapsed = 0
+                    elapsed = 0.0
                     while elapsed < timeout and not self._cancelled:
                         try:
                             line = proc.stdout.readline() if proc.stdout else ""
@@ -796,13 +805,10 @@ class BuildWorker(QThread):
                 for hook in post_hooks:
                     try:
                         subprocess.run(
-                            hook,
+                            f"{hook} {out_path}",
                             shell=True,
                             timeout=30,
-                            args=[out_path],
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
+                            capture_output=True,
                         )
                         self.log.emit(f"Post-build hook executed: {hook[:50]}...")
                     except Exception as e:

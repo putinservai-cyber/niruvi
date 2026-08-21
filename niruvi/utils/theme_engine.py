@@ -6,6 +6,7 @@ Fusion cannot do (selection alpha, hover states, thin scrollbar, tab underline).
 """
 
 import logging
+from collections.abc import Callable
 from enum import Enum, auto
 
 from PyQt6.QtGui import QColor, QPalette
@@ -31,7 +32,7 @@ COLOR_INFO = "#2980B9"
 def disabled_text_color() -> str:
     """Return the current palette's disabled text color as hex string."""
     app = QApplication.instance()
-    if app is None:
+    if not isinstance(app, QApplication):
         return "#707D8A"
     return app.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
 
@@ -209,11 +210,21 @@ QPushButton:focus, QComboBox:focus, QLineEdit:focus, QTextEdit:focus {
 
 
 class ThemeEngine:
-    """Applies Breeze-accurate light/dark theme via Fusion style + palette."""
+    """Applies Breeze-accurate light/dark theme via Fusion style + palette.
+
+    Users can override individual palette colors (a "custom theme") by
+    supplying a dict of QPalette.ColorRole name -> "#RRGGBB" via
+    set_custom_colors(). Overrides are layered on top of the Breeze
+    light/dark base palette, so a partial override (e.g. just Highlight)
+    is enough to accent the app without redefining every color.
+    """
 
     def __init__(self):
         self._mode = ThemeMode.AUTO
-        self._listeners: list[callable] = []
+        self._listeners: list[Callable[[ThemeMode], None]] = []
+        self._custom_colors: dict[str, str] = {}
+        self._theme_cache: ThemeMode | None = None
+        self._theme_cache_time: float = 0.0
 
     @property
     def mode(self) -> ThemeMode:
@@ -234,7 +245,7 @@ class ThemeEngine:
     def is_dark(self) -> bool:
         return self.effective_mode == ThemeMode.DARK
 
-    def on_theme_changed(self, callback: callable):
+    def on_theme_changed(self, callback: Callable[[ThemeMode], None]):
         self._listeners.append(callback)
 
     def _notify(self):
@@ -248,11 +259,74 @@ class ThemeEngine:
         import time
 
         now = time.monotonic()
-        if hasattr(self, "_theme_cache") and now - self._theme_cache_time < 60:
+        if self._theme_cache is not None and now - self._theme_cache_time < 60:
             return self._theme_cache
-        try:
-            import subprocess
 
+        for probe in (
+            self._probe_xdg_portal,
+            self._probe_gsettings,
+            self._probe_kreadconfig,
+            self._probe_xfconf,
+        ):
+            mode = probe()
+            if mode is not None:
+                self._theme_cache = mode
+                self._theme_cache_time = now
+                return mode
+
+        self._theme_cache = ThemeMode.LIGHT
+        self._theme_cache_time = now
+        return ThemeMode.LIGHT
+
+    @staticmethod
+    def _probe_xdg_portal() -> "ThemeMode | None":
+        """Query org.freedesktop.appearance color-scheme via the XDG Desktop
+        Portal. This is the desktop-agnostic standard (works under GNOME,
+        KDE, XFCE-with-portal, Cinnamon, and any other DE that implements
+        the portal spec) and should be tried before DE-specific tools.
+
+        Return values per the spec: 0 = no preference, 1 = prefer dark,
+        2 = prefer light.
+        """
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                [
+                    "gdbus",
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.freedesktop.portal.Desktop",
+                    "--object-path",
+                    "/org/freedesktop/portal/desktop",
+                    "--method",
+                    "org.freedesktop.portal.Settings.Read",
+                    "org.freedesktop.appearance",
+                    "color-scheme",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                return None
+            out = result.stdout
+            # Typical output: (<<uint32 1>>,)
+            if "uint32 1" in out:
+                return ThemeMode.DARK
+            if "uint32 2" in out:
+                return ThemeMode.LIGHT
+            return None
+        except Exception as e:
+            logger.debug("XDG portal color-scheme detection failed: %s", e, exc_info=True)
+            return None
+
+    @staticmethod
+    def _probe_gsettings() -> "ThemeMode | None":
+        import subprocess
+
+        try:
             result = subprocess.run(
                 ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
                 capture_output=True,
@@ -260,11 +334,18 @@ class ThemeEngine:
                 timeout=5,
             )
             if "dark" in result.stdout.lower():
-                self._theme_cache = ThemeMode.DARK
-                self._theme_cache_time = now
                 return ThemeMode.DARK
+            if result.returncode == 0 and result.stdout.strip():
+                return ThemeMode.LIGHT
+            return None
         except Exception as e:
             logger.debug("gsettings color-scheme detection failed: %s", e, exc_info=True)
+            return None
+
+    @staticmethod
+    def _probe_kreadconfig() -> "ThemeMode | None":
+        import subprocess
+
         try:
             result = subprocess.run(
                 ["kreadconfig6", "--group", "General", "--key", "ColorScheme", "--default", "Breeze"],
@@ -272,29 +353,78 @@ class ThemeEngine:
                 text=True,
                 timeout=5,
             )
+            if result.returncode != 0:
+                return None
             if "dark" in result.stdout.lower():
-                self._theme_cache = ThemeMode.DARK
-                self._theme_cache_time = now
                 return ThemeMode.DARK
+            if result.stdout.strip():
+                return ThemeMode.LIGHT
+            return None
         except Exception as e:
             logger.debug("kreadconfig6 color-scheme detection failed: %s", e, exc_info=True)
-        self._theme_cache = ThemeMode.LIGHT
-        self._theme_cache_time = now
-        return ThemeMode.LIGHT
+            return None
+
+    @staticmethod
+    def _probe_xfconf() -> "ThemeMode | None":
+        """XFCE stores the GTK theme name under xsettings; names containing
+        'dark' are used by the common dark variants (e.g. Greybird-dark)."""
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                return None
+            if "dark" in result.stdout.lower():
+                return ThemeMode.DARK
+            if result.stdout.strip():
+                return ThemeMode.LIGHT
+            return None
+        except Exception as e:
+            logger.debug("xfconf-query theme detection failed: %s", e, exc_info=True)
+            return None
+
+    def set_custom_colors(self, colors: dict[str, str]):
+        """Set custom palette overrides, e.g. {"Highlight": "#7C3AED"}.
+
+        Keys must match QPalette.ColorRole member names. Invalid keys or
+        malformed hex values are skipped (logged) rather than raising, so a
+        bad settings file can't crash startup. Call apply() afterwards, or
+        just re-set `.mode` to trigger a re-apply.
+        """
+        validated: dict[str, str] = {}
+        for role_name, hex_value in colors.items():
+            if not hasattr(QPalette.ColorRole, role_name):
+                logger.warning("Unknown palette role in custom theme: %s", role_name)
+                continue
+            if not QColor(hex_value).isValid():
+                logger.warning("Invalid color for %s in custom theme: %s", role_name, hex_value)
+                continue
+            validated[role_name] = hex_value
+        self._custom_colors = validated
+
+    def clear_custom_colors(self):
+        self._custom_colors = {}
 
     def apply(self):
         app = QApplication.instance()
-        if app is None:
+        if not isinstance(app, QApplication):
             return
         # Set Fusion style first — it renders everything from the palette
-        if app.style().name() != "Fusion":
+        style = app.style()
+        if style is not None and style.name() != "Fusion":
             app.setStyle("Fusion")
         # Set the exact Breeze palette — Fusion reads all colors from this
         mode = self.effective_mode
-        if mode == ThemeMode.DARK:
-            app.setPalette(_dark_palette())
-        else:
-            app.setPalette(_light_palette())
+        palette = _dark_palette() if mode == ThemeMode.DARK else _light_palette()
+        for role_name, hex_value in self._custom_colors.items():
+            role = getattr(QPalette.ColorRole, role_name)
+            palette.setColor(role, QColor(hex_value))
+        app.setPalette(palette)
         # Minimal QSS — only things Fusion cannot do natively
         app.setStyleSheet(_QSS)
 

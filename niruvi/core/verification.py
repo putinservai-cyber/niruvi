@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import subprocess
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,7 @@ def verify_essential_files(app_dir: str) -> VerificationResult:
 
 def verify_complete(app_dir: str) -> list[VerificationResult]:
     """Run all verification checks and return results."""
-    checks: list[tuple[str, callable]] = [
+    checks: list[tuple[str, Callable[[str], VerificationResult]]] = [
         ("Manifest integrity", verify_manifest_integrity),
         ("Essential files", verify_essential_files),
         ("AppRun executable", verify_apprun_executable),

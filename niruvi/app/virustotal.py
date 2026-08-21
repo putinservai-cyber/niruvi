@@ -12,6 +12,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -87,26 +88,25 @@ def submit_file(path: str, api_key: str) -> str:
     with open(path, "rb") as f:
         payload = f.read()
     boundary = "niruvi" + hashlib.sha1(os.urandom(16)).hexdigest()
-    parts = []
-    parts.append(
+    parts: list[bytes] = [
         f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
-        f'filename="{os.path.basename(path)}"\r\nContent-Type: application/octet-stream\r\n\r\n'
-    )
-    parts.append(payload)
-    parts.append(f"\r\n--{boundary}--\r\n")
-    body = parts[0].encode() + parts[1] + parts[2].encode()
+        f'filename="{os.path.basename(path)}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode(),
+        payload,
+        f"\r\n--{boundary}--\r\n".encode(),
+    ]
+    body = parts[0] + parts[1] + parts[2]
     data = _request(
         "POST", "files", api_key, body=body, content_type=f"multipart/form-data; boundary={boundary}", timeout=180
     )
     if not data or not data.get("data", {}).get("id"):
         raise VirusTotalError("no analysis id returned")
-    return data["data"]["id"]
+    return str(data["data"]["id"])
 
 
 def poll_analysis(analysis_id: str, api_key: str) -> dict:
     """Wait for the analysis to finish; returns the full analysis payload."""
     deadline = time.time() + POLL_TIMEOUT
-    last = {}
+    last: dict[str, Any] = {}
     while time.time() < deadline:
         data = _request("GET", f"analyses/{analysis_id}", api_key, timeout=30)
         if data and data.get("data", {}).get("attributes", {}).get("status") == "completed":
@@ -122,7 +122,7 @@ def scan_file(path: str, api_key: str | None = None) -> dict:
     status: 'clean' | 'flagged' | 'skipped' (on any error).
     """
     api_key = api_key or get_api_key()
-    result = {
+    result: dict[str, Any] = {
         "status": "skipped",
         "malicious": 0,
         "suspicious": 0,
@@ -159,7 +159,7 @@ def scan_file(path: str, api_key: str | None = None) -> dict:
 
 def scan_known_hash(sha256: str, api_key: str) -> dict:
     """Look up an already-known file by hash (no upload needed)."""
-    result = {
+    result: dict[str, Any] = {
         "status": "skipped",
         "malicious": 0,
         "suspicious": 0,
@@ -171,6 +171,8 @@ def scan_known_hash(sha256: str, api_key: str) -> dict:
     }
     try:
         data = _request("GET", f"files/{sha256}", api_key, timeout=30)
+        if not data:
+            raise VirusTotalError("no response from VirusTotal")
         attrs = data.get("data", {}).get("attributes", {})
         stats = attrs.get("last_analysis_stats", {})
         result["malicious"] = int(stats.get("malicious", 0))

@@ -416,34 +416,34 @@ def main():
     appdir_env = os.environ.get("APPDIR")
     if appdir_env:
         for name in ("niruvi.png", "niruvi.svg"):
-            p = os.path.join(appdir_env, name)
-            if os.path.exists(p):
-                icon_path = p
+            candidate = os.path.join(appdir_env, name)
+            if os.path.exists(candidate):
+                icon_path = candidate
                 break
     if not icon_path:
         icon_dir = os.environ.get("NIRUVI_ICON_DIR")
         if icon_dir:
             appdir = os.path.dirname(os.path.dirname(icon_dir))
             for name in ("niruvi.png", "niruvi.svg"):
-                p = os.path.join(appdir, name)
-                if os.path.exists(p):
-                    icon_path = p
+                candidate = os.path.join(appdir, name)
+                if os.path.exists(candidate):
+                    icon_path = candidate
                     break
     if not icon_path:
         for d in (INSTALLED_DIR, os.path.dirname(os.path.dirname(__file__))):
             for name in ("niruvi.png", "niruvi.svg"):
-                p = os.path.join(d, name)
-                if os.path.exists(p):
-                    icon_path = p
+                candidate = os.path.join(d, name)
+                if os.path.exists(candidate):
+                    icon_path = candidate
                     break
             if icon_path:
                 break
     if not icon_path:
         asset_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "asset")
         for name in ("niruvi.png", "niruvi.svg"):
-            p = os.path.join(asset_dir, name)
-            if os.path.exists(p):
-                icon_path = p
+            candidate = os.path.join(asset_dir, name)
+            if os.path.exists(candidate):
+                icon_path = candidate
                 break
     if icon_path:
         from PyQt6.QtGui import QIcon
@@ -471,8 +471,8 @@ def main():
             pass
     for _ in range(3):
         gc.collect()
-    window = None
-    app = None
+    del window
+    del app
     from niruvi.utils.sound_manager import cleanup as _sound_cleanup
 
     _sound_cleanup()

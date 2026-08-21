@@ -175,6 +175,8 @@ class PermissionDaemon:
     def _listener(self):
         while self._running:
             try:
+                if self._fifo_path is None:
+                    break
                 with open(self._fifo_path) as fifo:
                     for line in fifo:
                         self._handle_request(line.strip())

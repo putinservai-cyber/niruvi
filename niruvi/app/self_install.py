@@ -19,7 +19,7 @@ try:
     from niruvi.utils.sound_manager import play as play_sound
 except ImportError:
 
-    def play_sound(_name):
+    def play_sound(sound_name: str) -> None:
         pass
 
 

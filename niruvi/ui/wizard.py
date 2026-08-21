@@ -36,6 +36,7 @@ def sanitize_install_name(name: str) -> str:
 logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QButtonGroup,
     QCheckBox,
     QFileDialog,
@@ -348,6 +349,7 @@ class ComponentsPage(QWizardPage):
         layout.addSpacing(12)
         from niruvi.app.virustotal import get_api_key
 
+        self.cb_vt_scan: QCheckBox | None = None
         if get_api_key():
             sec_title = QLabel("<b>Security Scan</b>")
             layout.addWidget(sec_title)
@@ -430,12 +432,7 @@ class ProgressPage(QWizardPage):
 
         self.btn_toggle = QPushButton(get_icon("format-justify-left"), "Show Details")
         self.btn_toggle.setCheckable(True)
-        self.btn_toggle.toggled.connect(
-            lambda c: (
-                self.log_text.setVisible(c),
-                self.btn_toggle.setText("Hide Details" if c else "Show Details"),
-            )
-        )
+        self.btn_toggle.toggled.connect(self._on_toggle_details)
         layout.addWidget(self.btn_toggle)
 
     def set_task(self, task: str, status: str = ""):
@@ -447,8 +444,13 @@ class ProgressPage(QWizardPage):
 
     def append_log(self, msg: str):
         self.log_text.append(msg)
+
+    def _on_toggle_details(self, visible: bool) -> None:
+        self.log_text.setVisible(visible)
+        self.btn_toggle.setText("Hide Details" if visible else "Show Details")
         sb = self.log_text.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        if sb is not None:
+            sb.setValue(sb.maximum())
 
 
 class FinishPage(QWizardPage):
@@ -505,6 +507,12 @@ class FinishPage(QWizardPage):
 
 
 class InstallWizard(QWizard):
+
+    def _wbutton(self, button: QWizard.WizardButton) -> QAbstractButton:
+        btn = self.button(button)
+        assert btn is not None
+        return btn
+
     def __init__(self, appimage_path=None, parent=None, appimage_info=None, icon_data=None):
         super().__init__(parent)
         self.setMinimumSize(560, 480)
@@ -588,13 +596,13 @@ class InstallWizard(QWizard):
         self._license_text: str | None = None
         self._scan_result = None
 
-        self._welcome_page: WelcomePage | None = None
-        self._license_page: LicensePage | None = None
-        self._installtype_page: InstallTypePage | None = None
-        self._destination_page: DestinationPage | None = None
-        self._components_page: ComponentsPage | None = None
-        self._progress_page: ProgressPage | None = None
-        self._finish_page: FinishPage | None = None
+        self._welcome_page: WelcomePage = None  # type: ignore[assignment]
+        self._license_page: LicensePage = None  # type: ignore[assignment]
+        self._installtype_page: InstallTypePage = None  # type: ignore[assignment]
+        self._destination_page: DestinationPage = None  # type: ignore[assignment]
+        self._components_page: ComponentsPage = None  # type: ignore[assignment]
+        self._progress_page: ProgressPage = None  # type: ignore[assignment]
+        self._finish_page: FinishPage = None  # type: ignore[assignment]
 
         self._page_ids: dict[str, int] = {}
 
@@ -643,14 +651,14 @@ class InstallWizard(QWizard):
 
     def _configure_buttons(self):
         self.setButtonText(QWizard.WizardButton.CancelButton, "Cancel")
-        self.button(QWizard.WizardButton.CancelButton).setIcon(get_icon("dialog-cancel"))
+        self._wbutton(QWizard.WizardButton.CancelButton).setIcon(get_icon("dialog-cancel"))
         self.setButtonText(QWizard.WizardButton.BackButton, "Back")
-        self.button(QWizard.WizardButton.BackButton).setIcon(get_icon("go-previous"))
+        self._wbutton(QWizard.WizardButton.BackButton).setIcon(get_icon("go-previous"))
         self.setButtonText(QWizard.WizardButton.NextButton, "Next")
-        self.button(QWizard.WizardButton.NextButton).setIcon(get_icon("go-next"))
+        self._wbutton(QWizard.WizardButton.NextButton).setIcon(get_icon("go-next"))
         self.setButtonText(QWizard.WizardButton.FinishButton, "Finish")
-        self.button(QWizard.WizardButton.FinishButton).setIcon(get_icon("dialog-ok"))
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.FinishButton).setIcon(get_icon("dialog-ok"))
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(False)
 
     def _select_file(self, path: str):
         if _is_removable_path(path):
@@ -726,9 +734,9 @@ class InstallWizard(QWizard):
     def _on_page_changed(self, idx):
         if idx == self._page_ids.get("progress"):
             self._do_install()
-            self.button(QWizard.WizardButton.FinishButton).hide()
-        elif self.currentPage() and self.currentPage().isFinalPage():
-            self.button(QWizard.WizardButton.BackButton).hide()
+            self._wbutton(QWizard.WizardButton.FinishButton).hide()
+        elif (page := self.currentPage()) is not None and page.isFinalPage():
+            self._wbutton(QWizard.WizardButton.BackButton).hide()
 
     def nextId(self):
         cid = self.currentId()
@@ -808,7 +816,7 @@ class InstallWizard(QWizard):
             self._log(f"Warning: backup failed ({e})")
 
     def _restore_backup(self):
-        if not self._backup_dir or not os.path.isdir(self._backup_dir):
+        if not self._backup_dir or not os.path.isdir(self._backup_dir) or not self.dest_dir:
             return
         try:
             if os.path.exists(self.dest_dir):
@@ -852,9 +860,9 @@ class InstallWizard(QWizard):
             return
         self._extraction_started = True
 
-        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
-        self.button(QWizard.WizardButton.BackButton).hide()
-        self.button(QWizard.WizardButton.NextButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).hide()
+        self._wbutton(QWizard.WizardButton.NextButton).setEnabled(False)
 
         self._progress_page.set_task("Preparing...", "Extracting AppImage contents")
         self._progress_page.append_log(f"Installing: {self.app_name}")
@@ -871,11 +879,13 @@ class InstallWizard(QWizard):
                 self._progress_page.set_task("Scanning with VirusTotal...")
                 self._progress_page.append_log("Uploading to VirusTotal for analysis (may take a minute)...")
 
+                appimage_path = self.appimage_path
+
                 class _VTScanWorker(QThread):
                     finished_scan = pyqtSignal(object)
 
                     def run(self):
-                        self.finished_scan.emit(scan_file(self.appimage_path, api_key))
+                        self.finished_scan.emit(scan_file(appimage_path, api_key))
 
                 self._vt_worker = _VTScanWorker(self)
                 self._vt_worker.finished_scan.connect(self._on_vt_scan_done)
@@ -886,6 +896,9 @@ class InstallWizard(QWizard):
         self._start_extraction()
 
     def _start_extraction(self):
+        if not self.appimage_path or not self.dest_dir or not self.app_name:
+            self._log("Missing install path information.")
+            return
         self.worker = ExtractionWorker(self.appimage_path, self.dest_dir, self.app_name)
         self.worker.extraction_finished.connect(self._on_extraction_finished)
         self.worker.extraction_error.connect(self._on_extraction_error)
@@ -983,17 +996,17 @@ class InstallWizard(QWizard):
         except Exception:
             pass
 
-        if get_settings().get("delta_updates", True) and os.path.isfile(self.appimage_path):
+        if get_settings().get("delta_updates", True) and self.appimage_path and os.path.isfile(self.appimage_path):
             try:
                 seed_target = os.path.join(dest_dir, f"{app_name}.AppImage")
                 shutil.copy2(self.appimage_path, seed_target)
                 os.chmod(seed_target, 0o755)
             except OSError as e:
                 self._progress_page.append_log(f"Note: could not keep delta seed: {e}")
-        self.button(QWizard.WizardButton.NextButton).setEnabled(True)
-        self.button(QWizard.WizardButton.FinishButton).setEnabled(True)
-        self.button(QWizard.WizardButton.FinishButton).show()
-        self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.NextButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
+        self._wbutton(QWizard.WizardButton.FinishButton).show()
+        self._wbutton(QWizard.WizardButton.CancelButton).setEnabled(False)
 
         try:
             version = get_version(dest_dir)
@@ -1126,7 +1139,7 @@ class InstallWizard(QWizard):
             try:
                 from niruvi.installer.junest import suggest_space_free_path
 
-                suggested = suggest_space_free_path(self.dest_dir)
+                suggested = suggest_space_free_path(self.dest_dir) if self.dest_dir else ""
             except Exception:
                 suggested = ""
             self._restore_backup()
@@ -1147,7 +1160,7 @@ class InstallWizard(QWizard):
             self.reject()
             return
         self._progress_page.set_task("Installation failed", error_msg)
-        if os.path.isdir(self.dest_dir):
+        if self.dest_dir and os.path.isdir(self.dest_dir):
             try:
                 shutil.rmtree(self.dest_dir)
             except OSError:
@@ -1267,7 +1280,7 @@ class InstallWizard(QWizard):
         if worker is None:
             return False
         try:
-            return worker.isRunning()  # or any harmless method
+            return bool(worker.isRunning())  # or any harmless method
         except RuntimeError:
             # C++ object deleted; clean up the Python wrapper
             self.worker = None

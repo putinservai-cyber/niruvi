@@ -30,6 +30,7 @@ from niruvi.ui.report_dialog import BuildSummaryDialog, ErrorReportDialog
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import SECTION_STYLE, format_size
 from niruvi.utils.theme_engine import COLOR_ERROR
 
@@ -82,7 +83,7 @@ class BuildDialog(QDialog):
         self.source_edit.setReadOnly(True)
         pkg_row.addWidget(self.source_edit)
         self.browse_pkg_btn = QPushButton("Browse...")
-        self.browse_pkg_btn.clicked.connect(lambda: (play_sound("click"), self._browse_source()))
+        self.browse_pkg_btn.clicked.connect(lambda: play_and("click", self._browse_source))
         pkg_row.addWidget(self.browse_pkg_btn)
         src_form.addRow("File:", self._pkg_widget)
 
@@ -95,7 +96,7 @@ class BuildDialog(QDialog):
         self.folder_edit.setReadOnly(True)
         folder_row.addWidget(self.folder_edit)
         self.browse_folder_btn = QPushButton("Browse...")
-        self.browse_folder_btn.clicked.connect(lambda: (play_sound("click"), self._browse_folder()))
+        self.browse_folder_btn.clicked.connect(lambda: play_and("click", self._browse_folder))
         folder_row.addWidget(self.browse_folder_btn)
         src_form.addRow("Folder:", self._folder_widget)
 
@@ -129,7 +130,7 @@ class BuildDialog(QDialog):
         self.output_edit.setReadOnly(True)
         out_row.addWidget(self.output_edit)
         out_browse = QPushButton("Browse...")
-        out_browse.clicked.connect(lambda: (play_sound("click"), self._browse_output()))
+        out_browse.clicked.connect(lambda: play_and("click", self._browse_output))
         out_row.addWidget(out_browse)
         out_layout.addLayout(out_row)
 
@@ -175,7 +176,7 @@ class BuildDialog(QDialog):
         sign_row.addWidget(self.sign_key_combo, 1)
         refresh_keys_btn = QPushButton(get_icon("view-refresh"), "")
         refresh_keys_btn.setToolTip("Refresh available GPG keys")
-        refresh_keys_btn.clicked.connect(lambda: (play_sound("click"), self._refresh_signing_keys()))
+        refresh_keys_btn.clicked.connect(lambda: play_and("click", self._refresh_signing_keys))
         sign_row.addWidget(refresh_keys_btn)
         sign_layout.addLayout(sign_row)
         self._refresh_signing_keys()
@@ -201,12 +202,12 @@ class BuildDialog(QDialog):
         btn_layout = QHBoxLayout()
         self.build_btn = QPushButton("Build AppImage")
         self.build_btn.setIcon(get_icon("emblem-system"))
-        self.build_btn.clicked.connect(lambda: (play_sound("click"), self._start_build()))
+        self.build_btn.clicked.connect(lambda: play_and("click", self._start_build))
         btn_layout.addStretch()
         btn_layout.addWidget(self.build_btn)
 
         self.close_btn = QPushButton("Close")
-        self.close_btn.clicked.connect(lambda: (play_sound("navigation"), self.reject()))
+        self.close_btn.clicked.connect(lambda: play_and("navigation", self.reject))
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
 
@@ -407,6 +408,7 @@ class BuildDialog(QDialog):
             self_installing=False,
             is_folder_source=is_folder,
             arch=self.arch_combo.currentText(),
+            config=get_settings(),
         )
 
         self._sign_key = (
@@ -425,7 +427,9 @@ class BuildDialog(QDialog):
 
     def _on_log(self, msg: str):
         self.log_text.append(msg)
-        self.log_text.verticalScrollBar().setValue(self.log_text.verticalScrollBar().maximum())
+        sb = self.log_text.verticalScrollBar()
+        if sb is not None:
+            sb.setValue(sb.maximum())
 
     def _on_progress(self, value: int):
         self.progress_bar.setValue(value)

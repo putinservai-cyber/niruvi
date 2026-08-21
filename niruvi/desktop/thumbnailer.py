@@ -209,8 +209,8 @@ def _find_icon_in_dir(root: str) -> bytes | None:
         _, best = candidates[0]
 
     try:
-        with open(best, "rb") as f:
-            return f.read()
+        with open(best, "rb") as fh:
+            return fh.read()
     except OSError:
         return None
 

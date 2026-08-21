@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def check_appimageupdate_available() -> dict:
     """Check if AppImageUpdate/appimageupdatetool is available."""
-    result = {"available": False, "tool": None, "path": None, "version": None}
+    result: dict[str, object] = {"available": False, "tool": None, "path": None, "version": None}
     candidates = ["appimageupdatetool", "AppImageUpdate"]
     for tool in candidates:
         path = shutil.which(tool)

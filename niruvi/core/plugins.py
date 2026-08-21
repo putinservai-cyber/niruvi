@@ -44,7 +44,7 @@ EVENTS = {
 }
 
 _plugins: dict[str, dict] = {}
-_entry_handlers: dict[str, list] = {}
+_entry_handlers: dict[str, dict[str, list]] = {}
 _entry_initialized = False
 
 
@@ -84,7 +84,7 @@ def _check_plugin_secure(path: str) -> bool:
 
 def _discover_plugin_files() -> list[str]:
     """Return plugin module paths found under PLUGINS_DIR."""
-    files = []
+    files: list[str] = []
     if not os.path.isdir(PLUGINS_DIR):
         return files
     real_base = os.path.realpath(PLUGINS_DIR)
@@ -136,10 +136,12 @@ def reload_plugins() -> list[str]:
         except Exception as e:
             logger.warning("Entry-point plugin discovery failed: %s", e)
     try:
-        from niruvi.core.plugin import get_plugins
+        from niruvi.core.plugin import EventPlugin, get_plugins
 
         for entry_plugin in get_plugins("event"):
             try:
+                if not isinstance(entry_plugin, EventPlugin):
+                    continue
                 handlers = entry_plugin.event_handlers() or {}
                 normalized = {ev: ([fn] if callable(fn) else list(fn)) for ev, fn in handlers.items()}
                 if normalized:

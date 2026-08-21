@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi._version import __app_name__
-from niruvi.core.worker import start_worker
+from niruvi.core.worker import DownloadWorker, start_worker
 from niruvi.utils import get_icon
 from niruvi.utils.styles import format_date, format_size
 
@@ -60,6 +60,7 @@ from niruvi.core.sandbox import SandboxBackend, ShieldConfig, check_bwrap_availa
 from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import BTN_STYLE, CARD_STYLE, SIDEBAR_STYLE, TAB_PAGE_STYLE
 
 
@@ -148,7 +149,8 @@ class AppInfoDialog(QDialog):
         self.setModal(True)
         self._app_name = app_name
         self._info = app_info
-        self._update_worker = None
+        self._update_worker: UpdateCheckWorker | None = None
+        self._download_worker: DownloadWorker | None = None
 
         self._init_ui()
 
@@ -386,8 +388,10 @@ class AppInfoDialog(QDialog):
         self.env_table = QTableWidget()
         self.env_table.setColumnCount(2)
         self.env_table.setHorizontalHeaderLabels(["Variable", "Value"])
-        self.env_table.horizontalHeader().setStretchLastSection(True)
-        self.env_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header = self.env_table.horizontalHeader()
+        if header is not None:
+            header.setStretchLastSection(True)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.env_table.setMinimumHeight(80)
         self.env_table.setMaximumHeight(160)
         if record and record.env_vars:
@@ -396,10 +400,10 @@ class AppInfoDialog(QDialog):
 
         env_btn_row = QHBoxLayout()
         self.btn_add_env = QPushButton(get_icon("list-add"), "Add")
-        self.btn_add_env.clicked.connect(lambda: (play_sound("click"), self._add_env_row()))
+        self.btn_add_env.clicked.connect(lambda: play_and("click", self._add_env_row))
         env_btn_row.addWidget(self.btn_add_env)
         self.btn_remove_env = QPushButton(get_icon("list-remove"), "Remove Selected")
-        self.btn_remove_env.clicked.connect(lambda: (play_sound("click"), self._remove_env_row()))
+        self.btn_remove_env.clicked.connect(lambda: play_and("click", self._remove_env_row))
         env_btn_row.addWidget(self.btn_remove_env)
         self.btn_save_env = QPushButton(get_icon("document-save"), "Save")
         self.btn_save_env.clicked.connect(self._save_env_vars)
@@ -583,19 +587,19 @@ class AppInfoDialog(QDialog):
             f.setBold(True)
             self.btn_run.setFont(f)
             self.btn_run.setStyleSheet(BTN_STYLE)
-            self.btn_run.clicked.connect(lambda: (play_sound("click"), self._run_app()))
+            self.btn_run.clicked.connect(lambda: play_and("click", self._run_app))
             action_layout.addWidget(self.btn_run)
 
             self.btn_uninstall = QPushButton(get_icon("edit-delete"), "Uninstall")
             self.btn_uninstall.setStyleSheet(BTN_STYLE)
-            self.btn_uninstall.clicked.connect(lambda: (play_sound("click"), self._uninstall_app()))
+            self.btn_uninstall.clicked.connect(lambda: play_and("click", self._uninstall_app))
             action_layout.addWidget(self.btn_uninstall)
 
         action_layout.addStretch()
 
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
         close_btn.setStyleSheet(BTN_STYLE)
-        close_btn.clicked.connect(lambda: (play_sound("navigation"), self.accept()))
+        close_btn.clicked.connect(lambda: play_and("navigation", self.accept))
         action_layout.addWidget(close_btn)
 
         root.addWidget(action_bar)
@@ -906,7 +910,7 @@ class AppInfoDialog(QDialog):
         progress.canceled.connect(self._download_worker.cancel)
         loop.exec()
         progress.close()
-        if self._download_worker.isRunning():
+        if self._download_worker is not None and self._download_worker.isRunning():
             self._download_worker.wait(5000)
         self._download_worker = None
 

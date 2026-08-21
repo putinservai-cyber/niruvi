@@ -10,7 +10,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 MANIFEST_VERSION = "1.0"
 MANIFEST_FILENAME = ".niruvi-manifest.json"
@@ -140,23 +140,23 @@ class Manifest:
 
     @property
     def app_id(self) -> str:
-        return self._data.get("app_id", "")
+        return cast(str, self._data.get("app_id", ""))
 
     @property
     def app_name(self) -> str:
-        return self._data.get("app_name", "")
+        return cast(str, self._data.get("app_name", ""))
 
     @property
     def version(self) -> str:
-        return self._data.get("version", "")
+        return cast(str, self._data.get("version", ""))
 
     @property
     def update_url(self) -> str:
-        return self._data.get("update", {}).get("url", "")
+        return cast(str, self._data.get("update", {}).get("url", ""))
 
     @property
     def installer_type(self) -> str:
-        return self._data.get("installer", {}).get("type", "typical")
+        return cast(str, self._data.get("installer", {}).get("type", "typical"))
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self._data)

@@ -165,6 +165,7 @@ class InstallationRecord:
 class InstallationRegistry:
     _instance: "InstallationRegistry | None" = None
     _instance_lock = threading.Lock()
+    _initialized: bool
 
     def __new__(cls):
         if cls._instance is None:

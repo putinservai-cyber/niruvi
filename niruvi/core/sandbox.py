@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -294,8 +295,12 @@ def _apply_landlock(paths_readonly: list[str], paths_rw: list[str]):
 
     Requires Linux 5.13+ and Python 3.12+.
     """
+    restrict = getattr(os, "landlock_restrict_self", None)
+    if restrict is None:
+        logger.debug("Landlock not available (need Python 3.12+ on Linux 5.13+)")
+        return
     try:
-        os.landlock_restrict_self(paths_readonly, paths_rw)
+        restrict(paths_readonly, paths_rw)
         logger.debug("Landlock applied: ro=%d paths, rw=%d paths", len(paths_readonly), len(paths_rw))
     except AttributeError:
         logger.debug("Landlock not available (need Python 3.12+ on Linux 5.13+)")
@@ -447,6 +452,8 @@ exit 0
     def _listener(self):
         while self._running:
             try:
+                if self._fifo_path is None:
+                    break
                 with open(self._fifo_path) as fifo:
                     for line in fifo:
                         url = line.strip()
@@ -502,7 +509,7 @@ def _which(name: str) -> str | None:
 
 
 def check_firejail_available() -> dict:
-    result = {
+    result: dict[str, Any] = {
         "available": False,
         "version": None,
         "error": None,
@@ -527,7 +534,7 @@ def check_firejail_available() -> dict:
 
 
 def check_bwrap_available() -> dict:
-    result = {
+    result: dict[str, Any] = {
         "available": False,
         "version": None,
         "error": None,
@@ -877,6 +884,7 @@ class Shield:
 
     def _run_bwrap(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen | None:
         app_dir = cwd or ""
+        env = env or {}
         home = env.get("HOME") or os.path.expanduser("~")
         bwrap_cmd = [
             "bwrap",
@@ -965,7 +973,7 @@ class Shield:
 
 
 def check_shield_available() -> dict:
-    info = {
+    info: dict[str, Any] = {
         "hardening": True,
         "portable_mode": True,
         "xdg_open_daemon": True,

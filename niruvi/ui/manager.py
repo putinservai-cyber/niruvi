@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
     QPushButton,
     QSizePolicy,
+    QStatusBar,
     QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
@@ -43,7 +44,7 @@ from niruvi.core.hooks import ensure_hooks_dir, run_hooks
 from niruvi.core.repair import repair_full
 from niruvi.core.sandbox import Shield, ShieldConfig
 from niruvi.core.verification import verify_complete
-from niruvi.core.worker import ExtractionWorker, _ensure_local, _is_removable_path, start_worker
+from niruvi.core.worker import ExtractionWorker, InstallQueueWorker, _ensure_local, _is_removable_path, start_worker
 from niruvi.desktop.appimage_assets import extract_metadata
 from niruvi.desktop.appimage_metadata import AppImageMetadata
 from niruvi.desktop.desktop_utils import (
@@ -72,6 +73,7 @@ from niruvi.ui.wizard import InstallWizard
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import cleanup as sound_cleanup
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import FONT_MD, FONT_SM, format_size
 from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING, ThemeMode, get_theme_engine
 
@@ -261,6 +263,7 @@ class AppManager(QMainWindow):
         self._metadata_worker: MetadataWorker | None = None
         self._background_updater = BackgroundUpdater(self)
         self._background_updater.update_found.connect(self._on_background_update_found)
+        self._batch_worker: InstallQueueWorker | None = None
         self._tray_icons: list[QSystemTrayIcon] = []
         self._tray: QSystemTrayIcon | None = None
         self._really_quit = False
@@ -278,37 +281,57 @@ class AppManager(QMainWindow):
 
         reload_plugins()
 
-    def _init_ui(self):
+    def _show_status(self, msg: str):
+        if self._status_bar is not None:
+            self._status_bar.showMessage(msg)
+
+    def _add_action(self, menu: QMenu, icon: QIcon, text: str) -> QAction:
+        action = menu.addAction(icon, text)
+        assert action is not None
+        return action
+
+    def _add_action_text(self, menu: QMenu, text: str) -> QAction:
+        action = menu.addAction(text)
+        assert action is not None
+        return action
+
+    def _add_menu(self, title: str) -> QMenu:
         menubar = self.menuBar()
-        file_menu = menubar.addMenu("File")
+        assert menubar is not None
+        menu = menubar.addMenu(title)
+        assert menu is not None
+        return menu
+
+    def _init_ui(self):
+        file_menu = self._add_menu("File")
 
         install_action = QAction(get_icon("list-add"), "Install...", self)
         install_action.setShortcut("Ctrl+I")
-        install_action.triggered.connect(lambda: (play_sound("click"), self.run_install_wizard()))
+        install_action.triggered.connect(lambda: play_and("click", self.run_install_wizard))
         file_menu.addAction(install_action)
 
         settings_action = QAction(get_icon("preferences-system"), "Settings...", self)
-        settings_action.triggered.connect(lambda: (play_sound("click"), self.open_settings()))
+        settings_action.triggered.connect(lambda: play_and("click", self.open_settings))
         file_menu.addAction(settings_action)
 
         file_menu.addSeparator()
 
         export_action = QAction(get_icon("document-save-as"), "Export App List...", self)
-        export_action.triggered.connect(lambda: (play_sound("click"), self._export_app_list()))
+        export_action.triggered.connect(lambda: play_and("click", self._export_app_list))
         file_menu.addAction(export_action)
 
         import_action = QAction(get_icon("document-open"), "Import App List...", self)
-        import_action.triggered.connect(lambda: (play_sound("click"), self._import_app_list()))
+        import_action.triggered.connect(lambda: play_and("click", self._import_app_list))
         file_menu.addAction(import_action)
 
         file_menu.addSeparator()
 
         quit_action = QAction(get_icon("application-exit"), "Quit", self)
         quit_action.setShortcut("Ctrl+Q")
-        quit_action.triggered.connect(lambda: (play_sound("navigation"), self.close()))
+        quit_action.triggered.connect(lambda: play_and("navigation", self.close))
         file_menu.addAction(quit_action)
 
-        tools_menu = menubar.addMenu("Tools")
+        tools_menu = self._add_menu("Tools")
 
         store_action = QAction(
             get_icon("applications-internet", "folder-download", "emblem-downloads"),
@@ -351,7 +374,7 @@ class AppManager(QMainWindow):
         refresh_action.triggered.connect(self.scan_installed)
         tools_menu.addAction(refresh_action)
 
-        help_menu = menubar.addMenu("Help")
+        help_menu = self._add_menu("Help")
 
         help_action = QAction(get_icon("help-contents"), "Help...", self)
         help_action.setShortcut("F1")
@@ -395,37 +418,37 @@ class AppManager(QMainWindow):
 
         self.btn_build = QPushButton(get_icon("emblem-system"), "Build")
         self.btn_build.setToolTip("Build an AppImage from a DEB, RPM, or tar archive  (Ctrl+B)")
-        self.btn_build.clicked.connect(lambda: (play_sound("click"), self._open_build_dialog()))
+        self.btn_build.clicked.connect(lambda: play_and("click", self._open_build_dialog))
         header_layout.addWidget(self.btn_build)
 
         self.btn_refresh = QPushButton(get_icon("view-refresh"), "Refresh")
         self.btn_refresh.setToolTip("Re-scan the install directory for installed apps  (Ctrl+R)")
-        self.btn_refresh.clicked.connect(lambda: (play_sound("click"), self.scan_installed()))
+        self.btn_refresh.clicked.connect(lambda: play_and("click", self.scan_installed))
         header_layout.addWidget(self.btn_refresh)
 
         self.btn_batch = QPushButton(get_icon("list-add"), "Batch")
         self.btn_batch.setToolTip("Batch actions on multiple selected apps (Ctrl+Click to multi-select)")
         self.btn_batch.setEnabled(False)
         batch_menu = QMenu(self)
-        act_batch_update = batch_menu.addAction(get_icon("emblem-downloads"), "Update Selected...")
+        act_batch_update = self._add_action(batch_menu, get_icon("emblem-downloads"), "Update Selected...")
         act_batch_update.triggered.connect(self._batch_update_selected)
-        act_batch_verify = batch_menu.addAction(get_icon("security-high", "dialog-ok"), "Verify Selected")
+        act_batch_verify = self._add_action(batch_menu, get_icon("security-high", "dialog-ok"), "Verify Selected")
         act_batch_verify.triggered.connect(self._batch_verify_selected)
-        act_batch_uninstall = batch_menu.addAction(get_icon("edit-delete"), "Uninstall Selected...")
+        act_batch_uninstall = self._add_action(batch_menu, get_icon("edit-delete"), "Uninstall Selected...")
         act_batch_uninstall.triggered.connect(self._batch_uninstall_selected)
         self.btn_batch.setMenu(batch_menu)
         header_layout.addWidget(self.btn_batch)
 
         self.btn_install = QPushButton(get_icon("list-add"), "Install")
         self.btn_install.setToolTip("Browse for an AppImage file to install  (Ctrl+I)")
-        self.btn_install.clicked.connect(lambda: (play_sound("click"), self.run_install_wizard()))
+        self.btn_install.clicked.connect(lambda: play_and("click", self.run_install_wizard))
         header_layout.addWidget(self.btn_install)
 
         layout.addLayout(header_layout)
 
-        QShortcut("Ctrl+U", self, activated=lambda: self._shortcut_uninstall())
-        QShortcut("Ctrl+D", self, activated=lambda: self._shortcut_app_info())
-        QShortcut("Ctrl+O", self, activated=lambda: self._shortcut_open_folder())
+        QShortcut("Ctrl+U", self).activated.connect(lambda: self._shortcut_uninstall())
+        QShortcut("Ctrl+D", self).activated.connect(lambda: self._shortcut_app_info())
+        QShortcut("Ctrl+O", self).activated.connect(lambda: self._shortcut_open_folder())
 
         # --- Search + sort ---
         search_sort_layout = QHBoxLayout()
@@ -522,9 +545,9 @@ class AppManager(QMainWindow):
 
         layout.addWidget(self.empty_widget, 1)
 
-        self._status_bar = self.statusBar()
+        self._status_bar: QStatusBar | None = self.statusBar()
         self.setStatusBar(self._status_bar)
-        self._status_bar.showMessage("Ready")
+        self._show_status("Ready")
 
     def _sync_tray(self):
         """Create, show, or hide the persistent system tray icon based on settings."""
@@ -548,29 +571,29 @@ class AppManager(QMainWindow):
             try:
                 app = QApplication.instance()
                 icon = QIcon()
-                if app is not None:
+                if isinstance(app, QApplication):
                     icon = app.windowIcon()
                 if icon.isNull():
                     icon = get_icon("emblem-downloads", "system-software-update", "applications-utilities")
                 self._tray = QSystemTrayIcon(icon, self)
                 self._tray.setToolTip("Niruvi — AppImage Manager")
                 menu = QMenu(self)
-                show_action = menu.addAction(get_icon("go-home", "view-restore"), "Show Niruvi")
+                show_action = self._add_action(menu, get_icon("go-home", "view-restore"), "Show Niruvi")
                 show_action.triggered.connect(self._show_window_from_tray)
-                install_action = menu.addAction(get_icon("list-add"), "Install AppImage...")
+                install_action = self._add_action(menu, get_icon("list-add"), "Install AppImage...")
                 install_action.triggered.connect(
-                    lambda: (play_sound("click"), self._show_window_from_tray(), self.run_install_wizard())
+                    lambda: play_and("click", lambda: self._show_window_from_tray(), self.run_install_wizard)
                 )
-                updates_action = menu.addAction(get_icon("emblem-downloads"), "Check All Apps for Updates...")
+                updates_action = self._add_action(menu, get_icon("emblem-downloads"), "Check All Apps for Updates...")
                 updates_action.triggered.connect(
-                    lambda: (play_sound("click"), self._show_window_from_tray(), self._check_all_app_updates())
+                    lambda: play_and("click", lambda: self._show_window_from_tray(), self._check_all_app_updates)
                 )
-                settings_action = menu.addAction(get_icon("preferences-system"), "Settings...")
+                settings_action = self._add_action(menu, get_icon("preferences-system"), "Settings...")
                 settings_action.triggered.connect(
-                    lambda: (play_sound("click"), self._show_window_from_tray(), self.open_settings())
+                    lambda: play_and("click", lambda: self._show_window_from_tray(), self.open_settings)
                 )
                 menu.addSeparator()
-                quit_action = menu.addAction(get_icon("application-exit"), "Quit")
+                quit_action = self._add_action(menu, get_icon("application-exit"), "Quit")
                 quit_action.triggered.connect(self._quit_app)
                 self._tray.setContextMenu(menu)
                 self._tray.activated.connect(self._on_tray_activated)
@@ -608,12 +631,13 @@ class AppManager(QMainWindow):
         if _settings.get("tray_enabled", True) and _settings.get("close_to_tray", False) and not self._really_quit:
             event.ignore()
             self.hide()
-            self._tray.showMessage(
-                "Niruvi",
-                "Niruvi is still running in the tray. Use 'Quit' in the tray menu to exit.",
-                QSystemTrayIcon.MessageIcon.Information,
-                3000,
-            )
+            if self._tray is not None:
+                self._tray.showMessage(
+                    "Niruvi",
+                    "Niruvi is still running in the tray. Use 'Quit' in the tray menu to exit.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    3000,
+                )
             return
         self._closing = True
         self._background_updater.stop()
@@ -738,7 +762,7 @@ class AppManager(QMainWindow):
             return
         self._is_scanning = True
         self.btn_refresh.setEnabled(False)
-        self._status_bar.showMessage("Scanning installed apps...")
+        self._show_status("Scanning installed apps...")
         QApplication.processEvents()
         self.installed_apps.clear()
         self.installed_list.clear()
@@ -747,7 +771,7 @@ class AppManager(QMainWindow):
         registry = InstallationRegistry()
 
         if os.path.isdir(install_dir):
-            real_map = {}
+            real_map: dict[str, tuple[str, bool, str]] = {}
             for item in sorted(os.listdir(install_dir)):
                 app_dir = os.path.join(install_dir, item)
                 if not os.path.isdir(app_dir):
@@ -823,7 +847,7 @@ class AppManager(QMainWindow):
             version = record.version or get_version(app_dir) or "?"
             icon_path = self._find_app_icon(app_dir)
             display_name = record.display_name_override or record.name
-            cust_icon = record.custom_icon_path or icon_path
+            cust_icon = record.custom_icon_path or icon_path or ""
             app_tags = record.tags if record.tags else infer_tags(display_name)
             self._add_app_to_list(
                 record.name,
@@ -852,7 +876,7 @@ class AppManager(QMainWindow):
         self.sort_combo.setVisible(has_apps)
         self.drop_hint.setVisible(False)
         self.empty_widget.setVisible(not has_apps)
-        self._status_bar.showMessage(
+        self._show_status(
             f"Found {count} installed app{'s' if count != 1 else ''}"
             if has_apps
             else "Ready — no AppImages installed yet"
@@ -959,7 +983,7 @@ class AppManager(QMainWindow):
             for name, _path in to_remove:
                 self.installed_apps.pop(name, None)
                 registry.remove(name)
-            self._status_bar.showMessage(
+            self._show_status(
                 f"Removed {len(to_remove)} orphaned entr{'y' if len(to_remove) == 1 else 'ies'} from the installed list"
             )
 
@@ -995,9 +1019,12 @@ class AppManager(QMainWindow):
                     found_by_ext = os.path.join(root, f)
         return found_by_ext
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
+    def dragEnterEvent(self, event: QDragEnterEvent | None):
+        if event is None:
+            return
+        mime = event.mimeData()
+        if mime is not None and mime.hasUrls():
+            for url in mime.urls():
                 if url.isLocalFile() and url.path().lower().endswith(".appimage"):
                     play_sound("drop")
                     self.drop_hint.setVisible(True)
@@ -1011,12 +1038,16 @@ class AppManager(QMainWindow):
         self.installed_list.setVisible(len(self.installed_apps) > 0)
         super().dragLeaveEvent(event)
 
-    def dropEvent(self, event: QDropEvent):
+    def dropEvent(self, event: QDropEvent | None):
         self.drop_hint.setVisible(False)
+        if event is None:
+            return
         urls = []
-        for url in event.mimeData().urls():
-            if url.isLocalFile() and url.path().lower().endswith(".appimage"):
-                urls.append(url.path())
+        mime = event.mimeData()
+        if mime is not None:
+            for url in mime.urls():
+                if url.isLocalFile() and url.path().lower().endswith(".appimage"):
+                    urls.append(url.path())
         if len(urls) == 1:
             self.process_appimage(urls[0])
         elif len(urls) > 1:
@@ -1138,7 +1169,7 @@ class AppManager(QMainWindow):
             return
         try:
             os.unlink(path)
-            self._status_bar.showMessage(f"Deleted source file: {Path(path).name}")
+            self._show_status(f"Deleted source file: {Path(path).name}")
         except OSError as e:
             logging.warning("Could not delete source AppImage %s: %s", path, e)
 
@@ -1165,16 +1196,17 @@ class AppManager(QMainWindow):
         layout.addWidget(self._batch_progress)
 
         btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn_box.rejected.connect(lambda: (play_sound("navigation"), dlg.reject()))
+        btn_box.rejected.connect(lambda: play_and("navigation", dlg.reject))
         layout.addWidget(btn_box)
 
         install_dir = get_settings()["install_dir"]
-        self._batch_worker = InstallQueueWorker()
+        worker = InstallQueueWorker()
+        self._batch_worker = worker
 
         for p in paths:
             name = Path(p).stem
             dest = os.path.join(install_dir, name)
-            self._batch_worker.add_task(
+            worker.add_task(
                 {
                     "appimage_path": p,
                     "dest_dir": dest,
@@ -1194,25 +1226,25 @@ class AppManager(QMainWindow):
             self._batch_status.setText(f"Error: {msg}")
 
         def on_task_log(msg):
-            self._batch_status.setText(f"[{self._batch_worker.task_count()}] {msg}")
+            self._batch_status.setText(f"[{worker.task_count()}] {msg}")
 
         def on_all_finished():
             self._batch_status.setText("All installations complete!")
             self.scan_installed()
 
-        self._batch_worker.task_started.connect(on_task_started)
-        self._batch_worker.task_finished.connect(on_task_finished)
-        self._batch_worker.task_error.connect(on_task_error)
-        self._batch_worker.task_log.connect(on_task_log)
-        self._batch_worker.all_finished.connect(on_all_finished)
+        worker.task_started.connect(on_task_started)
+        worker.task_finished.connect(on_task_finished)
+        worker.task_error.connect(on_task_error)
+        worker.task_log.connect(on_task_log)
+        worker.all_finished.connect(on_all_finished)
 
-        dlg.finished.connect(lambda: self._batch_worker.stop() if self._batch_worker.isRunning() else None)
-        start_worker(self._batch_worker)
+        dlg.finished.connect(lambda: worker.stop() if worker.isRunning() else None)
+        start_worker(worker)
         dlg.exec()
-        if self._batch_worker.isRunning():
-            self._batch_worker.stop()
-        if not self._batch_worker.wait(5000):
-            self._batch_worker.all_finished.connect(self._release_batch_worker)
+        if worker.isRunning():
+            worker.stop()
+        if not worker.wait(5000):
+            worker.all_finished.connect(self._release_batch_worker)
             return
         self._batch_worker = None
 
@@ -1371,7 +1403,9 @@ class AppManager(QMainWindow):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         diagnose_btn = QPushButton(get_icon("emblem-important"), "Run Full Diagnostics")
-        diagnose_btn.clicked.connect(lambda: (dlg.accept(), self._show_app_diagnostics(app_name)))
+        diagnose_btn.clicked.connect(
+            lambda: play_and("click", dlg.accept, lambda: self._show_app_diagnostics(app_name))
+        )
         btn_layout.addWidget(diagnose_btn)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(dlg.accept)
@@ -1459,7 +1493,7 @@ class AppManager(QMainWindow):
                     start_new_session=True,
                 )
             _track_detached(p)
-            self._status_bar.showMessage(f"Running {app_name}")
+            self._show_status(f"Running {app_name}")
             from niruvi.core.plugins import emit
 
             emit("app_launched", app_name=app_name, app_dir=app_dir)
@@ -1546,7 +1580,7 @@ class AppManager(QMainWindow):
                 start_new_session=True,
             )
             _track_detached(p)
-            self._status_bar.showMessage(f"Running {app_name} (namespace mode)")
+            self._show_status(f"Running {app_name} (namespace mode)")
             return True
         except OSError:
             return False
@@ -1583,7 +1617,7 @@ class AppManager(QMainWindow):
                     if not hasattr(self, "_temp_atexit_registered"):
                         atexit.register(self._cleanup_temp_dirs)
                         self._temp_atexit_registered = True
-                    self._status_bar.showMessage(f"Running {app_name} (extracted mode)")
+                    self._show_status(f"Running {app_name} (extracted mode)")
                     return True
         except Exception as e:
             logging.error("Temp extraction failed for %s: %s", app_name, e)
@@ -1637,7 +1671,7 @@ class AppManager(QMainWindow):
         wizard = UninstallWizard(app_name, app_dir, self)
         if wizard.exec() == QDialog.DialogCode.Accepted:
             self.scan_installed()
-            self._status_bar.showMessage(f"Uninstalled {app_name}")
+            self._show_status(f"Uninstalled {app_name}")
             from niruvi.core.plugins import emit
 
             emit("app_removed", app_name=app_name, app_dir=app_dir)
@@ -1669,7 +1703,7 @@ class AppManager(QMainWindow):
                 shutil.copytree(old_dir, backup_dir)
             except OSError:
                 backup_dir = None
-                self._status_bar.showMessage("Warning: could not create backup before update")
+                self._show_status("Warning: could not create backup before update")
 
         dest_dir = old_dir
 
@@ -1734,7 +1768,7 @@ class AppManager(QMainWindow):
             shutil.rmtree(temp_dir, ignore_errors=True)
             play_sound("success")
             self.scan_installed()
-            self._status_bar.showMessage(f"Reverted {app_name} to previous version")
+            self._show_status(f"Reverted {app_name} to previous version")
         except OSError as e:
             play_sound("error")
             QMessageBox.critical(self, "Revert Failed", str(e))
@@ -1763,7 +1797,7 @@ class AppManager(QMainWindow):
                 shutil.copy2(source_path, seed_target)
                 os.chmod(seed_target, 0o755)
             except OSError as e:
-                self._status_bar.showMessage(f"Warning: could not keep delta seed: {e}")
+                self._show_status(f"Warning: could not keep delta seed: {e}")
         version = get_version(dest_dir)
         metadata = {
             "version": version,
@@ -1779,7 +1813,7 @@ class AppManager(QMainWindow):
             try:
                 create_desktop_entry(dest_dir, app_name, self)
             except Exception as e:
-                self._status_bar.showMessage(f"Warning: could not create desktop entry: {e}")
+                self._show_status(f"Warning: could not create desktop entry: {e}")
 
         registry = InstallationRegistry()
         record = registry.get(app_name)
@@ -1789,7 +1823,7 @@ class AppManager(QMainWindow):
             registry.add(record)
 
         self.scan_installed()
-        self._status_bar.showMessage(f"Updated {app_name}")
+        self._show_status(f"Updated {app_name}")
         play_sound("success")
         from niruvi.core.plugins import emit
 
@@ -1843,7 +1877,7 @@ class AppManager(QMainWindow):
         shortcut_path = create_desktop_shortcut(app_name, apprun, icon_path)
         if shortcut_path:
             play_sound("success")
-            self._status_bar.showMessage(f"Desktop shortcut created for {app_name}")
+            self._show_status(f"Desktop shortcut created for {app_name}")
             app_info["desktop_shortcut"] = shortcut_path
         else:
             play_sound("warning")
@@ -1855,7 +1889,7 @@ class AppManager(QMainWindow):
             play_sound("click")
             os.remove(shortcut)
             self.installed_apps[app_name]["desktop_shortcut"] = None
-            self._status_bar.showMessage(f"Desktop shortcut removed for {app_name}")
+            self._show_status(f"Desktop shortcut removed for {app_name}")
 
     def _shortcut_uninstall(self):
         item = self.installed_list.currentItem()
@@ -2084,7 +2118,9 @@ class AppManager(QMainWindow):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         run_btn = QPushButton(get_icon("media-playback-start"), "Run App")
-        run_btn.clicked.connect(lambda: (dlg.accept(), self._run_app(app_name)))
+        run_btn.clicked.connect(
+            lambda: play_and("click", dlg.accept, lambda: self._run_app(app_name))
+        )
         btn_layout.addWidget(run_btn)
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
         close_btn.clicked.connect(dlg.accept)
@@ -2148,13 +2184,13 @@ class AppManager(QMainWindow):
                 else:
                     up_to_date += 1
             except Exception as e:
-                self._status_bar.showMessage(f"Update check failed for {name}: {e}")
+                self._show_status(f"Update check failed for {name}: {e}")
         if updated == 0 and failed == 0 and up_to_date > 0:
             play_sound("info")
             QMessageBox.information(self, "All Up to Date", "All configured apps are already up to date.")
         elif updated > 0:
             self.scan_installed()
-            self._status_bar.showMessage(f"Updated {updated} app(s)")
+            self._show_status(f"Updated {updated} app(s)")
 
     def _selected_app_names(self) -> list[str]:
         names = []
@@ -2218,10 +2254,10 @@ class AppManager(QMainWindow):
                     up_to_date += 1
             except Exception as e:
                 failed += 1
-                self._status_bar.showMessage(f"Update check failed for {name}: {e}")
+                self._show_status(f"Update check failed for {name}: {e}")
         if updated:
             self.scan_installed()
-            self._status_bar.showMessage(f"Updated {updated} app(s)")
+            self._show_status(f"Updated {updated} app(s)")
         QMessageBox.information(
             self,
             "Batch Update Finished",
@@ -2293,7 +2329,7 @@ class AppManager(QMainWindow):
                 removed += 1
         if removed:
             self.scan_installed()
-            self._status_bar.showMessage(f"Uninstalled {removed} app(s)")
+            self._show_status(f"Uninstalled {removed} app(s)")
             play_sound("notification")
 
     def _check_single_app_update(self, app_name: str, update_url: str, current_version: str):
@@ -2434,7 +2470,10 @@ class AppManager(QMainWindow):
             # Re-extract the updated AppImage
             backup_dir = app_dir + ".bak"
             if os.path.isdir(app_dir):
-                shutil.copytree(app_dir, backup_dir, ignore_errors=True)
+                try:
+                    shutil.copytree(app_dir, backup_dir)
+                except OSError:
+                    pass
 
             from niruvi.core.worker import extract_appimage_sync
 
@@ -2452,7 +2491,7 @@ class AppManager(QMainWindow):
                 record.version = version
                 registry.add(record)
 
-            self._status_bar.showMessage(f"Updated {app_name} via delta update (version {version})")
+            self._show_status(f"Updated {app_name} via delta update (version {version})")
             play_sound("success")
             QMessageBox.information(
                 self,
@@ -2469,9 +2508,9 @@ class AppManager(QMainWindow):
         play_sound("interface")
         wizard = BuildWizard(self)
         if wizard.exec() == QDialog.DialogCode.Accepted:
-            self._status_bar.showMessage("AppImage built successfully!")
+            self._show_status("AppImage built successfully!")
         else:
-            self._status_bar.showMessage("Build cancelled or failed")
+            self._show_status("Build cancelled or failed")
 
     def _check_all_updates(self):
         check_for_updates(self)
@@ -2516,13 +2555,14 @@ class AppManager(QMainWindow):
         )
         if has_tray:
             try:
+                active_window = app.activeWindow() if isinstance(app, QApplication) else None
                 tray = QSystemTrayIcon(
                     get_icon("emblem-downloads", "emblem-important"),
-                    app.activeWindow() or self,
+                    active_window or self,
                 )
                 tray.setToolTip(f"Update available for {result.app_name}")
                 menu = QMenu()
-                show_action = menu.addAction(f"Show {result.app_name} update")
+                show_action = self._add_action_text(menu, f"Show {result.app_name} update")
                 show_action.triggered.connect(lambda: self._show_app_update_notification(result))
                 tray.setContextMenu(menu)
                 tray.show()
@@ -2583,7 +2623,7 @@ class AppManager(QMainWindow):
             with open(file_path, "w") as f:
                 json.dump(data, f, indent=2)
             play_sound("success")
-            self._status_bar.showMessage(f"Exported {len(data)} app(s) to {file_path}")
+            self._show_status(f"Exported {len(data)} app(s) to {file_path}")
         except OSError as e:
             play_sound("error")
             QMessageBox.critical(self, "Export Failed", str(e))
@@ -2624,7 +2664,7 @@ class AppManager(QMainWindow):
             imported += 1
         self.scan_installed()
         play_sound("success" if imported > 0 else "info")
-        self._status_bar.showMessage(f"Imported {imported} app(s)" + (f", skipped {skipped}" if skipped else ""))
+        self._show_status(f"Imported {imported} app(s)" + (f", skipped {skipped}" if skipped else ""))
 
     def _open_store(self):
         play_sound("click")
@@ -2661,7 +2701,7 @@ class AppManager(QMainWindow):
         layout = QVBoxLayout(dlg)
         layout.addWidget(ReportPage(dlg))
         btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn.rejected.connect(lambda: (play_sound("navigation"), dlg.accept()))
+        btn.rejected.connect(lambda: play_and("navigation", dlg.accept))
         layout.addWidget(btn)
         dlg.exec()
 

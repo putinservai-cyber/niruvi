@@ -16,9 +16,10 @@ def get_version(app_dir: str) -> str:
     meta_path = os.path.join(app_dir, ".appimage-manager.json")
     if os.path.exists(meta_path):
         try:
-            with open(meta_path) as f:
-                meta = json.load(f)
-                return meta.get("version", "unknown")
+            with open(meta_path) as mf:
+                meta = json.load(mf)
+                version: str = meta.get("version", "unknown")
+                return version
         except (json.JSONDecodeError, OSError):
             pass
     for f in os.listdir(app_dir):

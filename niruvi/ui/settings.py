@@ -39,6 +39,7 @@ from niruvi.config import (  # noqa: F401 — re-exported for other UI modules
 from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import placeholder_style
 from niruvi.utils.theme_engine import COLOR_SUCCESS
 
@@ -149,7 +150,7 @@ class SettingsPage(QWidget):
         self.install_dir_edit = QLineEdit(_settings.get("install_dir", DEFAULT_INSTALL_DIR))
         self.install_dir_edit.setReadOnly(True)
         browse_btn = QPushButton(get_icon("folder-open"), "Browse...")
-        browse_btn.clicked.connect(lambda: (play_sound("click"), self._browse_install_dir()))
+        browse_btn.clicked.connect(lambda: play_and("click", self._browse_install_dir))
         dir_layout = QHBoxLayout()
         dir_layout.addWidget(self.install_dir_edit)
         dir_layout.addWidget(browse_btn)
@@ -313,7 +314,7 @@ class SettingsPage(QWidget):
 
         open_hooks_btn = QPushButton(get_icon("folder-open"), "Open Hooks Directory")
         open_hooks_btn.clicked.connect(
-            lambda: (play_sound("click"), subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True))
+            lambda: play_and("click", lambda: subprocess.Popen(["xdg-open", hooks_dir], start_new_session=True))
         )
         hooks_layout.addWidget(open_hooks_btn)
 
@@ -338,15 +339,15 @@ class SettingsPage(QWidget):
         plugins_row = QHBoxLayout()
         reload_btn = QPushButton(get_icon("view-refresh"), "Reload Plugins")
         reload_btn.clicked.connect(
-            lambda: (
-                play_sound("click"),
-                self._refresh_plugins_status(reload_plugins()),
+            lambda: play_and(
+                "click",
+                lambda: self._refresh_plugins_status(reload_plugins()),
             )
         )
         plugins_row.addWidget(reload_btn)
         open_plugins_btn = QPushButton(get_icon("folder-open"), "Open Plugins Directory")
         open_plugins_btn.clicked.connect(
-            lambda: (play_sound("click"), subprocess.Popen(["xdg-open", PLUGINS_DIR], start_new_session=True))
+            lambda: play_and("click", lambda: subprocess.Popen(["xdg-open", PLUGINS_DIR], start_new_session=True))
         )
         plugins_row.addWidget(open_plugins_btn)
         plugins_row.addStretch()
@@ -449,10 +450,10 @@ class SettingsPage(QWidget):
 
         tn_btn_row = QHBoxLayout()
         self.btn_install_tn = QPushButton(get_icon("emblem-photos", "image-x-generic"), "Install Thumbnailer")
-        self.btn_install_tn.clicked.connect(lambda: (play_sound("click"), self._install_thumbnailer()))
+        self.btn_install_tn.clicked.connect(lambda: play_and("click", self._install_thumbnailer))
         tn_btn_row.addWidget(self.btn_install_tn)
         self.btn_remove_tn = QPushButton(get_icon("edit-delete"), "Remove Thumbnailer")
-        self.btn_remove_tn.clicked.connect(lambda: (play_sound("click"), self._remove_thumbnailer()))
+        self.btn_remove_tn.clicked.connect(lambda: play_and("click", self._remove_thumbnailer))
         tn_btn_row.addWidget(self.btn_remove_tn)
         tn_btn_row.addStretch()
         tn_layout.addLayout(tn_btn_row)

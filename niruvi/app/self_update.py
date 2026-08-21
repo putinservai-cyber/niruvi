@@ -8,6 +8,7 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QObject, QProcess, Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog, QWidget
@@ -335,7 +336,7 @@ class _InstallCoordinator(QObject):
     def __init__(self, parent: QWidget, temp_path: str, version: str, expected_sha256: str, progress: QProgressDialog):
         super().__init__()
         self._parent = parent
-        self._temp_path = temp_path
+        self._temp_path: str | None = temp_path
         self._version = version
         self._expected = expected_sha256
         self._progress = progress
@@ -346,12 +347,14 @@ class _InstallCoordinator(QObject):
 
     def on_cancelled(self):
         self._progress.close()
-        Path(self._temp_path).unlink(missing_ok=True)
+        if self._temp_path:
+            Path(self._temp_path).unlink(missing_ok=True)
         self.deleteLater()
 
     def on_error(self, msg: str):
         self._progress.close()
-        Path(self._temp_path).unlink(missing_ok=True)
+        if self._temp_path:
+            Path(self._temp_path).unlink(missing_ok=True)
         play_sound("error")
         QMessageBox.critical(self._parent, "Update Failed", f"Failed to download or install update:\n{msg}")
         self.deleteLater()
@@ -361,7 +364,8 @@ class _InstallCoordinator(QObject):
         if self._expected:
             actual = digest.hex()
             if actual.lower() != self._expected.lower():
-                Path(self._temp_path).unlink(missing_ok=True)
+                if self._temp_path:
+                    Path(self._temp_path).unlink(missing_ok=True)
                 play_sound("error")
                 QMessageBox.critical(
                     self._parent,
@@ -389,12 +393,13 @@ class _InstallCoordinator(QObject):
                     os.remove(backup_path)
                 os.rename(dest, backup_path)
 
-            os.replace(self._temp_path, dest)
+            if self._temp_path:
+                os.replace(self._temp_path, dest)
             os.chmod(dest, 0o755)
             self._temp_path = None
 
             meta_path = os.path.join(install_dir, ".appimage-manager.json")
-            meta = {}
+            meta: dict[str, Any] = {}
             if os.path.exists(meta_path):
                 with open(meta_path) as f:
                     meta = json.load(f)
@@ -425,7 +430,7 @@ class _InstallCoordinator(QObject):
                 # bypasses the tray-aware closeEvent that parent.close() would
                 # otherwise honour (it would hide to tray and keep running).
                 app = QApplication.instance()
-                if app is not None:
+                if isinstance(app, QApplication):
                     for w in app.topLevelWidgets():
                         if hasattr(w, "_really_quit"):
                             w._really_quit = True

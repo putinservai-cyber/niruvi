@@ -80,7 +80,7 @@ def _get_colorized_dir() -> str | None:
 
 def _current_color_hex() -> str:
     app = QApplication.instance()
-    if app:
+    if isinstance(app, QApplication):
         color = app.palette().color(QPalette.ColorRole.WindowText)
     else:
         color = QColor(0, 0, 0)
@@ -136,9 +136,9 @@ def _fallback_icon() -> QIcon:
 def get_icon(*names: str) -> QIcon:
     _init_icon_theme()
     app = QApplication.instance()
-    if app and not hasattr(QIcon, "_niruvi_palette_connected"):
-        app.paletteChanged.connect(_on_palette_changed)
-        QIcon._niruvi_palette_connected = True
+    if isinstance(app, QApplication) and not getattr(QIcon, "_niruvi_palette_connected", False):
+        getattr(app, "paletteChanged").connect(_on_palette_changed)  # noqa: B009
+        setattr(QIcon, "_niruvi_palette_connected", True)  # noqa: B010
 
     for name in names:
         svg = _load_svg(name)

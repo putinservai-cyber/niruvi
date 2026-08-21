@@ -41,6 +41,7 @@ from niruvi.ui.report_dialog import ErrorReportDialog
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import MONO_FONT_STYLE, format_size
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,11 @@ PROJECT_FILE_FILTER = "Niruvi Project (*.niruviproject);;JSON (*.json)"
 
 
 class ProjectSetupPage(QWizardPage):
+    def _wizard(self) -> "BuildWizard":
+        wiz = self.wizard()
+        assert isinstance(wiz, BuildWizard)
+        return wiz
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("Project Setup")
@@ -90,7 +96,7 @@ class ProjectSetupPage(QWizardPage):
         self.source_edit.setReadOnly(True)
         pkg_row.addWidget(self.source_edit)
         browse_pkg_btn = QPushButton(get_icon("document-open"), "Browse...")
-        browse_pkg_btn.clicked.connect(lambda: (play_sound("click"), self._browse_source()))
+        browse_pkg_btn.clicked.connect(lambda: play_and("click", self._browse_source))
         pkg_row.addWidget(browse_pkg_btn)
         src_form.addRow("File:", self._pkg_widget)
 
@@ -103,7 +109,7 @@ class ProjectSetupPage(QWizardPage):
         self.folder_edit.setReadOnly(True)
         folder_row.addWidget(self.folder_edit)
         browse_folder_btn = QPushButton(get_icon("folder-open"), "Browse...")
-        browse_folder_btn.clicked.connect(lambda: (play_sound("click"), self._browse_folder()))
+        browse_folder_btn.clicked.connect(lambda: play_and("click", self._browse_folder))
         folder_row.addWidget(browse_folder_btn)
         src_form.addRow("Folder:", self._folder_widget)
 
@@ -138,7 +144,7 @@ class ProjectSetupPage(QWizardPage):
         self.icon_edit.setReadOnly(True)
         icon_row.addWidget(self.icon_edit)
         browse_icon_btn = QPushButton(get_icon("document-open"), "Browse...")
-        browse_icon_btn.clicked.connect(lambda: (play_sound("click"), self._browse_icon()))
+        browse_icon_btn.clicked.connect(lambda: play_and("click", self._browse_icon))
         icon_row.addWidget(browse_icon_btn)
         info_form.addRow("Icon:", icon_row)
 
@@ -151,7 +157,7 @@ class ProjectSetupPage(QWizardPage):
         self.setAcceptDrops(True)
 
     def initializePage(self):
-        wiz = self.wizard()
+        wiz = self._wizard()
         b = wiz.button(QWizard.WizardButton.BackButton)
         if b:
             b.setVisible(False)
@@ -168,12 +174,20 @@ class ProjectSetupPage(QWizardPage):
         self.folder_info_label.setVisible(not is_pkg)
         self.completeChanged.emit()
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
+    def dragEnterEvent(self, event: QDragEnterEvent | None):
+        if event is None:
+            return
+        mime = event.mimeData()
+        if mime is not None and mime.hasUrls():
             event.acceptProposedAction()
 
-    def dropEvent(self, event: QDropEvent):
-        urls = event.mimeData().urls()
+    def dropEvent(self, event: QDropEvent | None):
+        if event is None:
+            return
+        mime = event.mimeData()
+        if mime is None:
+            return
+        urls = mime.urls()
         if not urls:
             return
         path = urls[0].toLocalFile()
@@ -252,6 +266,11 @@ class ProjectSetupPage(QWizardPage):
 
 
 class DependenciesPage(QWizardPage):
+    def _wizard(self) -> "BuildWizard":
+        wiz = self.wizard()
+        assert isinstance(wiz, BuildWizard)
+        return wiz
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("Dependencies")
@@ -259,7 +278,7 @@ class DependenciesPage(QWizardPage):
         layout = QVBoxLayout(self)
 
         self.scan_btn = QPushButton(get_icon("emblem-system"), "Scan Dependencies")
-        self.scan_btn.clicked.connect(lambda: (play_sound("click"), self._scan()))
+        self.scan_btn.clicked.connect(lambda: play_and("click", self._scan))
         layout.addWidget(self.scan_btn)
 
         self.result_text = QTextEdit()
@@ -272,8 +291,8 @@ class DependenciesPage(QWizardPage):
         layout.addWidget(self.status_label)
 
     def _scan(self):
-        wizard: BuildWizard = self.wizard()
-        src = wizard.page(0).get_source_path()
+        wizard = self._wizard()
+        src = wizard._setup_page().get_source_path()
         if not src or not os.path.exists(src):
             self.result_text.setPlainText("No valid source selected yet.")
             return
@@ -282,7 +301,7 @@ class DependenciesPage(QWizardPage):
         self.result_text.clear()
         tmpdir = None
         try:
-            if wizard.page(0).is_folder_source():
+            if wizard._setup_page().is_folder_source():
                 appdir = src
             else:
                 import tempfile
@@ -367,6 +386,11 @@ class DependenciesPage(QWizardPage):
 
 
 class BuildConfigPage(QWizardPage):
+    def _wizard(self) -> "BuildWizard":
+        wiz = self.wizard()
+        assert isinstance(wiz, BuildWizard)
+        return wiz
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("Build Configuration")
@@ -396,7 +420,7 @@ class BuildConfigPage(QWizardPage):
         self.output_edit.setReadOnly(True)
         out_row.addWidget(self.output_edit)
         out_browse = QPushButton(get_icon("folder-open"), "Browse...")
-        out_browse.clicked.connect(lambda: (play_sound("click"), self._browse_output()))
+        out_browse.clicked.connect(lambda: play_and("click", self._browse_output))
         out_row.addWidget(out_browse)
         dest_form.addRow("Output folder:", out_row)
 
@@ -418,7 +442,7 @@ class BuildConfigPage(QWizardPage):
         sign_row.addWidget(self.sign_key_combo)
         refresh_btn = QPushButton(get_icon("view-refresh"), "")
         refresh_btn.setToolTip("Refresh available GPG keys")
-        refresh_btn.clicked.connect(lambda: (play_sound("click"), self._refresh_signing_keys()))
+        refresh_btn.clicked.connect(lambda: play_and("click", self._refresh_signing_keys))
         sign_row.addWidget(refresh_btn)
         sign_row.addStretch()
         sign_form.addRow("GPG Key:", sign_row)
@@ -458,6 +482,11 @@ class BuildConfigPage(QWizardPage):
 
 
 class BuildProgressPage(QWizardPage):
+    def _wizard(self) -> "BuildWizard":
+        wiz = self.wizard()
+        assert isinstance(wiz, BuildWizard)
+        return wiz
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("Building AppImage")
@@ -476,15 +505,15 @@ class BuildProgressPage(QWizardPage):
 
         btn_row = QHBoxLayout()
         self.cancel_btn = QPushButton(get_icon("process-stop"), "Cancel")
-        self.cancel_btn.clicked.connect(lambda: (play_sound("click"), self._cancel_build()))
+        self.cancel_btn.clicked.connect(lambda: play_and("click", self._cancel_build))
         btn_row.addWidget(self.cancel_btn)
         btn_row.addStretch()
         self.close_btn = QPushButton(get_icon("window-close"), "Close")
-        self.close_btn.clicked.connect(lambda: (play_sound("click"), self._close()))
+        self.close_btn.clicked.connect(lambda: play_and("click", self._close))
         self.close_btn.setVisible(False)
         btn_row.addWidget(self.close_btn)
         self.launch_btn = QPushButton(get_icon("media-playback-start"), "Launch")
-        self.launch_btn.clicked.connect(lambda: (play_sound("click"), self._launch()))
+        self.launch_btn.clicked.connect(lambda: play_and("click", self._launch))
         self.launch_btn.setVisible(False)
         btn_row.addWidget(self.launch_btn)
         layout.addLayout(btn_row)
@@ -496,7 +525,7 @@ class BuildProgressPage(QWizardPage):
         return True
 
     def _hide_wizard_buttons(self):
-        wiz = self.wizard()
+        wiz = self._wizard()
         for btn_id in (
             QWizard.WizardButton.BackButton,
             QWizard.WizardButton.NextButton,
@@ -512,9 +541,8 @@ class BuildProgressPage(QWizardPage):
         QTimer.singleShot(0, self._hide_wizard_buttons)
 
     def _close(self):
-        wiz = self.wizard()
-        if wiz:
-            wiz.reject()
+        wiz = self._wizard()
+        wiz.reject()
 
     def _cancel_build(self):
         if self._worker:
@@ -545,8 +573,8 @@ class BuildProgressPage(QWizardPage):
         self.setSubTitle("Building...")
         self._hide_wizard_buttons()
 
-        setup = wizard.page(0)
-        config = wizard.page(2)
+        setup = wizard._setup_page()
+        config = wizard._config_page()
 
         src = setup.get_source_path()
         is_folder = setup.is_folder_source()
@@ -569,6 +597,7 @@ class BuildProgressPage(QWizardPage):
             app_version=app_version,
             self_installing=False,
             is_folder_source=is_folder,
+            config=get_settings(),
         )
         self._worker.log.connect(self._on_log)
         self._worker.progress.connect(self._on_progress)
@@ -608,7 +637,7 @@ class BuildProgressPage(QWizardPage):
             except Exception as e:
                 self.log_text.append(f"Signing failed: {e}")
 
-        wizard: BuildWizard = self.wizard()
+        wizard = self._wizard()
         wizard._build_complete(out_path)
 
     def _on_error(self, msg: str):
@@ -671,6 +700,21 @@ class BuildWizard(QWizard):
         self.currentIdChanged.connect(self._on_page_changed)
         self.rejected.connect(lambda: play_sound("navigation"))
 
+    def _setup_page(self) -> ProjectSetupPage:
+        page = self.page(0)
+        assert isinstance(page, ProjectSetupPage)
+        return page
+
+    def _config_page(self) -> BuildConfigPage:
+        page = self.page(2)
+        assert isinstance(page, BuildConfigPage)
+        return page
+
+    def _progress_page(self) -> BuildProgressPage:
+        page = self.page(3)
+        assert isinstance(page, BuildProgressPage)
+        return page
+
     def _on_custom_button(self, which: int):
         if which == QWizard.WizardButton.CustomButton1:
             self._load_project()
@@ -683,8 +727,7 @@ class BuildWizard(QWizard):
             self._start_build()
 
     def _start_build(self):
-        progress_page: BuildProgressPage = self.page(3)
-        progress_page.start_build(self)
+        self._progress_page().start_build(self)
 
     def _build_complete(self, out_path: str):
         _is_valid, _warnings = self._verify_appimage(out_path)
@@ -724,8 +767,8 @@ class BuildWizard(QWizard):
         return is_elf and is_exec, warnings
 
     def _save_project(self):
-        setup = self.page(0)
-        config = self.page(2)
+        setup = self._setup_page()
+        config = self._config_page()
         data = {
             "version": 1,
             "project": {
@@ -783,8 +826,8 @@ class BuildWizard(QWizard):
         proj = data.get("project", {})
         build = data.get("build", {})
 
-        setup = self.page(0)
-        config = self.page(2)
+        setup = self._setup_page()
+        config = self._config_page()
 
         # Project tab
         source_type = proj.get("source_type", "package")

@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from niruvi.utils import get_icon
-from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import format_size
 from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING
 
@@ -165,13 +165,13 @@ class ErrorReportDialog(QDialog):
         btn_layout = QHBoxLayout()
 
         copy_btn = QPushButton(get_icon("edit-copy"), "Copy Report")
-        copy_btn.clicked.connect(lambda: (play_sound("click"), self._copy_report()))
+        copy_btn.clicked.connect(lambda: play_and("click", self._copy_report))
         btn_layout.addWidget(copy_btn)
 
         btn_layout.addStretch()
 
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
-        close_btn.clicked.connect(lambda: (play_sound("navigation"), self.accept()))
+        close_btn.clicked.connect(lambda: play_and("navigation", self.accept))
         close_btn.setStyleSheet("QPushButton { padding: 6px 20px; }")
         btn_layout.addWidget(close_btn)
 
@@ -235,7 +235,8 @@ class ErrorReportDialog(QDialog):
 
         text = "\n".join(parts)
         clipboard = QApplication.clipboard()
-        clipboard.setText(text)
+        if clipboard is not None:
+            clipboard.setText(text)
         from PyQt6.QtWidgets import QToolTip
 
         QToolTip.showText(self.mapToGlobal(self.rect().center()), "Report copied to clipboard!", self)
@@ -477,6 +478,6 @@ class BuildSummaryDialog(QDialog):
         btn_layout.addStretch()
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
         close_btn.setStyleSheet("QPushButton { padding: 6px 20px; }")
-        close_btn.clicked.connect(lambda: (play_sound("navigation"), self.accept()))
+        close_btn.clicked.connect(lambda: play_and("navigation", self.accept))
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)

@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 from niruvi._version import __app_name__
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import SIDEBAR_STYLE
 
 _GPL3_TEXT = """                    GNU GENERAL PUBLIC LICENSE
@@ -732,7 +733,7 @@ class LicenseDialog(QDialog):
         layout.addWidget(browser, 1)
 
         btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn.rejected.connect(lambda: (play_sound("navigation"), self.accept()))
+        btn.rejected.connect(lambda: play_and("navigation", self.accept))
         layout.addWidget(btn)
 
 
@@ -803,7 +804,7 @@ class HelpDialog(QDialog):
         layout.addWidget(splitter, 1)
 
         btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn.rejected.connect(lambda: (play_sound("navigation"), self.accept()))
+        btn.rejected.connect(lambda: play_and("navigation", self.accept))
         layout.addWidget(btn)
 
         if initial_page:
