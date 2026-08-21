@@ -2118,9 +2118,7 @@ class AppManager(QMainWindow):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         run_btn = QPushButton(get_icon("media-playback-start"), "Run App")
-        run_btn.clicked.connect(
-            lambda: play_and("click", dlg.accept, lambda: self._run_app(app_name))
-        )
+        run_btn.clicked.connect(lambda: play_and("click", dlg.accept, lambda: self._run_app(app_name)))
         btn_layout.addWidget(run_btn)
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
         close_btn.clicked.connect(dlg.accept)

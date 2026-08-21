@@ -371,7 +371,6 @@ class UpdateInstallWorker(QThread):
 
 
 class UpdateWizard(QWizard):
-
     def _wbutton(self, button: QWizard.WizardButton) -> QAbstractButton:
         btn = self.button(button)
         assert btn is not None
