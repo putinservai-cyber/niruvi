@@ -68,6 +68,8 @@ jobs:
 
 
       - name: Verify all modules import
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           python -c "
           import pkgutil, importlib, sys
