@@ -87,9 +87,10 @@ def run_app_headless(app_name: str, extra_args: list[str] | None = None) -> int:
         print(f"Error: AppRun not found or not executable in {app_dir}", file=sys.stderr)
         return 1
 
-    env = os.environ.copy()
-    if record.env_vars:
-        env.update(record.env_vars)
+    # Only trusted per-app overrides — Shield._build_env() filters the host
+    # environment through its security allowlist; the unsandboxed path below
+    # re-inherits the full host environment.
+    env = dict(record.env_vars) if record.env_vars else {}
 
     sc = record.sandbox_config or {}
     if sc.get("portable_home") or sc.get("portable", False):
@@ -121,5 +122,8 @@ def run_app_headless(app_name: str, extra_args: list[str] | None = None) -> int:
             return 0
         print("Warning: sandbox failed to start, launching unsandboxed.", file=sys.stderr)
 
-    subprocess.Popen(cmd, cwd=app_dir, env=env, start_new_session=True)
+    full_env = os.environ.copy()
+    if env:
+        full_env.update(env)
+    subprocess.Popen(cmd, cwd=app_dir, env=full_env, start_new_session=True)
     return 0

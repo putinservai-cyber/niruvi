@@ -27,13 +27,14 @@ from niruvi.utils.qt_compat import fix_qt_platform_path as _fix_qt_platform_path
 
 
 def process_appimage(path_str: str, parent=None):
+    from niruvi.desktop.desktop_utils import sanitize_app_name
     from niruvi.ui.manager import get_appimage_metadata
     from niruvi.ui.wizard import InstallWizard
     from niruvi.utils import get_icon
 
     path = Path(path_str)
     info, icon_data = get_appimage_metadata(str(path))
-    app_name = info.get("Name", path.stem)
+    app_name = sanitize_app_name(info.get("Name", path.stem))
 
     if parent is None:
         parent = QApplication.activeWindow() or QWidget()
@@ -109,13 +110,13 @@ def process_appimage(path_str: str, parent=None):
 def cli_install(path_str: str, dest_override: str | None = None):
     """Silent CLI install without GUI."""
     from niruvi.core.worker import extract_appimage_sync
-    from niruvi.desktop.desktop_utils import create_desktop_entry, get_version
+    from niruvi.desktop.desktop_utils import create_desktop_entry, get_version, sanitize_app_name
     from niruvi.installer.junest import JunestPathError, suggest_space_free_path
     from niruvi.ui.manager import get_appimage_metadata
 
     path = Path(path_str)
     info, _icon_data = get_appimage_metadata(str(path))
-    app_name = info.get("Name", path.stem)
+    app_name = sanitize_app_name(info.get("Name", path.stem))
     install_dir = get_settings()["install_dir"]
     dest_dir = dest_override or os.path.join(install_dir, app_name)
 

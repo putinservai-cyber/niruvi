@@ -320,6 +320,14 @@ def delta_update(
         logger.debug("zsync metadata fetch failed: %s", e, exc_info=True)
         return False, f"Could not fetch zsync metadata: {e}"
 
+    # Security: block checksums come from the (untrusted) .zsync metadata and
+    # are only truncated MD4. Without the whole-file SHA-1 there is no strong
+    # end-to-end integrity guarantee for the reassembled target — refuse the
+    # delta so callers fall back to a full TLS download instead.
+    if not meta.get("sha1"):
+        logger.warning("zsync metadata has no SHA-1 — refusing delta update for %s", zsync_url)
+        return False, "No SHA-1 in zsync metadata"
+
     length = meta["length"]
     block_size = meta["blocksize"]
     nblocks = (length + block_size - 1) // block_size

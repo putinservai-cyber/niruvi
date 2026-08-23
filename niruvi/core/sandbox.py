@@ -143,7 +143,7 @@ _SECCOMP_SYSCALLS: dict[str, dict[str, int]] = {
         "process_vm_readv": 310,
         "process_vm_writev": 311,
         "kexec_file_load": 320,
-        "bpf": 321,
+        # "bpf": 321,  # Chrome/Chromium needs bpf() for its own internal sandbox
         "userfaultfd": 323,
         "iopl": 172,
         "ioperm": 173,
@@ -157,7 +157,7 @@ _SECCOMP_SYSCALLS: dict[str, dict[str, int]] = {
         "process_vm_readv": 270,
         "process_vm_writev": 271,
         "kexec_file_load": 294,
-        "bpf": 280,
+        # "bpf": 280,  # Chrome/Chromium needs bpf() for its own internal sandbox
         "userfaultfd": 282,
         "pivot_root": 41,
         "swapon": 95,
@@ -218,9 +218,14 @@ def _build_seccomp_filter() -> bytes:
     BPF_ABS = 0x20
     BPF_JMP = 0x05
     BPF_JEQ = 0x10
+    BPF_JSET = 0x40
     BPF_RET = 0x06
     SECCOMP_RET_KILL = 0x00000000
     SECCOMP_RET_ALLOW = 0x7FFF0000
+
+    # x32 ABI syscalls carry bit 30 set; without this check the x32-numbered
+    # aliases of blocked syscalls would evade the denylist entirely.
+    X32_SYSCALL_BIT = 0x40000000
 
     syscalls = _seccomp_syscalls_for_arch()
     machine = platform.machine().lower()
@@ -238,6 +243,10 @@ def _build_seccomp_filter() -> bytes:
     instructions.append(_bpf(BPF_RET, 0, 0, SECCOMP_RET_KILL))
 
     instructions.append(_bpf(BPF_LD | BPF_W | BPF_ABS, 0, 0, nr_offset))
+
+    # Kill every x32-ABI invocation regardless of syscall number
+    instructions.append(_bpf(BPF_JMP | BPF_JSET, 0, 1, X32_SYSCALL_BIT))
+    instructions.append(_bpf(BPF_RET, 0, 0, SECCOMP_RET_KILL))
 
     for nr in sorted(set(syscalls.values())):
         instructions.append(_bpf(BPF_JMP | BPF_JEQ, 0, 1, nr))
@@ -290,22 +299,183 @@ def _apply_seccomp():
         logger.debug("seccomp: %s", e)
 
 
-def _apply_landlock(paths_readonly: list[str], paths_rw: list[str]):
+# ── Landlock LSM (direct syscall implementation) ─────────────────────────
+# CPython does not expose os.landlock_restrict_self(), so the landlock
+# syscalls are issued via libc.syscall() — same approach as the seccomp
+# filter above. The syscall numbers are identical on every architecture
+# that uses the generic table (x86_64, aarch64, riscv64) since Linux 5.13.
+_LANDLOCK_NR = {
+    # machine -> (create_ruleset, add_rule, restrict_self)
+    "x86_64": (444, 445, 446),
+    "amd64": (444, 445, 446),
+    "aarch64": (444, 445, 446),
+    "arm64": (444, 445, 446),
+    "riscv64": (444, 445, 446),
+}
+
+LANDLOCK_CREATE_RULESET_VERSION = 1 << 0
+LANDLOCK_RULE_PATH_BENEATH = 1
+
+# LANDLOCK_ACCESS_FS_* bits (ABI v1 base set, Linux 5.13+)
+_LL_EXECUTE = 1 << 0
+_LL_WRITE_FILE = 1 << 1
+_LL_READ_FILE = 1 << 2
+_LL_READ_DIR = 1 << 3
+_LL_REMOVE_DIR = 1 << 4
+_LL_REMOVE_FILE = 1 << 5
+_LL_MAKE_CHAR = 1 << 6
+_LL_MAKE_DIR = 1 << 7
+_LL_MAKE_REG = 1 << 8
+_LL_MAKE_SOCK = 1 << 9
+_LL_MAKE_FIFO = 1 << 10
+_LL_MAKE_BLOCK = 1 << 11
+_LL_MAKE_SYM = 1 << 12
+# Higher-ABI rights (REFER bit 13, TRUNCATE bit 14, IOCTL_DEV bit 15) are
+# deliberately NOT handled: handling them would deny truncation/cross-dir
+# renames everywhere they are not granted, breaking ordinary apps. Writes
+# remain gated by WRITE_FILE on open(2), so unhandled TRUNCATE does not
+# allow modifying files that could not be opened for writing anyway.
+_LANDLOCK_HANDLED_FS = (
+    _LL_EXECUTE
+    | _LL_WRITE_FILE
+    | _LL_READ_FILE
+    | _LL_READ_DIR
+    | _LL_REMOVE_DIR
+    | _LL_REMOVE_FILE
+    | _LL_MAKE_CHAR
+    | _LL_MAKE_DIR
+    | _LL_MAKE_REG
+    | _LL_MAKE_SOCK
+    | _LL_MAKE_FIFO
+    | _LL_MAKE_BLOCK
+    | _LL_MAKE_SYM
+)
+
+_LANDLOCK_RO_ACCESS = _LL_EXECUTE | _LL_READ_FILE | _LL_READ_DIR
+_LANDLOCK_RW_ACCESS = _LANDLOCK_HANDLED_FS
+
+
+class _LandlockRulesetAttr(ctypes.Structure):
+    """struct landlock_ruleset_attr { __u64 handled_access_fs; }"""
+
+    _fields_ = [("handled_access_fs", ctypes.c_uint64)]
+
+
+class _LandlockPathBeneathAttr(ctypes.Structure):
+    """struct landlock_path_beneath_attr (packed): __u64 allowed_access;
+    __s32 parent_fd."""
+
+    _fields_ = [
+        ("allowed_access", ctypes.c_uint64),
+        ("parent_fd", ctypes.c_int32),
+        ("reserved", ctypes.c_uint32),
+    ]
+
+
+def _landlock_syscall_numbers() -> tuple[int, int, int] | None:
+    import platform
+
+    return _LANDLOCK_NR.get(platform.machine().lower())
+
+
+def landlock_supported() -> bool:
+    """True when this kernel supports Landlock (ABI >= 1) on this architecture."""
+    numbers = _landlock_syscall_numbers()
+    if numbers is None:
+        return False
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        libc.syscall.restype = ctypes.c_long
+        abi = libc.syscall(numbers[0], None, 0, LANDLOCK_CREATE_RULESET_VERSION)
+        return int(abi) >= 1
+    except Exception as e:
+        logger.debug("Landlock probe failed: %s", e)
+        return False
+
+
+def _apply_landlock(paths_readonly: list[str] | None, paths_rw: list[str] | None) -> bool:
     """Apply Landlock LSM restrictions for file system sandboxing.
 
-    Requires Linux 5.13+ and Python 3.12+.
+    Access beneath ``paths_readonly`` is limited to read/execute; access
+    beneath ``paths_rw`` is granted fully (for the handled right set).
+    Everything outside those trees loses write/create rights for the
+    duration of the process. Requires Linux 5.13+; returns True when the
+    restrictions were actually enforced.
+
+    If any rule cannot be added, restriction is aborted rather than applied
+    partially (a partial ruleset would break the sandboxed app outright).
     """
-    restrict = getattr(os, "landlock_restrict_self", None)
-    if restrict is None:
-        logger.debug("Landlock not available (need Python 3.12+ on Linux 5.13+)")
-        return
+    numbers = _landlock_syscall_numbers()
+    if numbers is None:
+        logger.debug("Landlock not available: unsupported architecture")
+        return False
+    nr_create, nr_add, nr_restrict = numbers
+
+    libc = None
+    ruleset_fd = -1
     try:
-        restrict(paths_readonly, paths_rw)
-        logger.debug("Landlock applied: ro=%d paths, rw=%d paths", len(paths_readonly), len(paths_rw))
-    except AttributeError:
-        logger.debug("Landlock not available (need Python 3.12+ on Linux 5.13+)")
-    except OSError as e:
-        logger.debug("Landlock restrict failed: %s", e)
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        libc.syscall.restype = ctypes.c_long
+        libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+        libc.prctl.restype = ctypes.c_int
+
+        abi = int(libc.syscall(nr_create, None, 0, LANDLOCK_CREATE_RULESET_VERSION))
+        if abi < 1:
+            logger.debug("Landlock not available (kernel returned %d)", abi)
+            return False
+
+        ruleset_attr = _LandlockRulesetAttr(_LANDLOCK_HANDLED_FS)
+        ruleset_fd = int(libc.syscall(nr_create, ctypes.byref(ruleset_attr), ctypes.sizeof(ruleset_attr), 0))
+        if ruleset_fd < 0:
+            logger.warning("landlock_create_ruleset failed: errno=%d", ctypes.get_errno())
+            return False
+
+        def _add_rule(path: str, access: int) -> bool:
+            try:
+                parent_fd = os.open(path, os.O_PATH | os.O_CLOEXEC)
+            except OSError:
+                # Path missing (e.g. optional XDG dir) — nothing to grant
+                return True
+            try:
+                rule = _LandlockPathBeneathAttr(access & _LANDLOCK_HANDLED_FS, parent_fd, 0)
+                if libc.syscall(nr_add, ruleset_fd, LANDLOCK_RULE_PATH_BENEATH, ctypes.byref(rule), 0) != 0:
+                    logger.warning("landlock_add_rule failed for %s: errno=%d", path, ctypes.get_errno())
+                    return False
+                return True
+            finally:
+                os.close(parent_fd)
+
+        ro_paths = list(dict.fromkeys(paths_readonly or []))
+        rw_paths = list(dict.fromkeys(paths_rw or []))
+        ok = all(_add_rule(p, _LANDLOCK_RO_ACCESS) for p in ro_paths)
+        ok = all(_add_rule(p, _LANDLOCK_RW_ACCESS) for p in rw_paths) and ok
+        if not ok:
+            logger.warning("Landlock rules incomplete — NOT restricting (partial ruleset would break the app)")
+            os.close(ruleset_fd)
+            return False
+
+        # landlock_restrict_self requires PR_SET_NO_NEW_PRIVS (already set by
+        # the preexec hook; re-assert defensively).
+        if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
+            logger.warning("Landlock: PR_SET_NO_NEW_PRIVS failed")
+            os.close(ruleset_fd)
+            return False
+
+        if libc.syscall(nr_restrict, ruleset_fd, 0) != 0:
+            logger.warning("landlock_restrict_self failed: errno=%d", ctypes.get_errno())
+            os.close(ruleset_fd)
+            return False
+        os.close(ruleset_fd)
+        logger.info("Landlock enforced: ro=%d paths, rw=%d paths", len(ro_paths), len(rw_paths))
+        return True
+    except Exception as e:
+        logger.warning("Landlock enforcement failed: %s", e, exc_info=True)
+        if ruleset_fd >= 0:
+            try:
+                os.close(ruleset_fd)
+            except OSError:
+                pass
+        return False
 
 
 def _parse_size_limit(value: str) -> int | None:
@@ -429,20 +599,92 @@ exit 0
             self._cleanup()
             return None
 
-    _ALLOWED_SCHEMES = {"http", "https", "ftp"}
-    _BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]"}
+    # Loopback hosts stay reachable so OAuth callbacks (http://localhost:PORT)
+    # work from sandboxed apps; every other IP literal in private, link-local
+    # or reserved space is rejected to prevent intranet probing / cloud
+    # metadata access (169.254.169.254) through the host's browser.
+    _ALLOWED_SCHEMES = {"http", "https", "ftp", "mailto", "x-scheme-handler"}
+    _BLOCKED_HOSTS: set[str] = set()
+    _NET_SCHEMES = {"http", "https", "ftp"}
 
     @staticmethod
-    def _is_safe_url(url: str) -> bool:
+    def _addr_allowed(addr_text: str) -> bool:
+        """True for a single resolved address (or IP literal) that is safe to
+        hand to the host browser: loopback or global unicast. Everything in
+        private/link-local/reserved space (cloud metadata endpoints,
+        intranets, CGNAT) is rejected."""
+        import ipaddress
+
+        try:
+            ip = ipaddress.ip_address(addr_text.strip())
+        except ValueError:
+            return False
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped  # ::ffff:10.0.0.1 style bypasses
+        if ip.is_loopback:
+            return True
+        if ip.is_multicast or ip.is_unspecified:
+            return False
+        return bool(ip.is_global)
+
+    @staticmethod
+    def _resolve_host(host: str) -> bool:
+        """Resolve ``host`` via DNS and allow only when EVERY resolved
+        address passes :meth:`_addr_allowed`. This closes the hole where an
+        attacker-controlled name (e.g. ``169.254.169.254.nip.io``) resolves
+        into link-local/metadata space while looking like a public domain."""
+        import socket
+
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except (OSError, UnicodeError):
+            return False
+        addrs = {info[4][0] for info in infos if isinstance(info[4][0], str)}
+        if not addrs:
+            return False
+        return all(XdgOpenDaemon._addr_allowed(addr) for addr in addrs)
+
+    @classmethod
+    def _host_allowed(cls, hostname: str | None) -> bool:
+        """True for loopback names/IPs and public hostnames; False for any
+        address in private/link-local/reserved space. Hostnames are actually
+        resolved so a DNS name pointing at e.g. 169.254.169.254 cannot slip
+        through as a 'regular domain'."""
+        import ipaddress
+
+        if not hostname:
+            return False
+        host = hostname.lower().strip("[]").rstrip(".")
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            return cls._addr_allowed(host)
+        if host == "localhost" or host.endswith(".localhost"):
+            return True
+        if host.endswith(".local"):
+            return False
+        return cls._resolve_host(host)
+
+    @classmethod
+    def _is_safe_url(cls, url: str) -> bool:
         from urllib.parse import urlparse
 
         try:
             parsed = urlparse(url)
-            if parsed.scheme and parsed.scheme.lower() not in XdgOpenDaemon._ALLOWED_SCHEMES:
+            scheme = parsed.scheme.lower()
+            if not scheme:
+                logger.warning("Blocked URL without a scheme: %s", url)
+                return False
+            if scheme not in cls._ALLOWED_SCHEMES:
                 logger.warning("Blocked URL with scheme '%s': %s", parsed.scheme, url)
                 return False
-            if parsed.hostname and parsed.hostname.lower() in XdgOpenDaemon._BLOCKED_HOSTS:
-                logger.warning("Blocked URL to localhost: %s", url)
+            if scheme in cls._NET_SCHEMES and not cls._host_allowed(parsed.hostname):
+                logger.warning("Blocked URL to non-loopback/private host '%s': %s", parsed.hostname, url)
+                return False
+            if parsed.hostname and parsed.hostname.lower() in cls._BLOCKED_HOSTS:
+                logger.warning("Blocked URL: %s", url)
                 return False
             return True
         except Exception as e:
@@ -638,20 +880,24 @@ class ShieldConfig:
 
 
 # Minimal set of env vars needed for display/audio/IPC to work.
-# Reduced from the previous bloated list that leaked session internals.
+# Includes session/desktop identity vars so portals, theming and
+# browser-based OAuth flows (xdg-open, portals) work inside the sandbox.
 ALWAYS_KEEP_ENV = {
     "DISPLAY",
     "WAYLAND_DISPLAY",
     "XAUTHORITY",
     "XDG_RUNTIME_DIR",
     "DBUS_SESSION_BUS_ADDRESS",
+    "DBUS_SYSTEM_BUS_ADDRESS",
     "PULSE_SERVER",
     "PIPEWIRE_RUNTIME_DIR",
+    "PULSE_COOKIE",
     "HOME",
     "USER",
     "LOGNAME",
     "LANG",
     "LC_ALL",
+    "LC_MESSAGES",
     "QT_QPA_PLATFORM",
     "QT_QPA_PLATFORMTHEME",
     "GDK_BACKEND",
@@ -660,7 +906,34 @@ ALWAYS_KEEP_ENV = {
     "TZ",
     "SHELL",
     "TERM",
+    # Session / desktop environment identification (portals + theming)
+    "XDG_SESSION_TYPE",
+    "XDG_CURRENT_DESKTOP",
+    "XDG_SESSION_DESKTOP",
+    "DESKTOP_SESSION",
+    "GNOME_DESKTOP_SESSION_ID",
+    "KDE_FULL_SESSION",
+    "XDG_MENU_PREFIX",
+    "GTK_MODULES",
+    # Config/data search paths so sandboxed apps find themes and mime info
+    "XDG_CONFIG_DIRS",
+    "XDG_DATA_DIRS",
+    # Browser/OAuth: let apps open external login URLs via xdg-open/BROWSER
+    "BROWSER",
+    # GPU / hardware acceleration driver selection
+    "LIBGL_DRIVERS_PATH",
+    "MESA_LOADER_DRIVER_OVERRIDE",
+    "__GLX_VENDOR_LIBRARY_NAME",
+    "VK_ICD_FILENAMES",
+    # AppImage runtime vars
+    "APPIMAGE",
+    "APPDIR",
+    "OWD",
 }
+
+# Environment variables that are always inherited from the host even though
+# they are not part of the session-identity set above.
+_REQUIRED_ENV = ("PATH", "TMPDIR", "TMP", "TEMP")
 
 HARDENED_ENV = {
     "GLIBC_TUNABLES": "glibc.malloc.perturb=0x42:glibc.malloc.tcache_count=0:glibc.malloc.mxfast=0",
@@ -797,6 +1070,30 @@ class Shield:
                     rw_paths.append(os.path.join(app_dir, ".config"))
                 elif not self.config.portable_config:
                     rw_paths.append(os.path.join(home, ".config"))
+                # Standard user data directories so sandboxed apps can open,
+                # save, and use file dialogs against Downloads/Documents/etc.
+                xdg_dirs = {
+                    "XDG_DOWNLOAD_DIR": "~/Downloads",
+                    "XDG_DOCUMENTS_DIR": "~/Documents",
+                    "XDG_PICTURES_DIR": "~/Pictures",
+                    "XDG_MUSIC_DIR": "~/Music",
+                    "XDG_VIDEOS_DIR": "~/Videos",
+                    "XDG_DESKTOP_DIR": "~/Desktop",
+                }
+                for env_var, default in xdg_dirs.items():
+                    path = os.environ.get(env_var) or os.path.expanduser(default)
+                    path = os.path.expanduser(path)
+                    if os.path.isdir(path) and path not in rw_paths:
+                        rw_paths.append(path)
+                # Scratch space: without these grants Landlock would break
+                # virtually every app that writes temp files or POSIX shm.
+                for scratch in ("/tmp", "/var/tmp", "/dev/shm"):
+                    if os.path.isdir(scratch):
+                        rw_paths.append(scratch)
+                if self.config.private_tmp and app_dir:
+                    # TMPDIR lives inside the read-only app_dir tree; grant it
+                    # explicitly so the app can actually use it.
+                    rw_paths.append(os.path.join(app_dir, ".tmp"))
             preexec_fn = _make_preexec(
                 ro_paths,
                 rw_paths,
@@ -872,6 +1169,19 @@ class Shield:
         else:
             fj_cmd.append("--seccomp")
 
+        if self.config.enable_dbus:
+            # Filter the session bus but keep xdg-desktop-portal reachable so
+            # file dialogs, screenshots and OAuth helpers work inside the jail.
+            fj_cmd.append("--dbus-user=filter")
+            fj_cmd.append("--dbus-user.talk=org.freedesktop.portal.Desktop")
+            fj_cmd.append("--dbus-user.talk=org.freedesktop.portal.*")
+
+        # Keep standard user folders and GPU device access usable
+        fj_cmd.append("--whitelist=~/Downloads")
+        fj_cmd.append("--whitelist=~/Documents")
+        fj_cmd.append("--whitelist=~/Pictures")
+        fj_cmd.append("--noblacklist=/dev/dri")
+
         fj_cmd.append("--")
         fj_cmd.extend(cmd)
 
@@ -896,18 +1206,42 @@ class Shield:
         bwrap_cmd.extend(["--proc", "/proc"])
         bwrap_cmd.extend(["--dev", "/dev"])
         bwrap_cmd.extend(["--ro-bind", "/usr", "/usr"])
-        bwrap_cmd.extend(["--ro-bind", "/lib", "/lib"])
-        bwrap_cmd.extend(["--ro-bind", "/lib64", "/lib64"])
-        bwrap_cmd.extend(["--ro-bind", "/bin", "/bin"])
-        bwrap_cmd.extend(["--ro-bind", "/sbin", "/sbin"])
+
+        # Compatibility paths (/bin, /sbin, /lib, /lib64): on merged-/usr
+        # systems these are symlinks into /usr, on older layouts they are real
+        # directories. Binding a symlinked source materializes it as a plain
+        # directory inside the sandbox, after which the --symlink fallback
+        # aborts with "destination exists and is not a symlink" — so decide
+        # per-path based on what the host provides.
+        _COMPAT_PATHS = (
+            ("/bin", "/usr/bin"),
+            ("/sbin", "/usr/sbin"),
+            ("/lib", "/usr/lib"),
+            ("/lib64", "/usr/lib64"),
+        )
+        for compat_path, usr_target in _COMPAT_PATHS:
+            if os.path.islink(compat_path):
+                bwrap_cmd.extend(["--symlink", usr_target, compat_path])
+            elif os.path.isdir(compat_path):
+                bwrap_cmd.extend(["--ro-bind", compat_path, compat_path])
+
         bwrap_cmd.extend(["--ro-bind", "/etc", "/etc"])
         bwrap_cmd.extend(["--tmpfs", "/tmp"])
         bwrap_cmd.extend(["--tmpfs", "/var/tmp"])
         bwrap_cmd.extend(["--tmpfs", "/dev/shm"])
-        bwrap_cmd.extend(["--symlink", "/usr/bin", "/bin"])
-        bwrap_cmd.extend(["--symlink", "/usr/bin", "/sbin"])
-        bwrap_cmd.extend(["--symlink", "/usr/lib", "/lib"])
-        bwrap_cmd.extend(["--symlink", "/usr/lib64", "/lib64"])
+        # /run hosts system services' sockets. Bind ONLY what sandboxed apps
+        # legitimately need (D-Bus system/session broker dirs) instead of all
+        # of /run — a read-write /run would expose privileged sockets such as
+        # docker.sock or snapd.socket to the app. The per-user runtime dir
+        # (PipeWire, portal, Wayland sockets) is bound separately below.
+        if os.path.isdir("/run/dbus"):
+            bwrap_cmd.extend(["--ro-bind", "/run/dbus", "/run/dbus"])
+        # GPU render nodes + hardware/sysfs introspection for driver detection
+        if os.path.isdir("/dev/dri"):
+            bwrap_cmd.extend(["--dev-bind", "/dev/dri", "/dev/dri"])
+        for sys_dir in ("/sys/class", "/sys/dev", "/sys/devices"):
+            if os.path.isdir(sys_dir):
+                bwrap_cmd.extend(["--ro-bind", sys_dir, sys_dir])
 
         if app_dir and os.path.isdir(app_dir):
             bwrap_cmd.extend(["--ro-bind", app_dir, app_dir])
@@ -949,21 +1283,52 @@ class Shield:
         )
 
     def _build_env(self, base_env: dict | None) -> dict:
-        env = (base_env or os.environ).copy()
+        """Build a sandboxed environment.
+
+        Security: the host environment is filtered through a strict
+        allowlist (ALWAYS_KEEP_ENV + required vars). Everything else —
+        agent sockets, cloud CLI tokens, proxy credentials, arbitrary app
+        state — is NOT passed to sandboxed apps. ``base_env`` carries
+        trusted caller overrides (per-app env vars from the registry,
+        portable-home HOME redirects) and is applied last.
+        """
+        env: dict[str, str] = {}
         for k in ALWAYS_KEEP_ENV:
             if k in os.environ:
                 env[k] = os.environ[k]
+        for k in _REQUIRED_ENV:
+            if k in os.environ:
+                env[k] = os.environ[k]
+        env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
+        env.setdefault("HOME", os.path.expanduser("~"))
+        if "USER" not in env and "LOGNAME" not in env:
+            import getpass
+
+            try:
+                env["USER"] = getpass.getuser()
+            except Exception:
+                pass
+        # Trusted caller-explicit overrides win over inherited values
+        if base_env:
+            env.update(base_env)
         if self.config.hardening:
             for k, v in HARDENED_ENV.items():
                 if k not in env:
                     env[k] = v
+        # Prefer xdg-desktop-portal for file dialogs / OAuth helpers inside the
+        # sandbox; fall back to a GTK theme so Qt apps are not unstyled.
+        if "GTK_USE_PORTAL" not in env:
+            env["GTK_USE_PORTAL"] = "1"
+        if "QT_QPA_PLATFORMTHEME" not in env:
+            env["QT_QPA_PLATFORMTHEME"] = "gtk2"
         return env
 
     def _run_direct(self, cmd: list[str], cwd: str | None, env: dict | None) -> subprocess.Popen:
-        result_env = (env or os.environ).copy()
-        for k in ALWAYS_KEEP_ENV:
-            if k in os.environ:
-                result_env[k] = os.environ[k]
+        # Unsandboxed launch: inherit the full host environment, then apply
+        # caller overrides (per-app env vars) on top.
+        result_env = os.environ.copy()
+        if env:
+            result_env.update(env)
         return subprocess.Popen(
             cmd,
             cwd=cwd or os.getcwd(),
@@ -981,7 +1346,7 @@ def check_shield_available() -> dict:
         "ptrace_scope": True,
         "malloc_hardening": True,
         "seccomp": True,
-        "landlock": hasattr(os, "landlock_restrict_self"),
+        "landlock": landlock_supported(),
         "namespace_unshare": True,
         "backends": {"shield": True},
     }

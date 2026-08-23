@@ -63,6 +63,8 @@ from niruvi.desktop.desktop_utils import (
     get_version,
     parse_desktop_file_content,
     refresh_desktop_database,
+    register_mime_handler,
+    sanitize_app_name,
 )
 from niruvi.desktop.icon_utils import get_pixmap_from_file
 from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
@@ -665,11 +667,14 @@ class InstallWizard(QWizard):
         else:
             self.appimage_path = path
         base = os.path.splitext(os.path.basename(self.appimage_path))[0]
-        self.app_name = base
+        self.app_name = sanitize_app_name(base)
 
         self._size_mb = os.path.getsize(self.appimage_path) / (1024 * 1024)
         name = self._appimage_info.get("Name", base)
         desc = self._appimage_info.get("Comment", "")
+        # Untrusted metadata: the embedded .desktop Name= must never reach
+        # filesystem paths or generated file content unsanitized.
+        name = sanitize_app_name(name)
         self.app_name = name
 
         if self._icon_data:
@@ -1039,6 +1044,13 @@ class InstallWizard(QWizard):
                 self._progress_page.append_log(f"Desktop entry: {desktop_file_path or 'failed'}")
             except Exception as e:
                 self._progress_page.append_log(f"Desktop entry failed: {e}")
+
+        if get_settings().get("register_mime_handler", True):
+            try:
+                register_mime_handler(app_name)
+                self._progress_page.append_log("Registered as default AppImage handler")
+            except Exception as e:
+                logger.debug("MIME registration failed for %s: %s", app_name, e, exc_info=True)
 
         if self._components_page.cb_desktop_shortcut.isChecked():
             icon_path = None

@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import tempfile
@@ -62,6 +63,8 @@ from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import BTN_STYLE, CARD_STYLE, SIDEBAR_STYLE, TAB_PAGE_STYLE
+
+logger = logging.getLogger(__name__)
 
 
 class UpdateCheckWorker(QThread):
@@ -608,14 +611,34 @@ class AppInfoDialog(QDialog):
         play_sound("navigation")
         self.stack.setCurrentIndex(index)
 
+    def accept(self):
+        try:
+            InstallationRegistry().flush()
+        except Exception as e:
+            logger.debug("Registry flush on accept failed: %s", e, exc_info=True)
+        super().accept()
+
+    def reject(self):
+        try:
+            InstallationRegistry().flush()
+        except Exception as e:
+            logger.debug("Registry flush on reject failed: %s", e, exc_info=True)
+        super().reject()
+
     def _save_display_name(self):
         play_sound("click")
-        override = self.display_name_edit.text().strip()
-        record = self._get_or_create_record()
-        record.display_name_override = override
-        InstallationRegistry().add(record)
-        self._info["display_name"] = override or self._app_name
-        self._status(f"Display name saved for {self._app_name}")
+        try:
+            override = self.display_name_edit.text().strip()
+            record = self._get_or_create_record()
+            record.display_name_override = override
+            InstallationRegistry().add(record)
+            self._info["display_name"] = override or self._app_name
+            self._status(f"Display name saved for {self._app_name}")
+            play_sound("success")
+        except Exception as e:
+            logger.debug("Failed to save display name for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save display name:\n{e}")
 
     def _pick_custom_icon(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -642,12 +665,17 @@ class AppInfoDialog(QDialog):
 
     def _clear_custom_icon(self):
         play_sound("click")
-        record = self._get_or_create_record()
-        record.custom_icon_path = ""
-        InstallationRegistry().add(record)
-        self._info["custom_icon_path"] = ""
-        self._update_icon_preview()
-        self._status(f"Custom icon cleared for {self._app_name}")
+        try:
+            record = self._get_or_create_record()
+            record.custom_icon_path = ""
+            InstallationRegistry().add(record)
+            self._info["custom_icon_path"] = ""
+            self._update_icon_preview()
+            self._status(f"Custom icon cleared for {self._app_name}")
+        except Exception as e:
+            logger.debug("Failed to clear custom icon for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not clear custom icon:\n{e}")
 
     def _update_icon_preview(self):
         icon_path = self._info.get("custom_icon_path") or ""
@@ -675,20 +703,32 @@ class AppInfoDialog(QDialog):
 
     def _save_run_args(self):
         play_sound("click")
-        record = self._get_or_create_record()
-        record.run_args = self.run_args_edit.text().strip()
-        InstallationRegistry().add(record)
-        self._status(f"Run arguments saved for {self._app_name}")
+        try:
+            record = self._get_or_create_record()
+            record.run_args = self.run_args_edit.text().strip()
+            InstallationRegistry().add(record)
+            self._status(f"Run arguments saved for {self._app_name}")
+            play_sound("success")
+        except Exception as e:
+            logger.debug("Failed to save run args for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save run arguments:\n{e}")
 
     def _save_tags(self):
         play_sound("click")
-        from niruvi.app.tags import normalize_tags
+        try:
+            from niruvi.app.tags import normalize_tags
 
-        raw = [t.strip() for t in self.tags_edit.text().split(",") if t.strip()]
-        record = self._get_or_create_record()
-        record.tags = normalize_tags(raw)
-        InstallationRegistry().add(record)
-        self._status(f"Tags saved for {self._app_name}: {', '.join(record.tags) or 'none'}")
+            raw = [t.strip() for t in self.tags_edit.text().split(",") if t.strip()]
+            record = self._get_or_create_record()
+            record.tags = normalize_tags(raw)
+            InstallationRegistry().add(record)
+            self._status(f"Tags saved for {self._app_name}: {', '.join(record.tags) or 'none'}")
+            play_sound("success")
+        except Exception as e:
+            logger.debug("Failed to save tags for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save tags:\n{e}")
 
     def _populate_env_table(self, env_vars: dict):
         self.env_table.setRowCount(len(env_vars))
@@ -712,29 +752,41 @@ class AppInfoDialog(QDialog):
 
     def _save_env_vars(self):
         play_sound("click")
-        env_vars = {}
-        for i in range(self.env_table.rowCount()):
-            key_item = self.env_table.item(i, 0)
-            val_item = self.env_table.item(i, 1)
-            key = key_item.text().strip() if key_item else ""
-            val = val_item.text().strip() if val_item else ""
-            if key:
-                env_vars[key] = val
-        record = self._get_or_create_record()
-        record.env_vars = env_vars
-        InstallationRegistry().add(record)
-        self._status(f"Environment variables saved for {self._app_name}")
+        try:
+            env_vars = {}
+            for i in range(self.env_table.rowCount()):
+                key_item = self.env_table.item(i, 0)
+                val_item = self.env_table.item(i, 1)
+                key = key_item.text().strip() if key_item else ""
+                val = val_item.text().strip() if val_item else ""
+                if key:
+                    env_vars[key] = val
+            record = self._get_or_create_record()
+            record.env_vars = env_vars
+            InstallationRegistry().add(record)
+            self._status(f"Environment variables saved for {self._app_name}")
+            play_sound("success")
+        except Exception as e:
+            logger.debug("Failed to save env vars for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save environment variables:\n{e}")
 
     def _save_update_url(self):
         play_sound("click")
-        url = self.update_url_edit.text().strip()
-        normalized = normalize_update_url(url) if url else ""
-        record = self._get_or_create_record()
-        record.update_url = normalized
-        InstallationRegistry().add(record)
-        self._info["update_url"] = normalized
-        self._update_source_type_label()
-        self._status(f"Update URL saved for {self._app_name}")
+        try:
+            url = self.update_url_edit.text().strip()
+            normalized = normalize_update_url(url) if url else ""
+            record = self._get_or_create_record()
+            record.update_url = normalized
+            InstallationRegistry().add(record)
+            self._info["update_url"] = normalized
+            self._update_source_type_label()
+            self._status(f"Update URL saved for {self._app_name}")
+            play_sound("success")
+        except Exception as e:
+            logger.debug("Failed to save update URL for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save update URL:\n{e}")
 
     def _update_source_type_label(self):
         url = self.update_url_edit.text().strip()
@@ -779,14 +831,24 @@ class AppInfoDialog(QDialog):
 
     def _save_channel(self, channel: str):
         play_sound("click")
-        record = self._get_or_create_record()
-        record.update_channel = channel
-        InstallationRegistry().add(record)
+        try:
+            record = self._get_or_create_record()
+            record.update_channel = channel
+            InstallationRegistry().add(record)
+        except Exception as e:
+            logger.debug("Failed to save channel for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save update channel:\n{e}")
 
     def _save_auto_update(self, enabled: bool):
-        record = self._get_or_create_record()
-        record.auto_update = enabled
-        InstallationRegistry().add(record)
+        try:
+            record = self._get_or_create_record()
+            record.auto_update = enabled
+            InstallationRegistry().add(record)
+        except Exception as e:
+            logger.debug("Failed to save auto-update flag for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save auto-update setting:\n{e}")
 
     def _revert_version(self):
         """Revert to the .prev version via manager."""
@@ -975,41 +1037,52 @@ class AppInfoDialog(QDialog):
 
     def _save_shield_config(self):
         play_sound("click")
-        record = self._get_or_create_record()
-        sc = {
-            "enabled": self.sb_enabled_cb.isChecked(),
-            "hardening": self.sb_enabled_cb.isChecked(),
-            "portable_home": self.cb_portable_home.isChecked(),
-            "portable_config": self.cb_portable_config.isChecked(),
-            "backend": self.backend_combo.currentData(),
-        }
-        if sc.get("portable_home"):
-            Path(os.path.join(record.path, ".home")).mkdir(exist_ok=True)
-        if sc.get("portable_config"):
-            Path(os.path.join(record.path, ".config")).mkdir(exist_ok=True)
-        record.sandbox_config = sc
-        InstallationRegistry().add(record)
         try:
-            from niruvi.desktop.desktop_utils import create_desktop_entry, refresh_desktop_database
+            record = self._get_or_create_record()
+            sc = {
+                "enabled": self.sb_enabled_cb.isChecked(),
+                "hardening": self.sb_enabled_cb.isChecked(),
+                "portable_home": self.cb_portable_home.isChecked(),
+                "portable_config": self.cb_portable_config.isChecked(),
+                "backend": self.backend_combo.currentData(),
+            }
+            if sc.get("portable_home"):
+                Path(os.path.join(record.path, ".home")).mkdir(exist_ok=True)
+            if sc.get("portable_config"):
+                Path(os.path.join(record.path, ".config")).mkdir(exist_ok=True)
+            record.sandbox_config = sc
+            InstallationRegistry().add(record)
+            try:
+                from niruvi.desktop.desktop_utils import create_desktop_entry, refresh_desktop_database
 
-            create_desktop_entry(record.path, self._app_name)
-            refresh_desktop_database()
-        except Exception:
-            pass
-        self._load_shield_ui()
-        self._status(f"Shield config saved for {self._app_name}")
+                create_desktop_entry(record.path, self._app_name)
+                refresh_desktop_database()
+            except Exception as e:
+                logger.debug("Desktop entry refresh failed for %s: %s", self._app_name, e, exc_info=True)
+            self._load_shield_ui()
+            self._status(f"Shield config saved for {self._app_name}")
+            play_sound("success")
+        except Exception as e:
+            logger.debug("Failed to save shield config for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not save isolation settings:\n{e}")
 
     def _reset_shield_defaults(self):
         play_sound("click")
-        sc = ShieldConfig(enabled=True)
-        record = self._get_or_create_record()
-        new_config = sc.to_dict()
-        new_config["portable_home"] = self.cb_portable_home.isChecked()
-        new_config["portable_config"] = self.cb_portable_config.isChecked()
-        record.sandbox_config = new_config
-        InstallationRegistry().add(record)
-        self._load_shield_ui()
-        self._status(f"Shield reset to defaults for {self._app_name}")
+        try:
+            sc = ShieldConfig(enabled=True)
+            record = self._get_or_create_record()
+            new_config = sc.to_dict()
+            new_config["portable_home"] = self.cb_portable_home.isChecked()
+            new_config["portable_config"] = self.cb_portable_config.isChecked()
+            record.sandbox_config = new_config
+            InstallationRegistry().add(record)
+            self._load_shield_ui()
+            self._status(f"Shield reset to defaults for {self._app_name}")
+        except Exception as e:
+            logger.debug("Failed to reset shield defaults for %s: %s", self._app_name, e, exc_info=True)
+            play_sound("error")
+            QMessageBox.critical(self, "Save Failed", f"Could not reset isolation settings:\n{e}")
 
     def _run_app(self):
         parent = self.parent()
@@ -1065,5 +1138,8 @@ class AppInfoDialog(QDialog):
 
     def _status(self, msg: str):
         parent = self.parent()
-        if parent and hasattr(parent, "_status_bar"):
+        if parent and hasattr(parent, "_status_bar") and parent._status_bar is not None:
             parent._status_bar.showMessage(msg)
+        else:
+            # No status bar available (e.g. standalone dialog) — log instead
+            logger.debug("Status: %s", msg)

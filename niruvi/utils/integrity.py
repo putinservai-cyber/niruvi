@@ -52,6 +52,29 @@ def _get_hmac_key() -> str:
         os.makedirs(os.path.dirname(key_path), exist_ok=True)
         with os.fdopen(os.open(key_path, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600), "w") as f:
             f.write(_HMAC_KEY)
+    except FileExistsError:
+        # A keyfile exists but is empty/unreadable-as-written (e.g. created by
+        # an interrupted first run). Previously the freshly generated key was
+        # used in memory only, invalidating every stored signature on the next
+        # start. Rewrite it so the key persists — only when we safely can.
+        try:
+            import stat as _stat
+
+            st = os.stat(key_path)
+            if (
+                st.st_uid == os.getuid()
+                and os.path.isfile(key_path)
+                and not os.path.islink(key_path)
+                and _stat.S_ISREG(st.st_mode)
+            ):
+                with os.fdopen(os.open(key_path, os.O_WRONLY | os.O_TRUNC, 0o600), "w") as f:
+                    f.write(_HMAC_KEY)
+                    f.flush()
+                    os.fsync(f.fileno())
+            else:
+                logger.warning("HMAC key file %s has unexpected owner/type — key not persisted", key_path)
+        except OSError as e:
+            logger.warning("Could not persist regenerated HMAC key: %s", e)
     except OSError:
         pass
     return _HMAC_KEY

@@ -27,6 +27,7 @@ _settings: dict = {
     "portable_config": False,
     "icon_in_theme": True,
     "auto_scan_before_install": True,
+    "register_mime_handler": True,
     "update_check_interval": "weekly",
     "auto_update_apps": False,
     "delta_updates": True,

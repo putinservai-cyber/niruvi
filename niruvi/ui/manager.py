@@ -54,6 +54,7 @@ from niruvi.desktop.desktop_utils import (
     find_desktop_shortcut,
     get_version,
     parse_desktop_file,
+    register_mime_handler,
 )
 from niruvi.desktop.icon_utils import get_pixmap_from_file, to_png_bytes
 from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
@@ -1277,8 +1278,10 @@ class AppManager(QMainWindow):
         info_action = menu.addAction(get_icon("help-about", "dialog-information"), "App Info")
         menu.addSeparator()
         run_action = None
+        run_unsandboxed_action = None
         if not is_self:
             run_action = menu.addAction(get_icon("media-playback-start"), "Run")
+            run_unsandboxed_action = menu.addAction(get_icon("security-low", "document-open-recent"), "Run Unsandboxed")
         update_action = menu.addAction(get_icon("emblem-downloads"), "Update...")
         has_url = bool(app_info.get("update_url"))
         check_update_action = (
@@ -1303,6 +1306,8 @@ class AppManager(QMainWindow):
             self._show_app_info(app_name)
         elif action == run_action:
             self._run_app(app_name)
+        elif run_unsandboxed_action is not None and action == run_unsandboxed_action:
+            self._run_app(app_name, unsandboxed=True)
         elif action == update_action:
             self._update_app(app_name)
         elif check_update_action and action == check_update_action:
@@ -1414,15 +1419,28 @@ class AppManager(QMainWindow):
 
         dlg.exec()
 
-    def _run_app(self, app_name: str):
+    def _run_app(self, app_name: str, unsandboxed: bool = False):
         play_sound("click")
         app_info = self.installed_apps[app_name]
         app_dir = app_info["path"]
         registry = InstallationRegistry()
         record = registry.get(app_name)
-        env = os.environ.copy()
-        if record and record.env_vars:
-            env.update(record.env_vars)
+        # Only trusted per-app overrides are passed here — Shield._build_env()
+        # filters the host environment through its security allowlist.
+        env = dict(record.env_vars) if record and record.env_vars else {}
+
+        # Browsers ship their own sandbox (setuid/namespaces) — nesting it
+        # inside Niruvi Shield crashes at startup, so skip our sandbox for
+        # them. This is a PER-LAUNCH decision only: the stored sandbox config
+        # is never modified, so a malicious app cannot permanently disable
+        # its own isolation by naming itself "Chrome-whatever".
+        low = app_name.lower()
+        is_browser = any(x in low for x in ("chrome", "chromium", "brave", "edge", "firefox"))
+        if is_browser:
+            logger.info(
+                "Browser detected (%s): launching without Niruvi sandbox to avoid nested-sandbox crash", app_name
+            )
+
         apprun = os.path.join(app_dir, "AppRun")
         if not os.path.isfile(apprun):
             expected = os.path.join(get_settings()["install_dir"], app_name, "AppRun")
@@ -1463,7 +1481,7 @@ class AppManager(QMainWindow):
                 self._run_app_fallback(app_name, app_dir, env, record)
             return
 
-        unsandboxed = "--unsandboxed" in sys.argv
+        unsandboxed = unsandboxed or "--unsandboxed" in sys.argv or is_browser
         hook_results = run_hooks(app_name, app_dir, env)
         for hr in hook_results:
             if hr["returncode"] != 0:
@@ -1560,6 +1578,18 @@ class AppManager(QMainWindow):
                 env["XDG_CONFIG_HOME"] = os.path.join(app_dir, ".config")
         return env
 
+    def _full_env(self, env: dict | None) -> dict:
+        """Merge trusted overrides over a copy of the full host environment.
+
+        Used by direct (non-Shield) launch paths that Popen without going
+        through Shield._build_env(), which would otherwise receive only the
+        small per-app override dict.
+        """
+        full = os.environ.copy()
+        if env:
+            full.update(env)
+        return full
+
     def _try_extract_and_run(self, appimage_path: str, app_name: str, env: dict | None = None, record=None) -> bool:
         try:
             from niruvi.app.health_check import check_namespace_available
@@ -1576,7 +1606,7 @@ class AppManager(QMainWindow):
                 cmd = runner
             p = subprocess.Popen(
                 cmd,
-                env=self._apply_portable_env(env or os.environ.copy(), os.path.dirname(appimage_path), record),
+                env=self._apply_portable_env(self._full_env(env), os.path.dirname(appimage_path), record),
                 start_new_session=True,
             )
             _track_detached(p)
@@ -1609,7 +1639,7 @@ class AppManager(QMainWindow):
                     p = subprocess.Popen(
                         cmd,
                         cwd=tmp,
-                        env=self._apply_portable_env(env or os.environ.copy(), app_dir, record),
+                        env=self._apply_portable_env(self._full_env(env), app_dir, record),
                         start_new_session=True,
                     )
                     _track_detached(p)
@@ -1814,6 +1844,12 @@ class AppManager(QMainWindow):
                 create_desktop_entry(dest_dir, app_name, self)
             except Exception as e:
                 self._show_status(f"Warning: could not create desktop entry: {e}")
+
+        if get_settings().get("register_mime_handler", True):
+            try:
+                register_mime_handler(app_name)
+            except Exception as e:
+                logger.debug("MIME registration failed for %s: %s", app_name, e, exc_info=True)
 
         registry = InstallationRegistry()
         record = registry.get(app_name)
@@ -2396,6 +2432,24 @@ class AppManager(QMainWindow):
         record = InstallationRegistry().get(app_name)
         channel = record.update_channel if record else "stable"
         update_url = record.update_url if record else ""
+        if not expected_sha256:
+            # The update cannot be integrity-checked (no SHA256 published by
+            # the source). Never install silently: require explicit consent.
+            play_sound("warning")
+            reply = QMessageBox.question(
+                self,
+                "Unverified Download",
+                f"<b>{app_name}</b> v{latest_version} cannot be verified before "
+                "installation — its publisher does not provide a SHA-256 "
+                "checksum for this download.<br><br>"
+                f"Source: <code>{download_url[:100]}</code><br><br>"
+                "Install this <b>unverified</b> update anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                logger.info("User declined unverified update download for %s", app_name)
+                return
         pre_resolved = UpdateInfo(
             version=latest_version,
             download_url=download_url,
@@ -2593,12 +2647,17 @@ class AppManager(QMainWindow):
             f"{result.app_name} v{result.latest_version} is available "
             f"(current: v{result.current_version}).\n\n"
             f"Source: {result.source_type}\n"
+            + (
+                "(no SHA-256 checksum published - download cannot be verified)\n"
+                if not getattr(result, "sha256", None)
+                else ""
+            )
             + (f"\n{result.changelog[:300]}" if result.changelog else "")
             + "\n\nDownload and install now?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self._download_app_update(result.app_name, result.download_url, result.latest_version)
+            self._download_app_update(result.app_name, result.download_url, result.latest_version, result.sha256 or "")
 
     def _show_app_update_notification(self, result):
         app_info = self.installed_apps.get(result.app_name)

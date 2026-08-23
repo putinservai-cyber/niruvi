@@ -128,8 +128,56 @@ def generate_thumbnail(input_path: str, output_path: str, size: int = 256):
         pass
 
 
+def _build_extract_command(appimage_path: str, extract_dir: str) -> list[str]:
+    """Build the command that runs ``--appimage-extract``.
+
+    Security: the AppImage runtime is untrusted code. When bubblewrap(1) is
+    available the extraction runs fully confined — no network, no host
+    filesystem except the image's own directory (read-only) and the
+    extraction target (writable, mounted at the same path so post-extract
+    parsing needs no translation). Without bwrap we fall back to direct
+    execution.
+    """
+    bwrap = shutil.which("bwrap")
+    cmd = [appimage_path, "--appimage-extract"]
+    if not bwrap:
+        return cmd
+    app_dir = os.path.dirname(os.path.abspath(appimage_path)) or "/"
+    confined = [
+        bwrap,
+        "--unshare-all",
+        "--new-session",
+        "--die-with-parent",
+        "--clearenv",
+        "--setenv",
+        "PATH",
+        "/usr/local/bin:/usr/bin:/bin",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--ro-bind",
+        app_dir,
+        app_dir,
+        "--bind",
+        extract_dir,
+        extract_dir,
+        "--chdir",
+        extract_dir,
+    ]
+    confined.extend(cmd)
+    return confined
+
+
 def _extract_icon(appimage_path: str) -> bytes | None:
-    """Extract the app icon from an AppImage's embedded filesystem."""
+    """Extract the app icon from an AppImage's embedded filesystem.
+
+    The extraction step executes the AppImage's embedded runtime, which is
+    untrusted code; see :func:`_build_extract_command` for how it is
+    confined when bubblewrap is installed.
+    """
     if not os.access(appimage_path, os.X_OK):
         os.chmod(appimage_path, 0o755)
 
@@ -138,7 +186,7 @@ def _extract_icon(appimage_path: str) -> bytes | None:
     extract_dir = tempfile.mkdtemp(prefix="niruvi-thumb-")
     try:
         r = subprocess.run(
-            [appimage_path, "--appimage-extract"],
+            _build_extract_command(appimage_path, extract_dir),
             cwd=extract_dir,
             capture_output=True,
             text=True,

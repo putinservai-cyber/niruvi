@@ -93,6 +93,40 @@ def _score_asset(name: str, arch: str) -> int:
     return score
 
 
+def _parse_sha256_text(content: str) -> str | None:
+    """Extract a 64-hex-character digest from common checksum-file formats:
+    ``<sha256>``, ``<sha256>  filename``, ``SHA256 (filename) = <sha256>``."""
+    if not content:
+        return None
+    m = re.search(r"\b[0-9a-fA-F]{64}\b", content)
+    if m:
+        return m.group(0).lower()
+    return None
+
+
+def fetch_sidecar_sha256(download_url: str, timeout: int = 15) -> str | None:
+    """Probe conventional checksum sidecars (``<url>.sha256``,
+    ``<url>.sha256sum``) published next to a download URL.
+
+    Returns the lowercase hex digest when a sidecar exists and contains a
+    well-formed SHA-256, otherwise None (caller must then treat the download
+    as unverifiable)."""
+    base = download_url.rstrip("/")
+    for suffix in (".sha256", ".sha256sum"):
+        sha_url = base + suffix
+        try:
+            req = urllib.request.Request(sha_url, headers={"Accept": "text/plain"})
+            resp = urllib.request.urlopen(req, timeout=timeout, context=_create_ssl_context())
+            content = resp.read(4096).decode("utf-8", errors="replace").strip()
+        except Exception as e:
+            logger.debug("No checksum sidecar at %s: %s", sha_url, e)
+            continue
+        sha = _parse_sha256_text(content)
+        if sha:
+            return sha
+    return None
+
+
 def resolve_github(url: str, channel: str = "stable", timeout: int = 15) -> UpdateInfo | None:
     repo = parse_github_repo(url)
     if not repo:
@@ -161,11 +195,9 @@ def resolve_github(url: str, channel: str = "stable", timeout: int = 15) -> Upda
                 sha_url = asset["browser_download_url"]
                 req = urllib.request.Request(sha_url, headers={"Accept": "text/plain"})
                 resp = urllib.request.urlopen(req, timeout=timeout, context=_create_ssl_context())
-                content = resp.read().decode("utf-8").strip()
-                # Format: "sha256  filename" or "sha256 *filename"
-                sha_part = content.split()[0] if content else ""
-                if len(sha_part) == 64:
-                    asset_sha256 = sha_part
+                content = resp.read(4096).decode("utf-8", errors="replace")
+                # Formats: "sha256", "sha256  filename", "sha256 *filename"
+                asset_sha256 = _parse_sha256_text(content)
             except Exception as e:
                 logger.debug("Failed to fetch SHA256 for asset %s: %s", best_asset["name"], e, exc_info=True)
 
@@ -229,10 +261,13 @@ def resolve_gitlab(url: str, channel: str = "stable", timeout: int = 15) -> Upda
     if not best_link:
         return None
 
+    download_url = best_link["url"]
+    sha256 = fetch_sidecar_sha256(download_url, timeout)
+
     return UpdateInfo(
         version=version,
-        download_url=best_link["url"],
-        sha256=None,
+        download_url=download_url,
+        sha256=sha256,
         changelog=changelog,
         source_type="gitlab",
         release_date=release_date,
@@ -254,10 +289,11 @@ def resolve_direct(url: str, current_version: str = "", timeout: int = 15) -> Up
                 version = m2.group(1)
         if not version and current_version:
             version = current_version
+        sha256 = fetch_sidecar_sha256(url, timeout)
         return UpdateInfo(
             version=version or "unknown",
             download_url=url,
-            sha256=None,
+            sha256=sha256,
             source_type="direct",
         )
     except Exception as e:

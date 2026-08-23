@@ -289,11 +289,15 @@ class InstallationRegistry:
             conn = sqlite3.connect(db, timeout=10)
             try:
                 conn.execute(_SCHEMA)
+                # Snapshot under the save lock so concurrent add()/remove()
+                # from other threads cannot mutate the dict mid-iteration.
+                with self._save_lock:
+                    record_values = list(self._records.values())
+                    names = list(self._records.keys())
                 with conn:
-                    for record in self._records.values():
+                    for record in record_values:
                         data = record.to_dict()
                         conn.execute(upsert_sql, _record_to_row(data))
-                    names = list(self._records.keys())
                     if names:
                         qmarks = ", ".join("?" for _ in names)
                         conn.execute(f"DELETE FROM installed_apps WHERE name NOT IN ({qmarks})", names)
@@ -318,7 +322,8 @@ class InstallationRegistry:
             self._save_pending = True
         if self._save_timer is not None:
             self._save_timer.cancel()
-        self._save_timer = threading.Timer(0.5, self._flush_save)
+        # Short debounce: 0.1 s coalesces bursts without racing dialog close
+        self._save_timer = threading.Timer(0.1, self._flush_save)
         self._save_timer.daemon = True
         self._save_timer.start()
 

@@ -303,6 +303,14 @@ class DownloadWorker(QThread):
 
     def run(self):
         try:
+            if not self.expected_sha256:
+                logger.warning(
+                    "Downloading %s WITHOUT integrity verification (no SHA256 provided) — source: %s",
+                    self.dest_path,
+                    self.url,
+                )
+            if self.url.startswith("http://"):
+                logger.warning("Downloading over plaintext HTTP: %s", self.url)
             if self.seed_path and self.url.startswith(("http://", "https://")):
                 self.status_changed.emit("Checking for delta update (.zsync)...")
                 from niruvi.desktop.zsync import try_delta_download

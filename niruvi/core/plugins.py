@@ -76,6 +76,13 @@ def _check_plugin_secure(path: str) -> bool:
         if st.st_mode & stat.S_IWOTH:
             logger.warning("Plugin %s is world-writable — skipping", path)
             return False
+        if st.st_mode & stat.S_IWGRP:
+            # Group-writable is only acceptable when the group matches the
+            # parent directory's group (same policy as hooks.py)
+            parent_st = os.stat(os.path.dirname(path))
+            if parent_st.st_gid != st.st_gid:
+                logger.warning("Plugin %s is group-writable by a different group — skipping", path)
+                return False
         return True
     except OSError as e:
         logger.warning("Cannot stat plugin %s: %s — skipping", path, e)

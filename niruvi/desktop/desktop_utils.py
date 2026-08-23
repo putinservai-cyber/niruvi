@@ -1,8 +1,10 @@
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
+import tempfile
 
 from PyQt6.QtWidgets import QMessageBox
 
@@ -10,6 +12,28 @@ from niruvi.config import DESKTOP_DIR, get_settings
 from niruvi.utils.icon_search import find_icon_in_dir as _find_icon_in_dir_impl
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_app_name(name: object) -> str:
+    """Normalize an untrusted application name into a safe identifier.
+
+    App names often come from an AppImage's embedded .desktop file and are
+    used as directory names, .desktop filenames and inside generated
+    desktop-entry/mimeapps content. Strip control characters (kills
+    newline-based key injection), path separators and traversal sequences
+    (kills ../ escapes), cap length.
+    """
+    if not isinstance(name, str):
+        return "App"
+    # Control characters (incl. newlines/tabs/NUL) cannot appear in paths
+    cleaned = "".join(ch for ch in name if ch.isprintable())
+    cleaned = cleaned.replace("/", "-").replace("\\", "-")
+    while ".." in cleaned:
+        cleaned = cleaned.replace("..", ".")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .-")
+    if len(cleaned) > 80:
+        cleaned = cleaned[:80].rstrip(" .-")
+    return cleaned or "App"
 
 
 def get_version(app_dir: str) -> str:
@@ -142,6 +166,9 @@ def _resolve_icon(app_dir: str, desktop_lines: list[str] | None = None) -> str |
 
 
 def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None:
+    # app_name may originate from an untrusted .desktop Name= field; never
+    # let it influence filesystem paths or entry content.
+    app_name = sanitize_app_name(app_name)
     desktop_files = [f for f in os.listdir(app_dir) if f.endswith(".desktop")]
     if not desktop_files:
         return _create_generic_desktop(app_dir, app_name)
@@ -189,6 +216,8 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
         new_lines.append("Categories=Utility;\n")
     if not has_startup:
         new_lines.append("StartupNotify=true\n")
+    if not any(line.startswith("MimeType=") for line in new_lines):
+        new_lines.append("MimeType=" + ";".join(_MIME_TYPES) + "\n")
 
     new_lines.append("X-Created-By=Niruvi\n")
     new_lines.append(f"X-AppImage-Path={app_dir}\n")
@@ -208,6 +237,7 @@ def create_desktop_entry(app_dir: str, app_name: str, parent=None) -> str | None
 
 
 def create_desktop_shortcut(app_name: str, exec_path: str, icon_path: str | None = None) -> str | None:
+    app_name = sanitize_app_name(app_name)
     desktop_dir = os.path.expanduser("~/Desktop")
     os.makedirs(desktop_dir, exist_ok=True)
     shortcut_path = os.path.join(desktop_dir, f"{app_name}.desktop")
@@ -245,6 +275,7 @@ def create_desktop_shortcut(app_name: str, exec_path: str, icon_path: str | None
 
 
 def _create_generic_desktop(app_dir: str, app_name: str) -> str | None:
+    app_name = sanitize_app_name(app_name)
     dest_desktop = os.path.join(DESKTOP_DIR, f"{app_name}.desktop")
     icon_path = _resolve_icon(app_dir)
     icon_name = install_icon_to_theme(icon_path, app_name) if icon_path else None
@@ -258,6 +289,7 @@ def _create_generic_desktop(app_dir: str, app_name: str) -> str | None:
         "Comment=Extracted AppImage managed by Niruvi\n"
         "Terminal=false\n"
         "StartupNotify=true\n"
+        "MimeType=" + ";".join(_MIME_TYPES) + "\n"
         "X-Created-By=Niruvi\n"
         f"X-AppImage-Path={app_dir}\n"
     )
@@ -387,14 +419,11 @@ def register_mime_handler(app_name: str, desktop_name: str | None = None) -> boo
     """Register an application as the default handler for AppImage MIME types.
 
     Uses xdg-mime and also writes directly to mimeapps.list for robustness
-    across desktop environments.
+    across desktop environments. Existing entries are deduplicated instead of
+    blindly appended so repeated installs do not grow the file.
     """
-    desk = desktop_name or app_name
+    desk = sanitize_app_name(desktop_name or app_name)
     desktop_file = f"{desk}.desktop"
-    local_apps = os.path.expanduser("~/.local/share/applications")
-    desktop_path = os.path.join(local_apps, desktop_file)
-    if not os.path.isfile(desktop_path):
-        return False
 
     any_success = False
     for mt in _MIME_TYPES:
@@ -415,19 +444,59 @@ def register_mime_handler(app_name: str, desktop_name: str | None = None) -> boo
         if os.path.isfile(mimeapps):
             with open(mimeapps) as f:
                 existing = f.read()
-        added = []
+
+        # Rebuild the file: strip stale handler lines for our MIME types from
+        # [Default Applications] (keeps unrelated entries), then append ours
+        # so repeated installs stay idempotent.
+        default_entries: list[str] = []
+        other_lines: list[str] = []
+        current_section = ""
+        for line in existing.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                current_section = stripped
+                if stripped != "[Default Applications]":
+                    other_lines.append(line)
+                continue
+            if current_section == "[Default Applications]":
+                if any(line.startswith(f"{mt}=") for mt in _MIME_TYPES):
+                    continue
+                if stripped:
+                    default_entries.append(line)
+            else:
+                other_lines.append(line)
+
+        new_lines = ["[Default Applications]"]
+        new_lines.extend(default_entries)
         for mt in _MIME_TYPES:
-            if f"{mt}={desktop_file}" not in existing:
-                added.append(f"{mt}={desktop_file}")
-        if added:
-            with open(mimeapps, "a") as f:
-                if existing and not existing.endswith("\n"):
-                    f.write("\n")
-                f.write("\n[Default Applications]\n")
-                for line in added:
-                    f.write(line + "\n")
-            any_success = True
-    except OSError:
-        pass
+            new_lines.append(f"{mt}={desktop_file}")
+        if other_lines:
+            new_lines.append("")
+            new_lines.extend(other_lines)
+
+        # Atomic replace so a crash/interrupt can never leave a truncated
+        # mimeapps.list behind (which would corrupt the user's MIME database).
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(mimeapps), prefix=".mimeapps.", suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w") as f:
+                f.write("\n".join(new_lines) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            # Preserve the original file's mode (or a safe default)
+            try:
+                mode = os.stat(mimeapps).st_mode & 0o777
+            except OSError:
+                mode = 0o600
+            os.chmod(tmp_path, mode)
+            os.replace(tmp_path, mimeapps)
+        except OSError:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        any_success = True
+    except OSError as e:
+        logger.debug("Failed to write %s: %s", mimeapps, e, exc_info=True)
 
     return any_success

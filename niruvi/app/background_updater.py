@@ -25,6 +25,7 @@ class UpdateResult:
     download_url: str
     changelog: str | None = None
     source_type: str = "direct"
+    sha256: str | None = None
 
 
 class BackgroundUpdater(QObject):
@@ -113,6 +114,7 @@ class BackgroundUpdater(QObject):
                     download_url=info.download_url,
                     changelog=info.changelog,
                     source_type=info.source_type,
+                    sha256=getattr(info, "sha256", None),
                 )
                 self.update_found.emit(result)
             else:
@@ -136,6 +138,7 @@ class BackgroundUpdater(QObject):
                     download_url=info.download_url,
                     changelog=info.changelog,
                     source_type=info.source_type,
+                    sha256=getattr(info, "sha256", None),
                 )
         except Exception as e:
             logging.debug("Sync update check failed for %s: %s", app_name, e)

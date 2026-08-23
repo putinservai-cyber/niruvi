@@ -193,6 +193,13 @@ class SettingsPage(QWidget):
         self.auto_scan_row.setChecked(_settings.get("auto_scan_before_install", True))
         defaults_layout.addWidget(self.auto_scan_row)
 
+        self.register_mime_row = _ToggleRow(
+            "Register as default AppImage handler",
+            "Set Niruvi as the default application when you double-click .AppImage files",
+        )
+        self.register_mime_row.setChecked(_settings.get("register_mime_handler", True))
+        defaults_layout.addWidget(self.register_mime_row)
+
         layout.addWidget(defaults_group)
 
         shield_group = QGroupBox("Process Isolation")
@@ -780,13 +787,14 @@ class SettingsPage(QWidget):
         get_theme_engine().mode = mode
 
     def _has_changes(self) -> bool:
-        return (
+        return bool(
             self.install_dir_edit.text() != _settings.get("install_dir", DEFAULT_INSTALL_DIR)
             or self.create_desktop_row.isChecked() != _settings.get("create_desktop", True)
             or self.shortcut_row.isChecked() != _settings.get("create_shortcut", False)
             or self.portable_home_row.isChecked() != _settings.get("portable_home", False)
             or self.portable_config_row.isChecked() != _settings.get("portable_config", False)
             or self.auto_scan_row.isChecked() != _settings.get("auto_scan_before_install", True)
+            or self.register_mime_row.isChecked() != _settings.get("register_mime_handler", True)
             or self.auto_update_apps_row.isChecked() != _settings.get("auto_update_apps", False)
             or self.delta_updates_row.isChecked() != _settings.get("delta_updates", True)
             or self.tray_enabled_row.isChecked() != _settings.get("tray_enabled", True)
@@ -797,13 +805,13 @@ class SettingsPage(QWidget):
             or self.backend_combo.currentData() != _settings.get("sandbox_default_backend", "shield")
             or self.remove_source_row.isChecked() != _settings.get("auto_remove_source", False)
             or self.sound_effects_row.isChecked() != _settings.get("sound_effects_enabled", True)
-            or self.volume_slider.value() != int(_settings.get("sound_volume", 0.7) * 100)
+            or abs(self.volume_slider.value() / 100.0 - _settings.get("sound_volume", 0.7)) > 0.001
             or self.sound_feedback_row.isChecked() != _settings.get("sound_feedback_enabled", True)
             or self.sound_navigation_row.isChecked() != _settings.get("sound_navigation_enabled", True)
             or self.sound_notifications_row.isChecked() != _settings.get("sound_notifications_enabled", True)
-            or self.feedback_volume_slider.value() != int(_settings.get("sound_volume_feedback", 1.0) * 100)
-            or self.nav_volume_slider.value() != int(_settings.get("sound_volume_navigation", 1.0) * 100)
-            or self.notif_volume_slider.value() != int(_settings.get("sound_volume_notifications", 1.0) * 100)
+            or abs(self.feedback_volume_slider.value() / 100.0 - _settings.get("sound_volume_feedback", 1.0)) > 0.001
+            or abs(self.nav_volume_slider.value() / 100.0 - _settings.get("sound_volume_navigation", 1.0)) > 0.001
+            or abs(self.notif_volume_slider.value() / 100.0 - _settings.get("sound_volume_notifications", 1.0)) > 0.001
             or self.privacy_updates_row.isChecked() != _settings.get("privacy_allow_update_checks", True)
             or self.theme_combo.currentData() != _settings.get("theme_mode", "auto")
             or self.vt_key_edit.text().strip() != _settings.get("virustotal_api_key", "").strip()
@@ -828,6 +836,7 @@ class SettingsPage(QWidget):
         _settings["portable_home"] = self.portable_home_row.isChecked()
         _settings["portable_config"] = self.portable_config_row.isChecked()
         _settings["auto_scan_before_install"] = self.auto_scan_row.isChecked()
+        _settings["register_mime_handler"] = self.register_mime_row.isChecked()
         _settings["auto_update_apps"] = self.auto_update_apps_row.isChecked()
         _settings["delta_updates"] = self.delta_updates_row.isChecked()
         _settings["tray_enabled"] = self.tray_enabled_row.isChecked()
@@ -867,6 +876,11 @@ class SettingsPage(QWidget):
                 "auto_scan_before_install",
                 self.auto_scan_row.isChecked(),
                 _settings.get("auto_scan_before_install", True),
+            ),
+            (
+                "register_mime_handler",
+                self.register_mime_row.isChecked(),
+                _settings.get("register_mime_handler", True),
             ),
             ("auto_update_apps", self.auto_update_apps_row.isChecked(), _settings.get("auto_update_apps", False)),
             ("delta_updates", self.delta_updates_row.isChecked(), _settings.get("delta_updates", True)),
