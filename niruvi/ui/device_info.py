@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 from niruvi.app.health_check import check_system_compatibility
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play_and
+from niruvi.utils.theme_engine import COLOR_INK, style
 
 _ICON_MAP = {
     "Operating System": "globe",
@@ -182,12 +183,12 @@ def _collect_system_info() -> dict[str, str]:
 
 def _build_info_row(icon_name: str, key: str, value: str) -> QWidget:
     row = QWidget()
-    row.setStyleSheet("""
+    row.setStyleSheet(style("""
         QWidget:hover {
-            background-color: palette(midlight);
+            background-color: {colors.light};
             border-radius: 4px;
         }
-    """)
+    """))
     layout = QHBoxLayout(row)
     layout.setContentsMargins(12, 6, 12, 6)
     layout.setSpacing(10)
@@ -230,7 +231,11 @@ class DeviceInfoDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
 
         header = QWidget()
-        header.setStyleSheet("background-color: palette(window); border-bottom: 1px solid palette(mid);")
+        header.setObjectName("deviceHeader")
+        # Scoped selector — bare declarations would cascade to child widgets.
+        header.setStyleSheet(
+            style("#deviceHeader { background-color: {colors.background}; border-bottom: 1px solid {colors.border}; }")
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 14, 16, 14)
         header_layout.setSpacing(12)
@@ -266,7 +271,7 @@ class DeviceInfoDialog(QDialog):
             sep = QFrame()
             sep.setFrameShape(QFrame.Shape.HLine)
             sep.setFrameShadow(QFrame.Shadow.Sunken)
-            sep.setStyleSheet("color: palette(midlight);")
+            sep.setStyleSheet(style("color: {colors.border};"))
             content_layout.addWidget(sep)
 
         content_layout.addStretch()
@@ -276,7 +281,7 @@ class DeviceInfoDialog(QDialog):
         compat = check_system_compatibility()
         if not compat["healthy"] or compat.get("has_warnings"):
             note = QLabel(
-                "<p style='color:palette(link);font-size:0.9em;'>"
+                f"<p style='color:{COLOR_INK};font-size:0.9em;'>"
                 "Some apps may be incompatible with your system "
                 "(new kernel, glibc, or graphics drivers). "
                 "If an app fails to run, check the launch error dialog "
@@ -294,3 +299,4 @@ class DeviceInfoDialog(QDialog):
         close_btn.rejected.connect(lambda: play_and("navigation", self.accept))
         btn_layout.addWidget(close_btn)
         layout.addWidget(btn_bar)
+

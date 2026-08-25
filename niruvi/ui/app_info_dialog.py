@@ -62,7 +62,8 @@ from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
-from niruvi.utils.styles import BTN_STYLE, CARD_STYLE, SIDEBAR_STYLE, TAB_PAGE_STYLE
+from niruvi.utils.styles import card_style, sidebar_style, tab_page_style
+from niruvi.utils.theme_engine import style
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ class AppInfoDialog(QDialog):
         # ── Header Card ──
         header_card = QWidget()
         header_card.setObjectName("card")
-        header_card.setStyleSheet(CARD_STYLE)
+        header_card.setStyleSheet(card_style())
         header_layout = QHBoxLayout(header_card)
         header_layout.setContentsMargins(16, 12, 16, 12)
         header_layout.setSpacing(16)
@@ -201,7 +202,7 @@ class AppInfoDialog(QDialog):
 
         version_str = self._info.get("version", "unknown")
         sub = QLabel(f"Version {version_str}  ·  {self._app_name}")
-        sub.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        sub.setStyleSheet(style("color: {colors.subtle}; font-size: 12px;"))
         info_col.addWidget(sub)
 
         header_layout.addLayout(info_col, 1)
@@ -214,7 +215,7 @@ class AppInfoDialog(QDialog):
 
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setStyleSheet(SIDEBAR_STYLE)
+        self.sidebar.setStyleSheet(sidebar_style())
         self.sidebar.setFixedWidth(160)
         self.sidebar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
@@ -243,13 +244,15 @@ class AppInfoDialog(QDialog):
         body.addWidget(self.sidebar)
         body.addWidget(self.stack, 1)
         root.addLayout(body, 1)
+        self.sidebar.currentRowChanged.connect(self._on_tab_changed)
+        self.sidebar.setCurrentRow(0)
 
         # ── Tab Pages ──
 
         # --- Tab 0: Details ---
         details_layout = pages[0][1]
         details_group = QGroupBox("Details")
-        details_group.setStyleSheet(TAB_PAGE_STYLE)
+        details_group.setStyleSheet(tab_page_style())
         details_grid = QVBoxLayout(details_group)
         details_grid.setSpacing(6)
 
@@ -267,7 +270,7 @@ class AppInfoDialog(QDialog):
             row.addWidget(icon_lbl)
             lbl = QLabel(label)
             lbl.setFixedWidth(100)
-            lbl.setStyleSheet("font-weight: bold; color: palette(placeholderText); font-size: 12px;")
+            lbl.setStyleSheet(style("font-weight: bold; color: {colors.subtle}; font-size: 12px;"))
             val = QLabel(str(value))
             val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             val.setWordWrap(True)
@@ -314,14 +317,14 @@ class AppInfoDialog(QDialog):
         # --- Tab 1: Customization ---
         cust_layout = pages[1][1]
         cust_group = QGroupBox("Customization")
-        cust_group.setStyleSheet(TAB_PAGE_STYLE)
+        cust_group.setStyleSheet(tab_page_style())
         cust_grid = QVBoxLayout(cust_group)
         cust_grid.setSpacing(8)
 
         name_row = QHBoxLayout()
         name_label = QLabel("Display name")
         name_label.setFixedWidth(120)
-        name_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        name_label.setStyleSheet(style("color: {colors.subtle}; font-size: 12px;"))
         name_row.addWidget(name_label)
         self.display_name_edit = QLineEdit()
         self.display_name_edit.setPlaceholderText("Override name (leave empty for default)")
@@ -336,7 +339,7 @@ class AppInfoDialog(QDialog):
         tags_row = QHBoxLayout()
         tags_label = QLabel("Tags / category")
         tags_label.setFixedWidth(120)
-        tags_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        tags_label.setStyleSheet(style("color: {colors.subtle}; font-size: 12px;"))
         tags_row.addWidget(tags_label)
         self.tags_edit = QLineEdit()
         self.tags_edit.setPlaceholderText("e.g. Media, Video (comma separated)")
@@ -354,7 +357,7 @@ class AppInfoDialog(QDialog):
         icon_row = QHBoxLayout()
         icon_label_2 = QLabel("Custom icon")
         icon_label_2.setFixedWidth(120)
-        icon_label_2.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        icon_label_2.setStyleSheet(style("color: {colors.subtle}; font-size: 12px;"))
         icon_row.addWidget(icon_label_2)
         self.custom_icon_preview = QLabel()
         self.custom_icon_preview.setFixedSize(24, 24)
@@ -372,7 +375,7 @@ class AppInfoDialog(QDialog):
         args_row = QHBoxLayout()
         args_label = QLabel("Run arguments")
         args_label.setFixedWidth(120)
-        args_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        args_label.setStyleSheet(style("color: {colors.subtle}; font-size: 12px;"))
         args_row.addWidget(args_label)
         self.run_args_edit = QLineEdit()
         self.run_args_edit.setPlaceholderText("e.g. --verbose --config=myconfig.conf")
@@ -385,7 +388,7 @@ class AppInfoDialog(QDialog):
         cust_grid.addLayout(args_row)
 
         env_label = QLabel("Environment variables")
-        env_label.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        env_label.setStyleSheet(style("color: {colors.subtle}; font-size: 12px;"))
         cust_grid.addWidget(env_label)
 
         self.env_table = QTableWidget()
@@ -429,7 +432,7 @@ class AppInfoDialog(QDialog):
         # --- Tab 2: Process Isolation ---
         shield_layout = pages[2][1]
         shield_group = QGroupBox("Process Isolation")
-        shield_group.setStyleSheet(TAB_PAGE_STYLE)
+        shield_group.setStyleSheet(tab_page_style())
         shield_grid = QVBoxLayout(shield_group)
         shield_grid.setSpacing(6)
 
@@ -464,7 +467,7 @@ class AppInfoDialog(QDialog):
         shield_grid.addLayout(backend_row)
 
         sb_status = QLabel("Process hardening + portable isolation")
-        sb_status.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+        sb_status.setStyleSheet(style("color: {colors.subtle}; font-size: 11px;"))
         shield_grid.addWidget(sb_status)
 
         sb_btn_row = QHBoxLayout()
@@ -483,17 +486,17 @@ class AppInfoDialog(QDialog):
         # --- Tab 3: Updates ---
         update_layout = pages[3][1]
         update_group = QGroupBox("Updates")
-        update_group.setStyleSheet(TAB_PAGE_STYLE)
+        update_group.setStyleSheet(tab_page_style())
         update_grid = QVBoxLayout(update_group)
         update_grid.setSpacing(8)
 
         url_label_row = QHBoxLayout()
         url_lbl = QLabel("Update URL")
         url_lbl.setFixedWidth(120)
-        url_lbl.setStyleSheet("color: palette(placeholderText); font-size: 12px;")
+        url_lbl.setStyleSheet(style("color: {colors.subtle}; font-size: 12px;"))
         url_label_row.addWidget(url_lbl)
         self.source_type_label = QLabel("")
-        self.source_type_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+        self.source_type_label.setStyleSheet(style("color: {colors.subtle}; font-size: 11px;"))
         url_label_row.addWidget(self.source_type_label, 1)
         update_grid.addLayout(url_label_row)
 
@@ -562,7 +565,7 @@ class AppInfoDialog(QDialog):
         # --- Tab 4: Files ---
         files_layout = pages[4][1]
         files_group = QGroupBox("Files")
-        files_group.setStyleSheet(TAB_PAGE_STYLE)
+        files_group.setStyleSheet(tab_page_style())
         files_inner = QVBoxLayout(files_group)
         if os.path.isdir(app_dir):
             tree = FileTreeWidget(app_dir)
@@ -572,13 +575,14 @@ class AppInfoDialog(QDialog):
             files_inner.addWidget(QLabel("App directory not found."))
         files_layout.addWidget(files_group)
 
-        # Connect sidebar selection
-        self.sidebar.currentRowChanged.connect(self._on_tab_changed)
-        self.sidebar.setCurrentRow(0)
-        # ── Bottom Action Bar ──
         action_bar = QFrame()
         action_bar.setFrameShape(QFrame.Shape.NoFrame)
-        action_bar.setStyleSheet("background-color: palette(window); border-top: 1px solid palette(midlight);")
+        action_bar.setObjectName("actionBar")
+        # NOTE: scoped via #actionBar — bare declarations would cascade to
+        # child buttons and clobber their variant backgrounds.
+        action_bar.setStyleSheet(
+            style("#actionBar { background-color: {colors.background}; border-top: 1px solid {colors.border}; }")
+        )
         action_layout = QHBoxLayout(action_bar)
         action_layout.setContentsMargins(20, 10, 20, 10)
         action_layout.setSpacing(8)
@@ -586,22 +590,18 @@ class AppInfoDialog(QDialog):
         is_self = self._app_name == __app_name__
         if not is_self:
             self.btn_run = QPushButton(get_icon("media-playback-start"), "Run")
-            f = self.btn_run.font()
-            f.setBold(True)
-            self.btn_run.setFont(f)
-            self.btn_run.setStyleSheet(BTN_STYLE)
+            self.btn_run.setProperty("variant", "primary")
             self.btn_run.clicked.connect(lambda: play_and("click", self._run_app))
             action_layout.addWidget(self.btn_run)
 
             self.btn_uninstall = QPushButton(get_icon("edit-delete"), "Uninstall")
-            self.btn_uninstall.setStyleSheet(BTN_STYLE)
+            self.btn_uninstall.setProperty("variant", "danger")
             self.btn_uninstall.clicked.connect(lambda: play_and("click", self._uninstall_app))
             action_layout.addWidget(self.btn_uninstall)
 
         action_layout.addStretch()
 
         close_btn = QPushButton(get_icon("dialog-close"), "Close")
-        close_btn.setStyleSheet(BTN_STYLE)
         close_btn.clicked.connect(lambda: play_and("navigation", self.accept))
         action_layout.addWidget(close_btn)
 

@@ -71,6 +71,7 @@ from niruvi.desktop.installation_registry import InstallationRecord, Installatio
 from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.theme_engine import style
 
 _PREDEFINED_LOCATIONS = [
     ("~/Applications (Recommended)", os.path.expanduser("~/Applications")),
@@ -102,6 +103,7 @@ class WelcomePage(QWizardPage):
         self.desc_label = QLabel()
         self.desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.desc_label.setWordWrap(True)
+        self.desc_label.setStyleSheet(style("color: {colors.subtle};"))
         layout.addWidget(self.desc_label)
 
         layout.addSpacing(8)
@@ -115,7 +117,7 @@ class WelcomePage(QWizardPage):
 
         hint = QLabel("This wizard will install the AppImage to your system.\nClick Next to continue.")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+        hint.setStyleSheet(style("color: {colors.subtle}; font-size: 11px;"))
         layout.addWidget(hint)
 
     def set_app_info(self, name: str, desc: str, icon_pixmap, size_mb: float, arch: str):
@@ -143,7 +145,7 @@ class LicensePage(QWizardPage):
 
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
-        self.text_edit.setStyleSheet("background: palette(base); border: 1px solid palette(mid); border-radius: 4px;")
+        self.text_edit.setStyleSheet(style("background: {colors.background}; border: 1px solid {colors.border}; border-radius: 4px;"))
         layout.addWidget(self.text_edit)
 
         self.accept_check = QCheckBox("I accept the terms of the license agreement")
@@ -174,7 +176,7 @@ class InstallTypePage(QWizardPage):
         rec_layout.addWidget(self.rec_radio)
         rec_desc = QLabel("Install to the default location with standard settings. Recommended for most users.")
         rec_desc.setWordWrap(True)
-        rec_desc.setStyleSheet("color: palette(placeholderText); font-size: 11px; padding-left: 24px;")
+        rec_desc.setStyleSheet(style("color: {colors.subtle}; font-size: 11px; padding-left: 24px;"))
         rec_layout.addWidget(rec_desc)
         layout.addLayout(rec_layout)
 
@@ -184,7 +186,7 @@ class InstallTypePage(QWizardPage):
         cust_layout.addWidget(self.cust_radio)
         cust_desc = QLabel("Choose a custom installation location and configure advanced options.")
         cust_desc.setWordWrap(True)
-        cust_desc.setStyleSheet("color: palette(placeholderText); font-size: 11px; padding-left: 24px;")
+        cust_desc.setStyleSheet(style("color: {colors.subtle}; font-size: 11px; padding-left: 24px;"))
         cust_layout.addWidget(cust_desc)
         layout.addLayout(cust_layout)
 
@@ -240,7 +242,7 @@ class DestinationPage(QWizardPage):
         layout.addStretch()
 
         space_label = QLabel("Required space: <b>--</b> &nbsp;|&nbsp; Available: <b>--</b>")
-        space_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+        space_label.setStyleSheet(style("color: {colors.subtle}; font-size: 11px;"))
         layout.addWidget(space_label)
         self.space_label = space_label
 
@@ -399,7 +401,7 @@ class ProgressPage(QWizardPage):
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet("color: palette(placeholderText);")
+        self.status_label.setStyleSheet(style("color: {colors.subtle};"))
         layout.addWidget(self.status_label)
 
         self.progress_bar = QProgressBar()
@@ -407,18 +409,18 @@ class ProgressPage(QWizardPage):
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
         self.progress_bar.setFixedHeight(24)
-        self.progress_bar.setStyleSheet("""
+        self.progress_bar.setStyleSheet(style("""
             QProgressBar {
-                border: 1px solid palette(mid);
+                border: 1px solid {colors.border};
                 border-radius: 2px;
                 text-align: center;
-                background-color: palette(base);
+                background-color: {colors.background};
             }
             QProgressBar::chunk {
-                background-color: palette(highlight);
+                background-color: {colors.accent};
                 border-radius: 1px;
             }
-        """)
+        """))
         layout.addWidget(self.progress_bar)
 
         self.log_text = QTextEdit()
@@ -491,7 +493,7 @@ class FinishPage(QWizardPage):
 
         hint = QLabel("The application has been installed and is ready to use.")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+        hint.setStyleSheet(style("color: {colors.subtle}; font-size: 11px;"))
         layout.addWidget(hint)
 
     def set_completed(self, app_name: str, icon_pixmap, detail: str = ""):
@@ -519,32 +521,32 @@ class InstallWizard(QWizard):
         self.setMinimumSize(560, 480)
         self.resize(620, 540)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.setStyleSheet("""
-            QWizardPage { background-color: palette(window); }
+        self.setStyleSheet(style("""
+            QWizardPage { background-color: {colors.background}; }
             QProgressBar {
-                border: 1px solid palette(mid);
+                border: 1px solid {colors.border};
                 border-radius: 2px;
                 text-align: center;
                 height: 6px;
-                background-color: palette(base);
+                background-color: {colors.background};
             }
             QProgressBar::chunk {
-                background-color: palette(highlight);
+                background-color: {colors.accent};
                 border-radius: 1px;
             }
             QPushButton {
                 padding: 6px 16px;
-                border: 1px solid palette(mid);
+                border: 1px solid {colors.border};
                 border-radius: 2px;
-                background-color: palette(button);
+                background-color: {colors.surface};
                 font-size: 12px;
             }
             QPushButton:hover {
-                background-color: palette(light);
-                border-color: palette(highlight);
+                background-color: {colors.light};
+                border-color: {colors.accent};
             }
             QPushButton:pressed {
-                background-color: palette(midlight);
+                background-color: {colors.muted};
             }
             QRadioButton {
                 spacing: 6px;
@@ -554,11 +556,10 @@ class InstallWizard(QWizard):
                 width: 18px;
                 height: 18px;
                 border-radius: 9px;
-                border: 2px solid palette(mid);
+                border: 2px solid {colors.border};
             }
             QRadioButton::indicator:checked {
-                background-color: palette(highlight);
-                border-color: palette(highlight);
+                background-color: {colors.accent};
             }
             QCheckBox {
                 spacing: 8px;
@@ -568,13 +569,13 @@ class InstallWizard(QWizard):
                 width: 18px;
                 height: 18px;
                 border-radius: 4px;
-                border: 1px solid palette(mid);
+                border: 1px solid {colors.border};
             }
             QCheckBox::indicator:checked {
-                background-color: palette(highlight);
-                border-color: palette(highlight);
+                background-color: {colors.accent};
+                border-color: {colors.accent};
             }
-        """)
+        """))
 
         self.appimage_path: str | None = appimage_path
         self.dest_dir: str | None = None

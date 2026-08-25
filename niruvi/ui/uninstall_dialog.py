@@ -41,6 +41,7 @@ from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.styles import format_dir_size
+from niruvi.utils.theme_engine import style
 
 
 def _unmount_if_fuse(path: str):
@@ -167,7 +168,7 @@ class UninstallConfirmPage(QWizardPage):
         layout.addWidget(self.items_label)
 
         self.size_label = QLabel()
-        self.size_label.setStyleSheet("color: palette(placeholderText); font-size: 11px;")
+        self.size_label.setStyleSheet(style("color: {colors.subtle}; font-size: 11px;"))
         layout.addWidget(self.size_label)
 
         layout.addStretch()
@@ -412,32 +413,32 @@ class UninstallWizard(QWizard):
         self.setMinimumSize(520, 420)
         self.resize(600, 500)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.setStyleSheet("""
-            QWizardPage { background-color: palette(window); }
+        self.setStyleSheet(style("""
+            QWizardPage { background-color: {colors.background}; }
             QProgressBar {
-                border: 1px solid palette(mid);
+                border: 1px solid {colors.border};
                 border-radius: 2px;
                 text-align: center;
                 height: 6px;
-                background-color: palette(base);
+                background-color: {colors.background};
             }
             QProgressBar::chunk {
-                background-color: palette(highlight);
+                background-color: {colors.accent};
                 border-radius: 1px;
             }
             QPushButton {
                 padding: 6px 16px;
-                border: 1px solid palette(mid);
+                border: 1px solid {colors.border};
                 border-radius: 2px;
-                background-color: palette(button);
+                background-color: {colors.surface};
                 font-size: 12px;
             }
             QPushButton:hover {
-                background-color: palette(light);
-                border-color: palette(highlight);
+                background-color: {colors.light};
+                border-color: {colors.accent};
             }
             QPushButton:pressed {
-                background-color: palette(midlight);
+                background-color: {colors.muted};
             }
             QCheckBox {
                 spacing: 8px;
@@ -447,13 +448,13 @@ class UninstallWizard(QWizard):
                 width: 18px;
                 height: 18px;
                 border-radius: 4px;
-                border: 1px solid palette(mid);
+                border: 1px solid {colors.border};
             }
             QCheckBox::indicator:checked {
-                background-color: palette(highlight);
-                border-color: palette(highlight);
+                background-color: {colors.accent};
+                border-color: {colors.accent};
             }
-        """)
+        """))
 
         self.app_name = app_name
         self.app_dir = app_dir

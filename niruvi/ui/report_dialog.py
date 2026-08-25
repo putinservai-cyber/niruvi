@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import format_size
-from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING
+from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING, style
 
 
 def _run_capture(cmd: list[str], timeout=10) -> str:
@@ -115,7 +115,7 @@ class ErrorReportDialog(QDialog):
         if self._summary:
             summary_label = QLabel(self._summary)
             summary_label.setWordWrap(True)
-            summary_label.setStyleSheet("color: palette(text); font-size: 11pt; margin-bottom: 4px;")
+            summary_label.setStyleSheet(style("color: {colors.ink}; font-size: 11pt; margin-bottom: 4px;"))
             layout.addWidget(summary_label)
 
         # ── Details ──
@@ -125,7 +125,7 @@ class ErrorReportDialog(QDialog):
             details_text = QTextBrowser()
             details_text.setPlainText(self._details)
             details_text.setMaximumHeight(80)
-            details_text.setStyleSheet("background: palette(base); border: 1px solid palette(mid);")
+            details_text.setStyleSheet(style("background: {colors.background}; border: 1px solid {colors.border};"))
             layout.addWidget(details_text)
 
         # ── Suggestions ──
@@ -135,7 +135,7 @@ class ErrorReportDialog(QDialog):
             for i, suggestion in enumerate(self._suggestions, 1):
                 sugg_text = QLabel(f"  {i}.  {suggestion}")
                 sugg_text.setWordWrap(True)
-                sugg_text.setStyleSheet("color: palette(text); padding-left: 8px;")
+                sugg_text.setStyleSheet(style("color: {colors.subtle}; padding-left: 8px;"))
                 layout.addWidget(sugg_text)
 
         # ── Technical details (tabbed) ──
@@ -384,7 +384,7 @@ class BuildSummaryDialog(QDialog):
 
         details_w = QWidget()
         details_w.setStyleSheet(
-            "QWidget{background:palette(base);border:1px solid palette(mid);border-radius:4px;padding:6px}"
+            style("QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}")
         )
         dl = QVBoxLayout(details_w)
         dl.setSpacing(1)
@@ -425,7 +425,7 @@ class BuildSummaryDialog(QDialog):
         if self._validation_warnings:
             warn_w = QWidget()
             warn_w.setStyleSheet(
-                "QWidget{background:palette(base);border:1px solid palette(mid);border-radius:4px;padding:6px}"
+                style("QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}")
             )
             wl = QVBoxLayout(warn_w)
             wl.setSpacing(2)
@@ -447,7 +447,7 @@ class BuildSummaryDialog(QDialog):
         # Tips (compact)
         tips_w = QWidget()
         tips_w.setStyleSheet(
-            "QWidget{background:palette(window);border:1px solid palette(mid);border-radius:4px;padding:6px}"
+            style("QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}")
         )
         tl = QVBoxLayout(tips_w)
         tl.setSpacing(2)

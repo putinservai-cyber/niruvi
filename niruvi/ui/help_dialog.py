@@ -19,7 +19,7 @@ from niruvi._version import __app_name__
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
-from niruvi.utils.styles import SIDEBAR_STYLE
+from niruvi.utils.styles import sidebar_style
 
 _GPL3_TEXT = """                    GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
@@ -768,7 +768,7 @@ class HelpDialog(QDialog):
         self._nav = QListWidget()
         self._nav.setFixedWidth(180)
         self._nav.setCurrentRow(0)
-        self._nav.setStyleSheet(SIDEBAR_STYLE)
+        self._nav.setStyleSheet(sidebar_style())
 
         pages = [
             ("Welcome", self._page_welcome, "go-home"),

@@ -41,7 +41,7 @@ from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import placeholder_style
-from niruvi.utils.theme_engine import COLOR_SUCCESS
+from niruvi.utils.theme_engine import ThemeMode, get_theme_engine, style
 
 
 def _is_local_path(path: str) -> bool:
@@ -216,7 +216,7 @@ class SettingsPage(QWidget):
         avail = self._detect_sandbox_status()
         if avail:
             status_label = QLabel(f"Available: {avail}")
-            status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-size: 11px;")
+            status_label.setStyleSheet("color: #10B981; font-size: 11px;")
         else:
             status_label = QLabel("Process hardening not available")
             status_label.setStyleSheet(placeholder_style("", 11))
@@ -686,12 +686,12 @@ class SettingsPage(QWidget):
 
         if check_thumbnailer_installed():
             self.tn_status_label.setText("Thumbnailer is installed")
-            self.tn_status_label.setStyleSheet(f"color: {COLOR_SUCCESS};")
+            self.tn_status_label.setStyleSheet("color: #10B981;")
             self.btn_install_tn.setEnabled(False)
             self.btn_remove_tn.setEnabled(True)
         else:
             self.tn_status_label.setText("Not installed — AppImages won't show icons in file managers")
-            self.tn_status_label.setStyleSheet("color: palette(placeholderText);")
+            self.tn_status_label.setStyleSheet(style("color: {colors.subtle};"))
             self.btn_install_tn.setEnabled(True)
             self.btn_remove_tn.setEnabled(False)
 
@@ -780,8 +780,6 @@ class SettingsPage(QWidget):
             self.install_dir_edit.setText(dir_path)
 
     def _on_theme_changed(self):
-        from niruvi.utils.theme_engine import ThemeMode, get_theme_engine
-
         mode_map = {"auto": ThemeMode.AUTO, "light": ThemeMode.LIGHT, "dark": ThemeMode.DARK}
         mode = mode_map.get(self.theme_combo.currentData(), ThemeMode.AUTO)
         get_theme_engine().mode = mode

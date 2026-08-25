@@ -9,8 +9,8 @@ from niruvi.utils.sound_manager import play as play_sound
 class ToggleSwitch(QWidget):
     toggled = pyqtSignal(bool)
 
-    TRACK_H_RATIO = 0.4
-    HANDLE_D_RATIO = 0.78
+    TRACK_H_RATIO = 1.0
+    HANDLE_D_RATIO = 0.72
     PAD = 2
 
     def __init__(self, parent=None, initial: bool = False):
@@ -72,22 +72,24 @@ class ToggleSwitch(QWidget):
             track_color = pal.color(QPalette.ColorRole.Highlight)
         else:
             c = pal.color(QPalette.ColorRole.Mid)
-            track_color = QColor(c.red(), c.green(), c.blue(), 160)
+            track_color = QColor(c.red(), c.green(), c.blue(), 200)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(track_color)
         p.drawRoundedRect(track_x, track_y, track_w, track_h, radius, radius)
 
         d = round(h * self.HANDLE_D_RATIO)
         handle_y = (h - d) // 2
-        min_x = self.PAD + 3
-        max_x = w - self.PAD - d - 3
+        min_x = track_x + (track_h - d) // 2
+        max_x = track_x + track_w - d - (track_h - d) // 2
         x = round(min_x + self._offset * (max_x - min_x))
 
         if self._checked:
             hc = pal.color(QPalette.ColorRole.HighlightedText)
+            pen_color = QColor(hc.red(), hc.green(), hc.blue(), 0)
         else:
-            hc = pal.color(QPalette.ColorRole.Window)
-        p.setPen(QPen(pal.color(QPalette.ColorRole.Midlight), 1))
+            hc = pal.color(QPalette.ColorRole.Midlight)
+            pen_color = pal.color(QPalette.ColorRole.Dark)
+        p.setPen(QPen(pen_color, 1))
         p.setBrush(hc)
         p.drawEllipse(x, handle_y, d, d)
 

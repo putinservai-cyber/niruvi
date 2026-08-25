@@ -49,6 +49,7 @@ from niruvi.core.worker import start_worker
 from niruvi.installer.junest import path_has_spaces, suggest_space_free_path
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
+from niruvi.utils.theme_engine import style
 
 
 def _sha256_file(path: str) -> str:
@@ -808,15 +809,15 @@ class FinishPage(QWizardPage):
         details.addWidget(self._path_label)
 
         self._version_label = QLabel()
-        self._version_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
+        self._version_label.setStyleSheet(style("color: {colors.subtle}; font-size: 9pt;"))
         details.addWidget(self._version_label)
 
         self._size_label = QLabel()
-        self._size_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
+        self._size_label.setStyleSheet(style("color: {colors.subtle}; font-size: 9pt;"))
         details.addWidget(self._size_label)
 
         self._desktop_label = QLabel()
-        self._desktop_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
+        self._desktop_label.setStyleSheet(style("color: {colors.subtle}; font-size: 9pt;"))
         details.addWidget(self._desktop_label)
 
         self._registry_label = QLabel()

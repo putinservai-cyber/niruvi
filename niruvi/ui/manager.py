@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from PyQt6.QtCore import QEventLoop, QSize, Qt, QThread, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QIcon, QPalette, QShortcut
+from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QIcon, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -76,7 +76,14 @@ from niruvi.utils.sound_manager import cleanup as sound_cleanup
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import FONT_MD, FONT_SM, format_size
-from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING, ThemeMode, get_theme_engine
+from niruvi.utils.theme_engine import (
+    COLOR_ERROR,
+    COLOR_INK,
+    ThemeMode,
+    design_color,
+    get_theme_engine,
+    style,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,8 +186,8 @@ class AppListItemWidget(QWidget):
         if version:
             ver_badge = QLabel(f"v{version}")
             ver_badge.setStyleSheet(
-                f"color: palette(placeholderText); font-size: {FONT_SM}px;"
-                "padding: 1px 5px; border: 1px solid palette(mid); border-radius: 3px;"
+                f"color: palette(placeholder-text); font-size: {FONT_SM}px;"
+                "padding: 1px 6px; border: 1px solid palette(mid); border-radius: 4px;"
             )
             name_row.addWidget(ver_badge)
         name_row.addStretch()
@@ -203,11 +210,11 @@ class AppListItemWidget(QWidget):
             meta_label = QLabel(meta_text)
             meta_style = f"font-size: {FONT_SM}px;"
             if health_info and health_info.get("issues"):
-                meta_style += f" color: {COLOR_ERROR};"
+                meta_style += " color: #EF4444;"
             elif health_info and health_info.get("warnings"):
-                meta_style += f" color: {COLOR_WARNING};"
+                meta_style += " color: #F59E0B;"
             else:
-                meta_style += " color: palette(placeholderText);"
+                meta_style += " color: palette(placeholder-text);"
             meta_label.setStyleSheet(meta_style)
             text_layout.addWidget(meta_label)
 
@@ -412,8 +419,9 @@ class AppManager(QMainWindow):
 
         # --- Header: count + action buttons ---
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(8)
         self.installed_count_label = QLabel("No apps installed")
-        self.installed_count_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self.installed_count_label.setStyleSheet("font-weight: 600; font-size: 14px; color: palette(window-text);")
         header_layout.addWidget(self.installed_count_label)
         header_layout.addStretch()
 
@@ -442,6 +450,7 @@ class AppManager(QMainWindow):
 
         self.btn_install = QPushButton(get_icon("list-add"), "Install")
         self.btn_install.setToolTip("Browse for an AppImage file to install  (Ctrl+I)")
+        self.btn_install.setProperty("variant", "primary")
         self.btn_install.clicked.connect(lambda: play_and("click", self.run_install_wizard))
         header_layout.addWidget(self.btn_install)
 
@@ -491,13 +500,13 @@ class AppManager(QMainWindow):
         self.installed_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.installed_list.customContextMenuRequested.connect(self._show_context_menu)
         self.installed_list.setIconSize(QSize(32, 32))
-        self.installed_list.setSpacing(2)
+        self.installed_list.setSpacing(4)
         self.installed_list.setFrameShape(QFrame.Shape.NoFrame)
         self.installed_list.itemDoubleClicked.connect(self._on_app_double_clicked)
         layout.addWidget(self.installed_list, 1)
 
         # --- Drop hint overlay ---
-        disabled_hex = self.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
+        disabled_hex = "#64748B"  # {colors.subtle}
         self.drop_hint = QLabel(
             '<div style="text-align: center; padding: 40px;">'
             "<br><br>"
@@ -507,7 +516,7 @@ class AppManager(QMainWindow):
         )
         self.drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.drop_hint.setStyleSheet(
-            "background: palette(window); border: 2px dashed palette(mid); border-radius: 3px; margin: 8px;"
+            style("background: {colors.surface}; border: 2px dashed {colors.border}; border-radius: 8px; margin: {spacing.lg};")
         )
         self.drop_hint.setVisible(False)
         layout.addWidget(self.drop_hint, 1)
@@ -536,7 +545,8 @@ class AppManager(QMainWindow):
 
         self.empty_install_btn = QPushButton(get_icon("list-add"), "Install Your First AppImage")
         self.empty_install_btn.setFixedWidth(280)
-        self.empty_install_btn.setStyleSheet("QPushButton { padding: 10px 24px; font-size: 14px; }")
+        self.empty_install_btn.setProperty("variant", "primary")
+        self.empty_install_btn.setStyleSheet("QPushButton { padding: 12px 24px; font-size: 14px; }")
         self.empty_install_btn.clicked.connect(self.run_install_wizard)
         btn_wrapper = QHBoxLayout()
         btn_wrapper.addStretch()
@@ -1355,8 +1365,8 @@ class AppManager(QMainWindow):
         detail_lbl = QLabel(detail if detail else "Unknown error")
         detail_lbl.setWordWrap(True)
         detail_lbl.setStyleSheet(
-            "background: palette(button); border: 1px solid palette(mid); "
-            "border-radius: 4px; padding: 8px; font-family: monospace; font-size: 11px;"
+            style("background: {colors.surface}; border: 1px solid {colors.border}; "
+            "border-radius: 4px; padding: {spacing.lg}; font-family: monospace; font-size: 11px;")
         )
         layout.addWidget(detail_lbl)
 
@@ -2059,14 +2069,14 @@ class AppManager(QMainWindow):
 
         has_real_issues = bool(health["issues"]) or bool(runnable["issues"])
 
-        pal = self.palette()
-        error_bg = pal.color(QPalette.ColorRole.Base).name()
-        error_border = pal.color(QPalette.ColorRole.Dark).name()
-        warn_bg = pal.color(QPalette.ColorRole.AlternateBase).name()
-        warn_border = pal.color(QPalette.ColorRole.Mid).name()
-        ok_color = COLOR_SUCCESS
-        disabled_hex = pal.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
-        mid_hex = pal.mid().color().name()
+        # Design tokens for error/warning cards
+        error_bg = design_color("error")
+        error_border = design_color("error")
+        warn_bg = design_color("warning")
+        warn_border = design_color("warning")
+        ok_color = design_color("success")
+        disabled_hex = design_color("subtle")
+        mid_hex = design_color("muted")
 
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Diagnostics: {app_name}")
@@ -2104,7 +2114,7 @@ class AppManager(QMainWindow):
 
         if runnable["issues"]:
             lbl = QLabel(
-                "<b style='color:palette(bright-text);'>Pre-launch issues:</b><br>"
+                f"<b style='color:{COLOR_INK};'>Pre-launch issues:</b><br>"
                 + "<br>".join(f"• {i}" for i in runnable["issues"])
             )
             lbl.setWordWrap(True)
@@ -2131,7 +2141,7 @@ class AppManager(QMainWindow):
             info_lbl = QLabel("<br>".join(info_lines))
             info_lbl.setWordWrap(True)
             info_lbl.setStyleSheet(
-                "background:palette(window);border:1px solid palette(mid);border-radius:4px;padding:8px;"
+                style("background: {colors.surface}; border: 1px solid {colors.border}; border-radius: 4px; padding: {spacing.lg};")
             )
             layout.addWidget(info_lbl)
 

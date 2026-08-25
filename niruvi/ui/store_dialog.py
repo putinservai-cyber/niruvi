@@ -21,6 +21,7 @@ from niruvi.core.worker import DownloadWorker, start_worker
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
+from niruvi.utils.theme_engine import style
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ class StoreDialog(QDialog):
 
         self.status_label = QLabel("Loading catalog...")
         self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet("color: palette(placeholderText);")
+        self.status_label.setStyleSheet(style("color: {colors.subtle};"))
         layout.addWidget(self.status_label)
 
         filter_row = QHBoxLayout()

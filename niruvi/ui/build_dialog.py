@@ -31,8 +31,8 @@ from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
-from niruvi.utils.styles import SECTION_STYLE, format_size
-from niruvi.utils.theme_engine import COLOR_ERROR
+from niruvi.utils.styles import format_size, section_style
+from niruvi.utils.theme_engine import COLOR_ERROR, style
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class BuildDialog(QDialog):
 
         # ── Source Section ──
         src_group = QGroupBox("Source")
-        src_group.setStyleSheet(SECTION_STYLE)
+        src_group.setStyleSheet(section_style())
         src_form = QFormLayout(src_group)
         src_form.setSpacing(4)
         src_form.setContentsMargins(8, 12, 8, 8)
@@ -102,7 +102,7 @@ class BuildDialog(QDialog):
 
         self.folder_info_label = QLabel()
         self.folder_info_label.setWordWrap(True)
-        self.folder_info_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
+        self.folder_info_label.setStyleSheet(style("color: {colors.subtle}; font-size: 9pt;"))
         self.folder_info_label.setVisible(False)
         src_form.addRow(self.folder_info_label)
 
@@ -119,7 +119,7 @@ class BuildDialog(QDialog):
 
         # ── Output Section ──
         out_group = QGroupBox("Output")
-        out_group.setStyleSheet(SECTION_STYLE)
+        out_group.setStyleSheet(section_style())
         out_layout = QVBoxLayout(out_group)
         out_layout.setSpacing(4)
         out_layout.setContentsMargins(8, 12, 8, 8)
@@ -161,7 +161,7 @@ class BuildDialog(QDialog):
 
         # ── Signing (compact) ──
         sign_group = QGroupBox("Code Signing")
-        sign_group.setStyleSheet(SECTION_STYLE)
+        sign_group.setStyleSheet(section_style())
         sign_layout = QVBoxLayout(sign_group)
         sign_layout.setSpacing(4)
         sign_layout.setContentsMargins(8, 12, 8, 8)

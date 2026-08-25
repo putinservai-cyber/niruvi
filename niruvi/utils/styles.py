@@ -3,6 +3,8 @@
 import datetime
 import os
 
+from niruvi.utils.theme_engine import style
+
 # ── Design Tokens ──────────────────────────────────────────────────────────────
 
 MARGIN_S = 8
@@ -15,100 +17,154 @@ SPACING_M = 8
 SPACING_L = 12
 SPACING_XL = 16
 
-RADIUS_S = 2
-RADIUS_M = 4
-RADIUS_L = 8
+RADIUS_XS = 2
+RADIUS_S = 4   # DESIGN.md rounded.sm — default for interactive elements
+RADIUS_M = 8   # DESIGN.md rounded.md
+RADIUS_L = 12  # DESIGN.md rounded.lg
+RADIUS_XL = 16
 
-FONT_SM = 11
-FONT_MD = 12
-FONT_LG = 13
-FONT_XL = 14
-FONT_XXL = 18
+FONT_XS = 10   # DESIGN.md typography scale
+FONT_SM = 12
+FONT_MD = 14
+FONT_LG = 16
+FONT_XL = 20
+FONT_XXL = 24
 
 # ── Shared QSS Snippets ───────────────────────────────────────────────────────
 
-SECTION_STYLE = """
-QGroupBox {{
-    font-weight: bold;
-    border: 1px solid palette(mid);
-    border-radius: 6px;
-    margin-top: 8px;
-    padding-top: 14px;
-}}
-QGroupBox::title {{
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    padding: 2px 8px;
-    background: palette(window);
-}}
-"""
+# ── Theme-aware style constants ────────────────────────────────────────────────
+# Resolved lazily via module __getattr__ so {colors.*} tokens pick up the
+# active light/dark token set at access time (PEP 562).
 
-CARD_STYLE = """
-#card {
-    background: palette(window);
-    border: 1px solid palette(midlight);
-    border-radius: 8px;
-    padding: 16px;
-}
-"""
-
-TAB_PAGE_STYLE = """
+_STYLE_TEMPLATES: dict[str, str] = {
+    "SECTION_STYLE": """
 QGroupBox {
-    font-weight: bold;
-    border: 1px solid palette(mid);
-    border-radius: 8px;
-    margin-top: 10px;
+    font-weight: 600;
+    border: 1px solid {colors.border};
+    border-radius: 12px;
+    margin-top: 12px;
     padding: 16px 12px 12px 12px;
-    background: palette(window);
+    background: {colors.surface};
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    padding: 2px 10px;
-    background: palette(window);
+    left: 12px;
+    padding: 0 4px;
+    background: {colors.background};
+    color: {colors.ink};
+}
+""",
+    "CARD_STYLE": """
+#card {
+    background: {colors.surface};
+    border: 1px solid {colors.border};
+    border-radius: 12px;
+    padding: 16px;
+}
+""",
+    "TAB_PAGE_STYLE": """
+QGroupBox {
+    font-weight: 600;
+    border: 1px solid {colors.border};
+    border-radius: 12px;
+    margin-top: 12px;
+    padding: 16px 12px 12px 12px;
+    background: {colors.surface};
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 4px;
+    background: {colors.surface};
+    color: {colors.ink};
     border: none;
 }
-"""
-
-SIDEBAR_STYLE = """
+""",
+    "SIDEBAR_STYLE": """
 QListWidget {
     border: none;
-    background: palette(window);
+    background: {colors.surface};
     outline: none;
-    padding: 4px 0;
+    padding: 8px 0;
 }
 QListWidget::item {
-    padding: 8px 16px;
-    border-radius: 6px;
-    margin: 1px 4px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 1px 8px;
+    color: {colors.ink};
+    font-size: 13px;
 }
 QListWidget::item:selected {
-    background-color: palette(highlight);
-    color: palette(highlighted-text);
+    background-color: rgba(59, 130, 246, 0.14);
+    color: {colors.accent};
+    font-weight: 600;
 }
 QListWidget::item:hover:!selected {
-    background-color: palette(midlight);
+    background-color: {colors.light};
 }
-"""
-
-MONO_FONT_STYLE = "font-family: monospace; font-size: 10pt;"
-
-BTN_STYLE = """
+""",
+    "BTN_STYLE": """
 QPushButton {
-    padding: 6px 16px;
-    border: 1px solid palette(mid);
-    border-radius: 4px;
-    background: palette(button);
-    font-size: 12px;
+    padding: 8px 16px;
+    border: 1px solid {colors.border};
+    border-radius: 8px;
+    background: {colors.surface};
+    color: {colors.ink};
+    font-size: 14px;
+    font-weight: 500;
 }
 QPushButton:hover {
-    background: palette(light);
-    border-color: palette(highlight);
+    background: {colors.light};
+    border-color: {colors.subtle};
 }
 QPushButton:pressed {
-    background: palette(midlight);
+    background: {colors.border};
 }
-"""
+QPushButton:focus {
+    border-color: {colors.accent};
+}
+QPushButton:disabled {
+    color: {colors.subtle};
+    border-color: {colors.border};
+}
+""",
+}
+
+MONO_FONT_STYLE = "font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px;"
+
+
+def section_style() -> str:
+    """Theme-aware QGroupBox card style (DESIGN.md §Card)."""
+    return style(_STYLE_TEMPLATES["SECTION_STYLE"])
+
+
+def card_style() -> str:
+    """Theme-aware #card style (DESIGN.md §Card)."""
+    return style(_STYLE_TEMPLATES["CARD_STYLE"])
+
+
+def tab_page_style() -> str:
+    """Theme-aware QGroupBox style for wizard/tab pages."""
+    return style(_STYLE_TEMPLATES["TAB_PAGE_STYLE"])
+
+
+def sidebar_style() -> str:
+    """Theme-aware sidebar nav style."""
+    return style(_STYLE_TEMPLATES["SIDEBAR_STYLE"])
+
+
+def btn_style() -> str:
+    """Theme-aware secondary button style (DESIGN.md §Button secondary)."""
+    return style(_STYLE_TEMPLATES["BTN_STYLE"])
+
+
+def __getattr__(name: str) -> str:
+    """Legacy constant access (styles.CARD_STYLE) resolved through the active theme."""
+    if name in _STYLE_TEMPLATES:
+        return style(_STYLE_TEMPLATES[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # ── Formatting Helpers ─────────────────────────────────────────────────────────

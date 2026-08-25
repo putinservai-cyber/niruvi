@@ -43,6 +43,7 @@ from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import MONO_FONT_STYLE, format_size
+from niruvi.utils.theme_engine import style
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ class ProjectSetupPage(QWizardPage):
 
         self.folder_info_label = QLabel()
         self.folder_info_label.setWordWrap(True)
-        self.folder_info_label.setStyleSheet("color: palette(placeholderText); font-size: 9pt;")
+        self.folder_info_label.setStyleSheet(style("color: {colors.subtle}; font-size: 9pt;"))
         self.folder_info_label.setVisible(False)
         src_form.addRow(self.folder_info_label)
 

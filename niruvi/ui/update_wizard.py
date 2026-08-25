@@ -37,6 +37,7 @@ from niruvi.desktop.desktop_utils import get_version, refresh_desktop_database
 from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.theme_engine import style
 
 
 class _FormatSize:
@@ -67,7 +68,7 @@ class ChangelogPage(QWizardPage):
         self.current_ver_label.setFont(f)
         info_col.addWidget(self.current_ver_label)
         self.new_ver_label = QLabel("New Version: --")
-        self.new_ver_label.setStyleSheet("color: palette(link);")
+        self.new_ver_label.setStyleSheet(style("color: {colors.ink};"))
         self.new_ver_label.setFont(f)
         info_col.addWidget(self.new_ver_label)
         info_row.addLayout(info_col, 1)
@@ -79,7 +80,7 @@ class ChangelogPage(QWizardPage):
         self.changelog_text = QTextEdit()
         self.changelog_text.setReadOnly(True)
         self.changelog_text.setStyleSheet(
-            "background-color: palette(base); border: 1px solid palette(mid); border-radius: 2px;"
+            style("background-color: {colors.background}; border: 1px solid {colors.border}; border-radius: 2px;")
         )
         layout.addWidget(self.changelog_text, 1)
 
