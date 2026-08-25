@@ -41,3 +41,6 @@ venv/
 # Built AppImages
 Niruvi-x86_64.AppImage
 Niruvi-x86_64.AppImage.zsync
+
+# Local tool artifacts
+.freebuff/
