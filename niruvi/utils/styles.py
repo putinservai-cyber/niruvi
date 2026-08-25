@@ -18,12 +18,12 @@ SPACING_L = 12
 SPACING_XL = 16
 
 RADIUS_XS = 2
-RADIUS_S = 4   # DESIGN.md rounded.sm — default for interactive elements
-RADIUS_M = 8   # DESIGN.md rounded.md
+RADIUS_S = 4  # DESIGN.md rounded.sm — default for interactive elements
+RADIUS_M = 8  # DESIGN.md rounded.md
 RADIUS_L = 12  # DESIGN.md rounded.lg
 RADIUS_XL = 16
 
-FONT_XS = 10   # DESIGN.md typography scale
+FONT_XS = 10  # DESIGN.md typography scale
 FONT_SM = 12
 FONT_MD = 14
 FONT_LG = 16

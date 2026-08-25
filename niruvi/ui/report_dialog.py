@@ -384,7 +384,9 @@ class BuildSummaryDialog(QDialog):
 
         details_w = QWidget()
         details_w.setStyleSheet(
-            style("QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}")
+            style(
+                "QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}"
+            )
         )
         dl = QVBoxLayout(details_w)
         dl.setSpacing(1)
@@ -425,7 +427,9 @@ class BuildSummaryDialog(QDialog):
         if self._validation_warnings:
             warn_w = QWidget()
             warn_w.setStyleSheet(
-                style("QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}")
+                style(
+                    "QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}"
+                )
             )
             wl = QVBoxLayout(warn_w)
             wl.setSpacing(2)
@@ -447,7 +451,9 @@ class BuildSummaryDialog(QDialog):
         # Tips (compact)
         tips_w = QWidget()
         tips_w.setStyleSheet(
-            style("QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}")
+            style(
+                "QWidget{background: {colors.background};border: 1px solid {colors.border};border-radius:4px;padding:6px}"
+            )
         )
         tl = QVBoxLayout(tips_w)
         tl.setSpacing(2)

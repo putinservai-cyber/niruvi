@@ -516,7 +516,9 @@ class AppManager(QMainWindow):
         )
         self.drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.drop_hint.setStyleSheet(
-            style("background: {colors.surface}; border: 2px dashed {colors.border}; border-radius: 8px; margin: {spacing.lg};")
+            style(
+                "background: {colors.surface}; border: 2px dashed {colors.border}; border-radius: 8px; margin: {spacing.lg};"
+            )
         )
         self.drop_hint.setVisible(False)
         layout.addWidget(self.drop_hint, 1)
@@ -1365,8 +1367,10 @@ class AppManager(QMainWindow):
         detail_lbl = QLabel(detail if detail else "Unknown error")
         detail_lbl.setWordWrap(True)
         detail_lbl.setStyleSheet(
-            style("background: {colors.surface}; border: 1px solid {colors.border}; "
-            "border-radius: 4px; padding: {spacing.lg}; font-family: monospace; font-size: 11px;")
+            style(
+                "background: {colors.surface}; border: 1px solid {colors.border}; "
+                "border-radius: 4px; padding: {spacing.lg}; font-family: monospace; font-size: 11px;"
+            )
         )
         layout.addWidget(detail_lbl)
 
@@ -2141,7 +2145,9 @@ class AppManager(QMainWindow):
             info_lbl = QLabel("<br>".join(info_lines))
             info_lbl.setWordWrap(True)
             info_lbl.setStyleSheet(
-                style("background: {colors.surface}; border: 1px solid {colors.border}; border-radius: 4px; padding: {spacing.lg};")
+                style(
+                    "background: {colors.surface}; border: 1px solid {colors.border}; border-radius: 4px; padding: {spacing.lg};"
+                )
             )
             layout.addWidget(info_lbl)
 

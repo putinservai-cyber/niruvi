@@ -145,7 +145,9 @@ class LicensePage(QWizardPage):
 
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
-        self.text_edit.setStyleSheet(style("background: {colors.background}; border: 1px solid {colors.border}; border-radius: 4px;"))
+        self.text_edit.setStyleSheet(
+            style("background: {colors.background}; border: 1px solid {colors.border}; border-radius: 4px;")
+        )
         layout.addWidget(self.text_edit)
 
         self.accept_check = QCheckBox("I accept the terms of the license agreement")
@@ -409,7 +411,8 @@ class ProgressPage(QWizardPage):
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
         self.progress_bar.setFixedHeight(24)
-        self.progress_bar.setStyleSheet(style("""
+        self.progress_bar.setStyleSheet(
+            style("""
             QProgressBar {
                 border: 1px solid {colors.border};
                 border-radius: 2px;
@@ -420,7 +423,8 @@ class ProgressPage(QWizardPage):
                 background-color: {colors.accent};
                 border-radius: 1px;
             }
-        """))
+        """)
+        )
         layout.addWidget(self.progress_bar)
 
         self.log_text = QTextEdit()
@@ -521,7 +525,8 @@ class InstallWizard(QWizard):
         self.setMinimumSize(560, 480)
         self.resize(620, 540)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.setStyleSheet(style("""
+        self.setStyleSheet(
+            style("""
             QWizardPage { background-color: {colors.background}; }
             QProgressBar {
                 border: 1px solid {colors.border};
@@ -575,7 +580,8 @@ class InstallWizard(QWizard):
                 background-color: {colors.accent};
                 border-color: {colors.accent};
             }
-        """))
+        """)
+        )
 
         self.appimage_path: str | None = appimage_path
         self.dest_dir: str | None = None

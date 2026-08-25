@@ -109,6 +109,7 @@ def style(qss: str) -> str:
     rendering a wrong color. Safe to use on strings that contain literal braces
     (QSS selectors, keyframes) because only known placeholder patterns match.
     """
+
     def repl(match: re.Match[str]) -> str:
         family, name = match.group(1), match.group(2)
         if family == "colors":
@@ -194,6 +195,7 @@ def _dark_palette() -> QPalette:
 # Fusion handles: buttons, combos, inputs, progress bars, checkboxes, radios,
 # tree/list/table, tabs, menus, tooltips, splitters, groupboxes, sliders.
 # We only add: selection alpha, hover states, scrollbar thinning, tab underline.
+
 
 def _build_qss(dark: bool) -> str:
     """Build the application stylesheet from DESIGN.md tokens.
@@ -605,7 +607,6 @@ QComboBox:focus, QAbstractButton:focus {{
     border-color: {accent};
 }}
 """
-
 
 
 class ThemeEngine:

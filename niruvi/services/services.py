@@ -240,9 +240,7 @@ class InstallationService:
 
                     # Cache metadata about the scan
                     if cached_meta is None:
-                        self._metadata_cache.set(
-                            cache_key, {"scanned": True, "results_count": len(file_findings)}
-                        )
+                        self._metadata_cache.set(cache_key, {"scanned": True, "results_count": len(file_findings)})
 
                     results.append(result)
                 else:

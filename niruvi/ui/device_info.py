@@ -183,12 +183,14 @@ def _collect_system_info() -> dict[str, str]:
 
 def _build_info_row(icon_name: str, key: str, value: str) -> QWidget:
     row = QWidget()
-    row.setStyleSheet(style("""
+    row.setStyleSheet(
+        style("""
         QWidget:hover {
             background-color: {colors.light};
             border-radius: 4px;
         }
-    """))
+    """)
+    )
     layout = QHBoxLayout(row)
     layout.setContentsMargins(12, 6, 12, 6)
     layout.setSpacing(10)
@@ -299,4 +301,3 @@ class DeviceInfoDialog(QDialog):
         close_btn.rejected.connect(lambda: play_and("navigation", self.accept))
         btn_layout.addWidget(close_btn)
         layout.addWidget(btn_bar)
-

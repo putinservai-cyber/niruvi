@@ -413,7 +413,8 @@ class UninstallWizard(QWizard):
         self.setMinimumSize(520, 420)
         self.resize(600, 500)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.setStyleSheet(style("""
+        self.setStyleSheet(
+            style("""
             QWizardPage { background-color: {colors.background}; }
             QProgressBar {
                 border: 1px solid {colors.border};
@@ -454,7 +455,8 @@ class UninstallWizard(QWizard):
                 background-color: {colors.accent};
                 border-color: {colors.accent};
             }
-        """))
+        """)
+        )
 
         self.app_name = app_name
         self.app_dir = app_dir
