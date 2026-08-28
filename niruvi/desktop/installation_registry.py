@@ -289,20 +289,18 @@ class InstallationRegistry:
             conn = sqlite3.connect(db, timeout=10)
             try:
                 conn.execute(_SCHEMA)
-                # Snapshot under the save lock so concurrent add()/remove()
-                # from other threads cannot mutate the dict mid-iteration.
                 with self._save_lock:
                     record_values = list(self._records.values())
                     names = list(self._records.keys())
-                with conn:
-                    for record in record_values:
-                        data = record.to_dict()
-                        conn.execute(upsert_sql, _record_to_row(data))
-                    if names:
-                        qmarks = ", ".join("?" for _ in names)
-                        conn.execute(f"DELETE FROM installed_apps WHERE name NOT IN ({qmarks})", names)
-                    else:
-                        conn.execute("DELETE FROM installed_apps")
+                    with conn:
+                        for record in record_values:
+                            data = record.to_dict()
+                            conn.execute(upsert_sql, _record_to_row(data))
+                        if names:
+                            qmarks = ", ".join("?" for _ in names)
+                            conn.execute(f"DELETE FROM installed_apps WHERE name NOT IN ({qmarks})", names)
+                        else:
+                            conn.execute("DELETE FROM installed_apps")
                 break
             except sqlite3.OperationalError as e:
                 logger.warning("Registry write retried (attempt %d): %s", attempt + 1, e)

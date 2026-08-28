@@ -13,27 +13,6 @@ import tempfile
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
-
-logger = logging.getLogger(__name__)
-
-
-def sanitize_install_name(name: str) -> str:
-    """Replace spaces and unsafe characters with hyphens for JuNest/bwrap compatibility.
-
-    JuNest and bubblewrap cannot handle spaces in install paths. This function
-    replaces them so the directory name is safe while preserving readability.
-    """
-    # Replace any character that isn't a word char, hyphen, or period with a hyphen
-    sanitized = re.sub(r"[^\w\-.]", "-", name)
-    # Collapse multiple hyphens into one
-    sanitized = re.sub(r"-+", "-", sanitized)
-    # Strip leading/trailing hyphens
-    sanitized = sanitized.strip("-")
-    # Prevent empty result
-    return sanitized or "app"
-
-
-logger = logging.getLogger(__name__)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QAbstractButton,
@@ -59,6 +38,7 @@ from niruvi.desktop.appimage_metadata import AppImageMetadata
 from niruvi.desktop.desktop_utils import (
     create_desktop_entry,
     create_desktop_shortcut,
+    create_portable_desktop_entry,
     find_icon_in_appdir,
     get_version,
     parse_desktop_file_content,
@@ -72,6 +52,25 @@ from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.theme_engine import style
+
+logger = logging.getLogger(__name__)
+
+
+def sanitize_install_name(name: str) -> str:
+    """Replace spaces and unsafe characters with hyphens for JuNest/bwrap compatibility.
+
+    JuNest and bubblewrap cannot handle spaces in install paths. This function
+    replaces them so the directory name is safe while preserving readability.
+    """
+    # Replace any character that isn't a word char, hyphen, or period with a hyphen
+    sanitized = re.sub(r"[^\w\-.]", "-", name)
+    # Collapse multiple hyphens into one
+    sanitized = re.sub(r"-+", "-", sanitized)
+    # Strip leading/trailing hyphens
+    sanitized = sanitized.strip("-")
+    # Prevent empty result
+    return sanitized or "app"
+
 
 _PREDEFINED_LOCATIONS = [
     ("~/Applications (Recommended)", os.path.expanduser("~/Applications")),
@@ -311,6 +310,20 @@ class ComponentsPage(QWizardPage):
         self.setSubTitle("Choose additional components to install.")
         layout = QVBoxLayout(self)
         layout.setSpacing(6)
+
+        mode_title = QLabel("<b>Install Mode</b>")
+        layout.addWidget(mode_title)
+
+        self.cb_portable = QCheckBox("Portable — keep the AppImage file (move it instead of extracting)")
+        self.cb_portable.setChecked(get_settings().get("install_portable", False))
+        self.cb_portable.setToolTip(
+            "Portable mode: the AppImage itself is copied into the install "
+            "folder and launched directly, keeping all data alongside it. Otherwise the AppImage "
+            "is extracted to an AppRun directory (recommended)."
+        )
+        layout.addWidget(self.cb_portable)
+
+        layout.addSpacing(12)
 
         sec_title = QLabel("<b>Desktop Integration</b>")
         layout.addWidget(sec_title)
@@ -881,6 +894,10 @@ class InstallWizard(QWizard):
         self._progress_page.append_log(f"Destination: {self.dest_dir}")
         self._start_progress_animation()
 
+        if self._components_page.cb_portable.isChecked():
+            self._install_portable()
+            return
+
         want_vt = self._components_page.cb_vt_scan is not None and self._components_page.cb_vt_scan.isChecked()
         if want_vt:
             from niruvi.app.virustotal import get_api_key, scan_file
@@ -916,6 +933,122 @@ class InstallWizard(QWizard):
         self.worker.progress_updated.connect(self._on_worker_progress)
         self.worker.log_message.connect(self._on_worker_log)
         start_worker(self.worker)
+
+    def _install_portable(self):
+        """Portable mode: keep the AppImage itself.
+
+        Instead of extracting the AppImage's contents, the AppImage file is
+        copied into the destination folder and launched directly. All of the
+        app's data stays alongside it (``.home``/``.config``).
+        """
+        if not self.appimage_path or not self.dest_dir or not self.app_name:
+            self._log("Missing install information.")
+            return
+        self._extraction_started = True
+        self._wbutton(QWizard.WizardButton.BackButton).setEnabled(False)
+        self._wbutton(QWizard.WizardButton.BackButton).hide()
+        self._wbutton(QWizard.WizardButton.NextButton).setEnabled(False)
+
+        self._progress_page.set_task("Preparing...", "Copying AppImage (portable mode)")
+        self._progress_page.append_log(f"Installing (portable): {self.app_name}")
+        self._progress_page.append_log(f"Source: {self.appimage_path}")
+        self._progress_page.append_log(f"Destination: {self.dest_dir}")
+        self._start_progress_animation()
+        try:
+            os.makedirs(self.dest_dir, exist_ok=True)
+            target = os.path.join(self.dest_dir, f"{self.app_name}.AppImage")
+            self._progress_page.append_log(f"Copying AppImage to {target}...")
+            shutil.copy2(self.appimage_path, target)
+            os.chmod(target, 0o755)
+            self._set_real_progress(55)
+
+            from niruvi.core.verification import sha256_file
+
+            source_sha256 = sha256_file(self.appimage_path) if os.path.isfile(self.appimage_path) else ""
+            version = "unknown"
+            metadata = {
+                "version": version,
+                "install_date": str(Path(self.dest_dir).stat().st_ctime),
+                "portable": True,
+            }
+            meta_path = os.path.join(self.dest_dir, ".appimage-manager.json")
+            with open(meta_path, "w") as f:
+                json.dump(metadata, f)
+            self._set_real_progress(70)
+
+            self._progress_page.set_task("Configuring desktop integration...")
+            desktop_file_path = create_portable_desktop_entry(target, self.app_name)
+            self._progress_page.append_log(f"Desktop entry: {desktop_file_path or 'failed'}")
+
+            if get_settings().get("register_mime_handler", True):
+                try:
+                    register_mime_handler(self.app_name)
+                    self._progress_page.append_log("Registered as default AppImage handler")
+                except Exception as e:
+                    logger.debug("MIME registration failed: %s", e, exc_info=True)
+
+            shortcut_path = None
+            if self._components_page.cb_desktop_shortcut.isChecked():
+                try:
+                    shortcut_path = create_desktop_shortcut(self.app_name, target, None)
+                    self._progress_page.append_log(f"Desktop shortcut: {shortcut_path or 'failed'}")
+                except Exception as e:
+                    self._progress_page.append_log(f"Desktop shortcut failed: {e}")
+
+            if self._components_page.cb_portable_home.isChecked():
+                Path(self.dest_dir + ".home").mkdir(exist_ok=True)
+                self._progress_page.append_log(f"Portable home: {self.dest_dir}.home")
+            if self._components_page.cb_portable_config.isChecked():
+                Path(self.dest_dir + ".config").mkdir(exist_ok=True)
+                self._progress_page.append_log(f"Portable config: {self.dest_dir}.config")
+
+            try:
+                refresh_desktop_database()
+            except Exception as e:
+                self._progress_page.append_log(f"Warning: desktop database refresh failed ({e})")
+
+            sandbox_config = {
+                "enabled": self._components_page.cb_hardening.isChecked(),
+                "hardening": self._components_page.cb_hardening.isChecked(),
+                "portable_home": self._components_page.cb_portable_home.isChecked(),
+                "portable_config": self._components_page.cb_portable_config.isChecked(),
+                "backend": get_settings().get("sandbox_default_backend", "shield"),
+            }
+            registry = InstallationRegistry()
+            record = InstallationRecord(
+                name=self.app_name,
+                path=self.dest_dir,
+                version=version,
+                desktop_file=desktop_file_path or "",
+                desktop_shortcut=shortcut_path or "",
+                source_sha256=source_sha256,
+                architecture=getattr(self, "_architecture", ""),
+                sandbox_config=sandbox_config,
+            )
+            registry.add(record)
+            self._progress_page.append_log("Registered in installation database.")
+
+            self._stop_progress_animation()
+            self._set_real_progress(100)
+            play_sound("success")
+            self._progress_page.set_task("Installation complete!")
+
+            detail = (
+                f"Installed to: {self.dest_dir}\n"
+                f"Mode: Portable (AppImage kept)\n"
+                f"Desktop integration: {'✓' if desktop_file_path else '—'}\n"
+                f"Shortcut: {'✓' if shortcut_path else '—'}"
+            )
+            self._finish_page.set_completed(self.app_name, self._icon_pixmap, detail)
+            self._wbutton(QWizard.WizardButton.NextButton).setEnabled(True)
+            self._wbutton(QWizard.WizardButton.FinishButton).setEnabled(True)
+            self._wbutton(QWizard.WizardButton.FinishButton).show()
+            self._wbutton(QWizard.WizardButton.CancelButton).setEnabled(False)
+            self._finish_page.launch_check.setChecked(True)
+            self.next()
+        except Exception as e:
+            logger.error("Portable install failed: %s", e, exc_info=True)
+            self._on_extraction_error(str(e))
 
     def _on_vt_scan_done(self, result: dict):
         if getattr(self, "_vt_scan_aborted", False):
@@ -1343,3 +1476,4 @@ class InstallWizard(QWizard):
             self._cleanup_backup()
         finally:
             self._rejecting = False
+        super().reject()

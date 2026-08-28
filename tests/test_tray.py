@@ -19,11 +19,11 @@ def qapp():
 
 
 def _make_manager(qapp, monkeypatch):
-    """Build an AppManager with the persistent tray stubbed out."""
-    from niruvi.ui.manager import AppManager
+    """Build the main window with the persistent tray stubbed out."""
+    from niruvi.ui.manager import Niruvi
 
     monkeypatch.setattr("niruvi.ui.manager.QSystemTrayIcon.isSystemTrayAvailable", lambda: True)
-    manager = AppManager()
+    manager = Niruvi()
     qapp.processEvents()
     return manager
 

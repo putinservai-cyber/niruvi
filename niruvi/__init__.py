@@ -30,7 +30,7 @@ from niruvi.utils.theme_engine import ThemeMode as ThemeMode
 from niruvi.utils.theme_engine import get_theme_engine as get_theme_engine
 
 __all__ = [
-    "AppManager",
+    "Niruvi",
     "BuilderPlugin",
     "CompressorPlugin",
     "InstallWizard",

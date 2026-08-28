@@ -84,9 +84,10 @@ def scan_file(path: str) -> dict:
 def scan_directory(app_dir: str) -> list[dict]:
     """Recursively scan an extracted AppDir for suspicious content.
 
-    Walks the AppDirectory tree and scans each non-trivial file for
-    suspicious patterns. Only scans files with suspicious extensions
-    or those that could contain executable code.
+    Walks the entire AppDirectory tree (nested directories and symlinks
+    included) and scans each non-trivial file for suspicious patterns.
+    Only scans files with suspicious extensions or those that could
+    contain executable code.
 
     Args:
         app_dir: Path to the AppDirectory to scan.
@@ -97,14 +98,15 @@ def scan_directory(app_dir: str) -> list[dict]:
     """
     results: list[dict] = []
     script_exts = {".sh", ".py", ".pl", ".rb", ".js", ".php", ".lua"}
-    for entry in Path(app_dir).iterdir():
-        if not entry.exists():
-            continue
-        if entry.is_file() or entry.is_symlink():
-            ext = entry.suffix.lower()
-            full = str(entry)
-            if ext in script_exts or (ext not in (".png", ".jpg", ".svg", ".ico", ".desktop", ".sig", ".blockmap")):
-                scan_result = scan_file(full)
+    skip_exts = {".png", ".jpg", ".svg", ".ico", ".desktop", ".sig", ".blockmap"}
+    for root, _dirs, files in os.walk(app_dir, followlinks=False):
+        for fname in files:
+            fpath = os.path.join(root, fname)
+            if os.path.islink(fpath) and not os.path.exists(fpath):
+                continue  # broken symlink
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in script_exts or ext not in skip_exts:
+                scan_result = scan_file(fpath)
                 if scan_result["verdict"] == "suspicious":
                     results.append(scan_result)
     return results

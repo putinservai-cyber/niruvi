@@ -500,3 +500,143 @@ def register_mime_handler(app_name: str, desktop_name: str | None = None) -> boo
         logger.debug("Failed to write %s: %s", mimeapps, e, exc_info=True)
 
     return any_success
+
+
+def create_portable_desktop_entry(appimage_path: str, app_name: str) -> str | None:
+    """Create a .desktop entry for a *portable* install.
+
+    In portable mode the AppImage itself is kept (moved/copied) rather than
+    extracted, so the launcher points directly at the AppImage file.
+
+    ``appimage_path`` is an absolute, already-sanitized path to the installed
+    AppImage. ``app_name`` must already be sanitized by the caller.
+    """
+    app_name = sanitize_app_name(app_name)
+    desktop_file = os.path.join(DESKTOP_DIR, f"{app_name}.desktop")
+    exec_value = f'"{appimage_path}"' if " " in appimage_path else appimage_path
+    content = (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        f"Name={app_name}\n"
+        "Comment=AppImage managed by Niruvi (portable mode)\n"
+        f"Exec={exec_value} %F\n"
+        "Terminal=false\n"
+        "Categories=Utility;\n"
+        "StartupNotify=true\n"
+        "MimeType=" + ";".join(_MIME_TYPES) + "\n"
+        "X-Created-By=Niruvi\n"
+        f"X-AppImage-Path={appimage_path}\n"
+    )
+    try:
+        with open(desktop_file, "w") as f:
+            f.write(content)
+        os.chmod(desktop_file, 0o644)
+        return desktop_file
+    except OSError as e:
+        logger.debug("Failed to write portable desktop entry: %s", e, exc_info=True)
+        return None
+
+
+def register_scheme_handler(
+    scheme: str = "niruvi",
+    handler_desktop: str = "niruvi-url-handler.desktop",
+    exec_line: str = "niruvi %u",
+) -> bool:
+    """Register Niruvi as the handler for ``niruvi://`` URLs (one-click web
+    installs via ``niruvi://install?url=…&sha256=…``).
+
+    Writes a hidden .desktop file advertising ``x-scheme-handler/<scheme>`` and
+    records it in mimeapps.list so it is idempotent across runs.
+    """
+    scheme = scheme.strip().lower()
+    if not scheme or "/" in scheme or ";" in scheme:
+        logger.warning("Refusing to register invalid scheme: %r", scheme)
+        return False
+    if not exec_line or ";" in exec_line or "\n" in exec_line:
+        logger.warning("Refusing to register with unsafe Exec line")
+        return False
+
+    desktop_file = os.path.join(DESKTOP_DIR, handler_desktop)
+    content = (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Niruvi URL Handler\n"
+        "Comment=Handle niruvi:// URLs\n"
+        f"Exec={exec_line}\n"
+        f"MimeType=x-scheme-handler/{scheme};\n"
+        "NoDisplay=true\n"
+        "Terminal=false\n"
+        "Categories=Utility;\n"
+    )
+    try:
+        os.makedirs(DESKTOP_DIR, exist_ok=True)
+        with open(desktop_file, "w") as f:
+            f.write(content)
+        os.chmod(desktop_file, 0o644)
+    except OSError as e:
+        logger.debug("Failed to write scheme handler desktop: %s", e, exc_info=True)
+        return False
+
+    mime_type = f"x-scheme-handler/{scheme}"
+    mimeapps = os.path.expanduser("~/.config/mimeapps.list")
+    try:
+        os.makedirs(os.path.dirname(mimeapps), exist_ok=True)
+        existing = ""
+        if os.path.isfile(mimeapps):
+            with open(mimeapps) as f:
+                existing = f.read()
+
+        default_entries: list[str] = []
+        added_section = False
+        other_lines: list[str] = []
+        current_section = ""
+        for line in existing.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                current_section = stripped
+                if stripped != "[Default Applications]":
+                    other_lines.append(line)
+                continue
+            if current_section == "[Default Applications]":
+                if line.startswith(f"{mime_type}="):
+                    continue
+                if stripped:
+                    default_entries.append(line)
+            else:
+                other_lines.append(line)
+        # Preserve an existing [Default Applications] section if present.
+        for ln in other_lines:
+            if ln.strip() == "[Default Applications]":
+                added_section = True
+                break
+
+        new_lines = ["[Default Applications]"] if not added_section else []
+        new_lines.extend(default_entries)
+        new_lines.append(f"{mime_type}={handler_desktop}")
+        if other_lines:
+            if not added_section:
+                new_lines.append("")
+            new_lines.extend(other_lines)
+
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(mimeapps), prefix=".mimeapps.", suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w") as f:
+                f.write("\n".join(new_lines) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            try:
+                mode = os.stat(mimeapps).st_mode & 0o777
+            except OSError:
+                mode = 0o600
+            os.chmod(tmp_path, mode)
+            os.replace(tmp_path, mimeapps)
+        except OSError:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    except OSError as e:
+        logger.debug("Failed to register scheme handler in mimeapps: %s", e, exc_info=True)
+        return False
+    return True

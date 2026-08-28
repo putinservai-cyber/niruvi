@@ -284,7 +284,7 @@ niruvi/                         # Core application package
 │   ├── sanitize.py             # Shell-injection-safe string sanitization
 │   └── scripts.py              # Install script template generation
 ├── ui/                         # PyQt6 widgets/dialogs
-│   ├── manager.py              # Main window (AppManager)
+│   ├── manager.py              # Main window (Niruvi)
 │   ├── settings.py             # Settings dialog
 │   ├── wizard.py               # Install wizard
 │   ├── build_wizard.py         # Build wizard

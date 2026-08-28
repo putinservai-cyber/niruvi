@@ -260,7 +260,7 @@ def get_appimage_metadata(path: str) -> tuple[dict, bytes | None]:
     return info, icon_data
 
 
-class AppManager(QMainWindow):
+class Niruvi(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Niruvi")
@@ -639,6 +639,11 @@ class AppManager(QMainWindow):
         play_sound("navigation")
         self._really_quit = True
         self.close()
+        # Guarantee the event loop ends even if other top-level widgets
+        # (or a lingering tray icon) would otherwise keep it alive.
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
     def closeEvent(self, event):
         if _settings.get("tray_enabled", True) and _settings.get("close_to_tray", False) and not self._really_quit:
@@ -653,6 +658,28 @@ class AppManager(QMainWindow):
                 )
             return
         self._closing = True
+        # Remove the tray icon so it does not linger and make the app appear
+        # to still be running after Quit.
+        for tray in list(self._tray_icons):
+            try:
+                tray.hide()
+            except Exception:
+                pass
+            try:
+                tray.deleteLater()
+            except Exception:
+                pass
+        self._tray_icons.clear()
+        if self._tray is not None:
+            try:
+                self._tray.hide()
+            except Exception:
+                pass
+            try:
+                self._tray.deleteLater()
+            except Exception:
+                pass
+            self._tray = None
         self._background_updater.stop()
         if self._metadata_worker and self._metadata_worker.isRunning():
             self._metadata_worker.quit()
@@ -1465,6 +1492,10 @@ class AppManager(QMainWindow):
                 self._run_app_fallback(app_name, app_dir, env, record)
                 return
         self._apply_portable_env(env, app_dir, record)
+        # Always launch with the FULL host environment (HOME, PATH, XDG_*, …).
+        # Without this, non-sandboxed apps inherit only the tiny per-app override
+        # dict (often empty) → HOME="" → apps do `mkdir $HOME/.config` in `/`.
+        launch_env = self._full_env(env)
 
         # ── Pre-flight diagnostics ──
         from niruvi.app.health_check import check_app_runnable, check_fuse_available
@@ -1475,7 +1506,7 @@ class AppManager(QMainWindow):
             diag_warnings = list(diag["warnings"])
             fuse_ok = check_fuse_available()
             if not fuse_ok and not diag.get("info", {}).get("missing_libs"):
-                self._run_app_fallback(app_name, app_dir, env, record)
+                self._run_app_fallback(app_name, app_dir, launch_env, record)
                 return
             if not fuse_ok:
                 diag_issues.append("FUSE is not available — app may not run")
@@ -1492,11 +1523,11 @@ class AppManager(QMainWindow):
                 detail += "\n\n" + "\n".join(info_lines)
             self._show_run_error(app_name, app_dir, detail)
             if not fuse_ok:
-                self._run_app_fallback(app_name, app_dir, env, record)
+                self._run_app_fallback(app_name, app_dir, launch_env, record)
             return
 
         unsandboxed = unsandboxed or "--unsandboxed" in sys.argv or is_browser
-        hook_results = run_hooks(app_name, app_dir, env)
+        hook_results = run_hooks(app_name, app_dir, launch_env)
         for hr in hook_results:
             if hr["returncode"] != 0:
                 logging.warning("Hook %s failed: %s", hr["hook"], hr["stderr"])
@@ -1509,19 +1540,19 @@ class AppManager(QMainWindow):
             if not unsandboxed and record and record.sandbox_config.get("enabled", False):
                 sc = ShieldConfig.from_dict(record.sandbox_config)
                 sb = Shield(sc)
-                p = sb.run(cmd, cwd=app_dir, env=env)
+                p = sb.run(cmd, cwd=app_dir, env=launch_env)
                 if p is None:
                     p = subprocess.Popen(
                         cmd,
                         cwd=app_dir,
-                        env=env,
+                        env=launch_env,
                         start_new_session=True,
                     )
             else:
                 p = subprocess.Popen(
                     cmd,
                     cwd=app_dir,
-                    env=env,
+                    env=launch_env,
                     start_new_session=True,
                 )
             _track_detached(p)
@@ -1533,7 +1564,7 @@ class AppManager(QMainWindow):
             self._monitor_launch(app_name, p)
         except OSError as e:
             self._show_run_error(app_name, app_dir, str(e))
-            self._run_app_fallback(app_name, app_dir, env, record)
+            self._run_app_fallback(app_name, app_dir, launch_env, record)
 
     def _monitor_launch(self, app_name: str, proc: subprocess.Popen):
         """Check if process crashes immediately after launch (main-thread safe)."""
@@ -2098,14 +2129,6 @@ class AppManager(QMainWindow):
             icon_lbl.setPixmap(get_icon("emblem-important", "dialog-warning").pixmap(32, 32))
             icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(icon_lbl)
-
-        if health["issues"]:
-            lbl = QLabel(
-                f"<b style='color:{COLOR_ERROR};'>Issues:</b><br>" + "<br>".join(f"• {i}" for i in health["issues"])
-            )
-            lbl.setWordWrap(True)
-            lbl.setStyleSheet(f"background:{error_bg};border:1px solid {error_border};border-radius:4px;padding:8px;")
-            layout.addWidget(lbl)
 
         if runnable["issues"]:
             lbl = QLabel(

@@ -6,7 +6,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
@@ -21,9 +21,16 @@ from niruvi.config import (
     get_settings,
     load_settings,
 )
-from niruvi.desktop.desktop_utils import find_desktop_for_app, find_desktop_shortcut, refresh_desktop_database
+from niruvi.desktop.desktop_utils import (
+    find_desktop_for_app,
+    find_desktop_shortcut,
+    refresh_desktop_database,
+    register_scheme_handler,
+)
 from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
 from niruvi.utils.qt_compat import fix_qt_platform_path as _fix_qt_platform_path
+
+logger = logging.getLogger(__name__)
 
 
 def process_appimage(path_str: str, parent=None):
@@ -165,6 +172,83 @@ def cli_install(path_str: str, dest_override: str | None = None):
     except Exception:
         pass
     print(f"done (v{version})")
+
+
+def handle_web_install(url: str):
+    """Handle a one-click web install link.
+
+    Supports ``niruvi://install?url=<https-url>&sha256=<hex>``. The AppImage is
+    downloaded over HTTPS (with zsync delta when a seed exists), verified
+    against the supplied SHA-256, then handed to the normal install wizard.
+    Only HTTPS URLs are accepted; anything else is rejected.
+    """
+    from PyQt6.QtCore import QEventLoop
+    from PyQt6.QtWidgets import QMessageBox
+
+    from niruvi.core.worker import DownloadWorker
+
+    parsed = urlparse(url)
+    if parsed.scheme != "niruvi" or parsed.path not in ("/install", "install", ""):
+        QMessageBox.critical(None, "Invalid link", f"Unsupported niruvi:// URL:\n{url}")
+        return
+
+    query = parse_qs(parsed.query)
+    target = (query.get("url") or [None])[0]
+    sha256 = (query.get("sha256") or [""])[0] or ""
+
+    if not target:
+        QMessageBox.critical(None, "Invalid link", "The install link is missing the required url= parameter.")
+        return
+    if not target.startswith("https://"):
+        QMessageBox.critical(
+            None,
+            "Insecure link",
+            "Niruvi only installs from HTTPS URLs.\nRefusing: " + target,
+        )
+        return
+
+    import os
+    import tempfile
+
+    from niruvi.ui.wizard import InstallWizard
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".AppImage", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    worker = DownloadWorker(target, tmp_path, expected_sha256=sha256, seed_path="")
+    result: dict = {}
+
+    def _on_finished(dest: str):
+        result["done"] = dest
+        loop.quit()
+
+    def _on_error(err: str):
+        result["error"] = err
+        loop.quit()
+
+    worker.finished.connect(_on_finished)
+    worker.error.connect(_on_error)
+
+    from niruvi.core.worker import start_worker
+
+    start_worker(worker)
+
+    loop = QEventLoop()
+    loop.exec()
+
+    if result.get("error"):
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        QMessageBox.critical(None, "Download failed", str(result["error"]))
+        return
+
+    downloaded = result.get("done", tmp_path)
+    wiz = InstallWizard(downloaded, None)
+    wiz.setWindowTitle("Install AppImage from the web")
+    wiz.exec()
 
 
 def _resolve_path(raw: str) -> str:
@@ -387,7 +471,9 @@ def main():
     # --- GUI path ---
     file_to_process = None
     src = args.open or args.file
-    if src:
+    if src and src.startswith("niruvi://"):
+        handle_web_install(src)
+    elif src:
         try:
             raw = _resolve_path(src)
         except ValueError:
@@ -399,6 +485,12 @@ def main():
 
     _fix_qt_platform_path()
     app = QApplication(sys.argv)
+    # Register the niruvi:// URL scheme handler (idempotent) so web
+    # "Install" buttons work after Niruvi is installed.
+    try:
+        register_scheme_handler()
+    except Exception as e:
+        logger.debug("Failed to register niruvi:// scheme handler: %s", e, exc_info=True)
     from niruvi.utils import _init_icon_theme
 
     _init_icon_theme()
@@ -454,9 +546,9 @@ def main():
     if file_to_process:
         process_appimage(file_to_process)
 
-    from niruvi.ui.manager import AppManager
+    from niruvi.ui.manager import Niruvi
 
-    window = AppManager()
+    window = Niruvi()
     window.show()
     ret = app.exec()
     window.close()
