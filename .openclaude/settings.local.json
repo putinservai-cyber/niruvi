@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -sL \"https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/icons_regular.md\")",
+      "Bash(python3:*)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python:*)"
+    ]
+  }
+}

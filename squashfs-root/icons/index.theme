@@ -1,0 +1,5 @@
+[Icon Theme]
+Name=Icons
+Comment=Icon themes bundled with Niruvi
+Directories=Phosphor/scalable/actions
+Inherits=hicolor

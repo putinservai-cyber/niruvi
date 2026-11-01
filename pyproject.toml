@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "niruvi"
+dynamic = ["version"]
+description = "Niruvi — Universal Linux AppImage Manager"
+license = {text = "GPL-3.0-only"}
+requires-python = ">=3.10"
+dependencies = [
+    "PyQt6>=6.5",
+]
+
+[project.optional-dependencies]
+# PyQt6-Multimedia provides QSoundEffect; niruvi falls back to a subprocess
+# player when it is absent, so it is optional. Some minimal/CI environments
+# cannot resolve a PyQt6-Multimedia wheel, so it is not a hard dependency.
+multimedia = ["PyQt6-Multimedia>=6.5"]
+all = []
+dev = ["pytest>=7.0", "pytest-mock>=3.10", "pytest-qt>=4.0", "ruff>=0.4", "mypy>=1.10"]
+
+[project.scripts]
+niruvi = "niruvi.main:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "niruvi._version.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["niruvi*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "E501",    # line too long (handled by formatter)
+    "B008",    # function call in default arg (PyQt pattern)
+    "B905",    # zip without strict= (not always needed)
+    "N802",    # Qt method names are camelCase by convention (dragEnterEvent, etc.)
+    "N806",    # Qt constants in functions may be uppercase
+    "E402",    # module-level imports after platform setup code
+    "B027",    # empty abstract methods (intentional no-op hooks)
+    "RUF012",  # mutable class attribute defaults (PyQt pattern)
+    "SIM105",  # contextlib.suppress is a style preference, try/except/pass is fine
+    "SIM108",  # ternary operator suggestions (readability tradeoff)
+    "SIM115",  # context manager for files (not always applicable)
+    "SIM116",  # dict vs if/elif chains (readability tradeoff)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["niruvi"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+exclude = ["^niruvi\\.py$"]
+check_untyped_defs = true
+ignore_missing_imports = true

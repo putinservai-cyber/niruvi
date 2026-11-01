@@ -1,0 +1,589 @@
+import argparse
+import gc
+import logging
+import logging.handlers
+import os
+import shutil
+import sys
+import threading
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
+
+from PyQt6.QtWidgets import QApplication, QWidget
+
+from niruvi._version import __version__
+from niruvi.config import (
+    DEFAULT_INSTALL_DIR,
+    DESKTOP_DIR,
+    _settings,
+    configure_runtime_env,
+    get_data_dir,
+    get_settings,
+    load_settings,
+)
+from niruvi.desktop.desktop_utils import (
+    find_desktop_for_app,
+    find_desktop_shortcut,
+    refresh_desktop_database,
+    register_scheme_handler,
+)
+from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
+from niruvi.utils.qt_compat import fix_qt_platform_path as _fix_qt_platform_path
+
+logger = logging.getLogger(__name__)
+
+
+def process_appimage(path_str: str, parent=None):
+    from niruvi.desktop.desktop_utils import sanitize_app_name
+    from niruvi.ui.manager import get_appimage_metadata
+    from niruvi.ui.wizard import InstallWizard
+    from niruvi.utils import get_icon
+
+    path = Path(path_str)
+    info, icon_data = get_appimage_metadata(str(path))
+    app_name = sanitize_app_name(info.get("Name", path.stem))
+
+    if parent is None:
+        parent = QApplication.activeWindow() or QWidget()
+
+    registry = InstallationRegistry()
+    existing = registry.lookup_by_name(app_name) or registry.lookup_by_path(str(path))
+    if existing:
+        from PyQt6.QtWidgets import QDialog, QGridLayout, QLabel, QPushButton, QVBoxLayout
+
+        dlg = QDialog(parent)
+        dlg.setWindowTitle("Already Installed")
+        dlg.setFixedSize(480, 260)
+        dlg.setModal(True)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+
+        title = QLabel(f"<b>{app_name}</b> is already installed")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+        desc = QLabel("What would you like to do?")
+        layout.addWidget(desc)
+        layout.addStretch()
+
+        btn_grid = QGridLayout()
+        btn_grid.setSpacing(8)
+        btn_reinstall = QPushButton(get_icon("view-refresh"), "Re-integrate")
+        btn_reinstall.clicked.connect(lambda: dlg.done(1))
+        btn_grid.addWidget(btn_reinstall, 0, 0)
+        btn_sbs = QPushButton(get_icon("list-add"), "Install Side-by-Side")
+        btn_sbs.clicked.connect(lambda: dlg.done(3))
+        btn_grid.addWidget(btn_sbs, 0, 1)
+        btn_remove = QPushButton(get_icon("edit-delete"), "Remove")
+        btn_remove.clicked.connect(lambda: dlg.done(2))
+        btn_grid.addWidget(btn_remove, 1, 0)
+        btn_cancel = QPushButton(get_icon("dialog-cancel"), "Cancel")
+        btn_cancel.clicked.connect(lambda: dlg.done(0))
+        btn_grid.addWidget(btn_cancel, 1, 1)
+        layout.addLayout(btn_grid)
+
+        reply = dlg.exec()
+        if reply == 0:
+            return
+        elif reply == 2:
+            if existing.path and os.path.exists(existing.path):
+                shutil.rmtree(existing.path)
+            df = find_desktop_for_app(app_name)
+            if df and os.path.exists(df):
+                os.remove(df)
+            sc = find_desktop_shortcut(app_name)
+            if sc and os.path.exists(sc):
+                os.remove(sc)
+            registry.remove(app_name)
+            try:
+                refresh_desktop_database()
+            except Exception:
+                pass
+            return
+        elif reply == 3:
+            suffix = 2
+            base_name = app_name
+            while registry.lookup_by_name(base_name):
+                base_name = f"{app_name}-{suffix}"
+                suffix += 1
+            app_name = base_name
+            info = info.copy() if info else {}
+            info["Name"] = app_name
+
+    wiz = InstallWizard(str(path), parent, appimage_info=info, icon_data=icon_data)
+    wiz.exec()
+
+
+def cli_install(path_str: str, dest_override: str | None = None):
+    """Silent CLI install without GUI."""
+    from niruvi.core.worker import extract_appimage_sync
+    from niruvi.desktop.desktop_utils import create_desktop_entry, get_version, sanitize_app_name
+    from niruvi.installer.junest import JunestPathError, suggest_space_free_path
+    from niruvi.ui.manager import get_appimage_metadata
+
+    path = Path(path_str)
+    info, _icon_data = get_appimage_metadata(str(path))
+    app_name = sanitize_app_name(info.get("Name", path.stem))
+    install_dir = get_settings()["install_dir"]
+    dest_dir = dest_override or os.path.join(install_dir, app_name)
+
+    registry = InstallationRegistry()
+    existing = registry.lookup_by_name(app_name) or registry.lookup_by_path(str(path))
+    if existing:
+        print(f"Already installed: {app_name}")
+        sys.exit(0)
+
+    print(f"Installing {app_name}...", end=" ", flush=True)
+    os.makedirs(dest_dir, exist_ok=True)
+    try:
+        extract_appimage_sync(str(path), dest_dir)
+    except JunestPathError as e:
+        if dest_override:
+            print(f"\nError: {e}", file=sys.stderr)
+            print("The destination was chosen explicitly; reinstall with a space-free path.", file=sys.stderr)
+            sys.exit(1)
+        dest_dir = e.suggested_path or suggest_space_free_path(dest_dir)
+        print(f"\nJuNest container requires a space-free path — installing to {dest_dir}")
+        os.makedirs(dest_dir, exist_ok=True)
+        extract_appimage_sync(str(path), dest_dir)
+    version = get_version(dest_dir)
+
+    metadata = {
+        "version": version,
+        "install_date": str(Path(dest_dir).stat().st_ctime),
+    }
+    with open(os.path.join(dest_dir, ".appimage-manager.json"), "w") as f:
+        import json
+
+        json.dump(metadata, f)
+
+    desk = create_desktop_entry(dest_dir, app_name)
+    record = InstallationRecord(
+        name=app_name,
+        path=dest_dir,
+        version=version,
+        desktop_file=desk or "",
+        desktop_shortcut="",
+    )
+    registry.add(record)
+    registry.flush()
+    try:
+        refresh_desktop_database()
+    except Exception:
+        pass
+    print(f"done (v{version})")
+
+
+def _apply_url_theme(theme: str) -> None:
+    """Theme parameter from niruvi:// links is ignored — we use native system theme."""
+    # No-op: we follow the system theme automatically (KDE Breeze, GNOME Adwaita, etc.)
+    # The theme parameter is kept for backward compatibility but has no effect.
+    if theme:
+        logger.debug("Ignoring niruvi:// theme parameter %r — using system theme", theme)
+
+
+def handle_web_install(url: str):
+    """Handle a one-click web install link.
+
+    Supports ``niruvi://install?url=<https-url>&sha256=<hex>&theme=<auto|light|dark>``.
+    The AppImage is downloaded over HTTPS (with zsync delta when a seed exists),
+    verified against the supplied SHA-256, then handed to the normal install wizard.
+    Only HTTPS URLs are accepted; anything else is rejected.
+    """
+    from PyQt6.QtCore import QEventLoop
+    from PyQt6.QtWidgets import QMessageBox
+
+    from niruvi.core.worker import DownloadWorker
+
+    parsed = urlparse(url)
+    if parsed.scheme != "niruvi":
+        QMessageBox.critical(None, "Invalid link", f"Unsupported niruvi:// URL:\n{url}")
+        return
+
+    # urlparse puts the first segment of "niruvi://ping" into netloc, not
+    # path ("niruvi://ping" -> netloc='ping', path=''). Normalize so the
+    # checks below see "/ping", "/install", etc.
+    path = parsed.path
+    if not path and parsed.netloc:
+        path = "/" + parsed.netloc
+
+    # Handle ping health check from web store (silent success)
+    if path in ("/ping", "ping"):
+        return
+
+    if path not in ("/install", "install", "/", ""):
+        QMessageBox.critical(None, "Invalid link", f"Unsupported niruvi:// URL:\n{url}")
+        return
+
+    query = parse_qs(parsed.query)
+    target = (query.get("url") or [None])[0]
+    sha256 = (query.get("sha256") or [""])[0] or ""
+    # Optional theme parameter — applied now, before the wizard is built.
+    _apply_url_theme((query.get("theme") or [""])[0] or "")
+
+    if not target:
+        QMessageBox.critical(None, "Invalid link", "The install link is missing the required url= parameter.")
+        return
+    if not target.startswith("https://"):
+        QMessageBox.critical(
+            None,
+            "Insecure link",
+            "Niruvi only installs from HTTPS URLs.\nRefusing: " + target,
+        )
+        return
+
+    import os
+    import tempfile
+
+    from niruvi.ui.wizard import InstallWizard
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".AppImage", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    worker = DownloadWorker(target, tmp_path, expected_sha256=sha256, seed_path="")
+    result: dict = {}
+
+    def _on_finished(dest: str):
+        result["done"] = dest
+        loop.quit()
+
+    def _on_error(err: str):
+        result["error"] = err
+        loop.quit()
+
+    worker.finished.connect(_on_finished)
+    worker.error.connect(_on_error)
+
+    from niruvi.core.worker import start_worker
+
+    start_worker(worker)
+
+    loop = QEventLoop()
+    loop.exec()
+
+    if result.get("error"):
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        QMessageBox.critical(None, "Download failed", str(result["error"]))
+        return
+
+    downloaded = result.get("done", tmp_path)
+    # Theme (if requested via ?theme=) was already applied to the theme engine
+    # before the download, so the wizard is constructed already themed.
+    wiz = InstallWizard(downloaded, None)
+    wiz.setWindowTitle("Install AppImage from the web")
+    try:
+        wiz.exec()
+    finally:
+        # The wizard copies the AppImage into the install directory; the
+        # downloaded temp file is never needed afterwards.
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def _resolve_path(raw: str) -> str:
+    if raw.startswith("file://"):
+        raw = unquote(urlparse(raw).path)
+    if "\0" in raw:
+        raise ValueError("Path contains null byte")
+    if ".." in raw.split(os.sep):
+        raise ValueError(f"Path contains '..' traversal: {raw}")
+    resolved = os.path.realpath(raw)
+    if "\0" in resolved:
+        raise ValueError("Resolved path contains null byte")
+    return resolved
+
+
+def _configure_logging():
+    """Configure application-wide logging to a rotating file + stderr.
+
+    Without this, the project's many ``logger.debug/info`` calls are silently
+    dropped (Python's "last resort" handler only prints WARNING+ to stderr).
+    """
+    log_dir = Path(os.path.join(get_data_dir(), "logs"))
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    log_file = log_dir / "niruvi.log"
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    try:
+        handlers.append(
+            logging.handlers.RotatingFileHandler(log_file, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+        )
+    except OSError:
+        pass
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        handlers=handlers,
+        force=True,
+    )
+
+
+def main():
+    # Silence benign Qt/KDE/FFmpeg log noise and disable FFmpeg hardware decode
+    # probing (triggers the libvdpau_nvidia.so warning) BEFORE QApplication.
+    configure_runtime_env()
+    _configure_logging()
+
+    parser = argparse.ArgumentParser(
+        prog="Niruvi",
+        description="Niruvi — Universal Linux AppImage Manager",
+    )
+    parser.add_argument("file", nargs="?", help="AppImage file to open/manage")
+    parser.add_argument(
+        "--open", metavar="PATH", help="Open an AppImage file in the manager (for file association handlers)"
+    )
+    parser.add_argument("--version", action="store_true", help="Show version and exit")
+    parser.add_argument("--install", metavar="PATH", help="Install an AppImage (silent, no GUI)")
+    parser.add_argument(
+        "--dest",
+        metavar="DIR",
+        help="Install destination directory (overrides install_dir + app name)",
+    )
+    parser.add_argument("--uninstall", metavar="APP", help="Uninstall an installed app")
+    parser.add_argument("--list", action="store_true", help="List installed apps (CLI)")
+    parser.add_argument("--update-all", action="store_true", help="Check all apps for updates (CLI)")
+    parser.add_argument("--update-check", metavar="APP", help="Check a specific app for updates (CLI)")
+    parser.add_argument("--is-installed", metavar="PATH", help="Check if an AppImage is installed (CLI)")
+    parser.add_argument(
+        "--run",
+        metavar="APP",
+        help="Launch an installed app headlessly, applying its sandbox config "
+        "(used by desktop entries; extra args go after '--')",
+    )
+    parser.add_argument(
+        "--unsandboxed",
+        action="store_true",
+        help="With --run: launch without applying the app's sandbox",
+    )
+    parser.add_argument("--mute", action="store_true", help="Disable all sound effects")
+    args, app_args = parser.parse_known_args()
+    if app_args and app_args[0] == "--":
+        app_args = app_args[1:]
+
+    if args.version:
+        print(f"Niruvi v{__version__}")
+        sys.exit(0)
+
+    os.makedirs(get_data_dir(), exist_ok=True)
+    os.makedirs(DEFAULT_INSTALL_DIR, exist_ok=True)
+    os.makedirs(DESKTOP_DIR, exist_ok=True)
+    load_settings()
+
+    if args.mute:
+        _settings["sound_effects_enabled"] = False
+
+    if args.install:
+        try:
+            raw = _resolve_path(args.install)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        if not os.path.exists(raw):
+            print(f"Error: file not found: {raw}", file=sys.stderr)
+            sys.exit(1)
+        dest = os.path.realpath(os.path.expanduser(args.dest)) if args.dest else None
+        cli_install(raw, dest)
+        sys.exit(0)
+
+    if args.uninstall:
+        registry = InstallationRegistry()
+        record = registry.lookup_by_name(args.uninstall)
+        if not record:
+            print(f"Error: not installed: {args.uninstall}", file=sys.stderr)
+            sys.exit(1)
+        if record.path and os.path.exists(record.path):
+            shutil.rmtree(record.path)
+        for suffix in (".home", ".config", ".prev"):
+            side_dir = record.path + suffix
+            if os.path.isdir(side_dir):
+                shutil.rmtree(side_dir, ignore_errors=True)
+        df = find_desktop_for_app(args.uninstall)
+        if df and os.path.exists(df):
+            os.remove(df)
+        sc = find_desktop_shortcut(args.uninstall)
+        if sc and os.path.exists(sc):
+            os.remove(sc)
+        registry.remove(args.uninstall)
+        registry.flush()
+        try:
+            refresh_desktop_database()
+        except Exception:
+            pass
+        print(f"Uninstalled: {args.uninstall}")
+        sys.exit(0)
+
+    if args.list:
+        registry = InstallationRegistry()
+        records = registry.get_all()
+        if not records:
+            print("No apps installed.")
+        else:
+            print(f"{'Name':<30} {'Version':<20} {'Path'}")
+            print("-" * 80)
+            for r in sorted(records, key=lambda x: x.name.lower()):
+                print(f"{r.name:<30} {r.version:<20} {r.path}")
+        sys.exit(0)
+
+    if args.update_all:
+        registry = InstallationRegistry()
+        records = registry.get_all()
+        apps = [(r.name, r.update_url, r.version) for r in records if r.update_url]
+        if not apps:
+            print("No apps with update URLs configured.")
+            sys.exit(0)
+        print(f"Checking {len(apps)} app(s) for updates...")
+        from niruvi.app.self_update import compare_versions
+        from niruvi.app.update_sources import resolve_update_source
+
+        updates = []
+        for name, url, ver in apps:
+            try:
+                info = resolve_update_source(url, ver)
+                if info and info.version and compare_versions(info.version, "gt", ver):
+                    updates.append((name, ver, info.version, info.download_url))
+                    print(f"  {name}: {ver} -> {info.version} (update available)")
+                else:
+                    print(f"  {name}: {ver} (up to date)")
+            except Exception as e:
+                print(f"  {name}: error - {e}")
+        if updates:
+            print(f"\n{len(updates)} update(s) available. Use 'niruvi' GUI to install them.")
+        else:
+            print("\nAll apps are up to date.")
+        sys.exit(0)
+
+    if args.update_check:
+        registry = InstallationRegistry()
+        record = registry.lookup_by_name(args.update_check)
+        if not record:
+            print(f"Error: '{args.update_check}' is not installed.", file=sys.stderr)
+            sys.exit(1)
+        if not record.update_url:
+            print(f"No update URL configured for '{args.update_check}'.")
+            sys.exit(0)
+        from niruvi.app.self_update import compare_versions
+        from niruvi.app.update_sources import resolve_update_source
+
+        try:
+            info = resolve_update_source(record.update_url, record.version)
+            if info and info.version and compare_versions(info.version, "gt", record.version):
+                print(f"{record.name}: {record.version} -> {info.version} (update available)")
+            else:
+                print(f"{record.name}: {record.version} (up to date)")
+        except Exception as e:
+            print(f"Error checking updates: {e}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+
+    if args.is_installed:
+        try:
+            raw = _resolve_path(args.is_installed)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        registry = InstallationRegistry()
+        record = registry.lookup_by_path(raw) or registry.lookup_by_name(Path(raw).stem)
+        if record:
+            print(f"Installed: {record.name} v{record.version}")
+            sys.exit(0)
+        else:
+            print("Not installed.")
+            sys.exit(1)
+
+    if args.run:
+        from niruvi.launcher import run_app_headless
+
+        sys.exit(run_app_headless(args.run, app_args))
+
+    # --- GUI path ---
+    _fix_qt_platform_path()
+    app = QApplication(sys.argv)
+    # Register the niruvi:// URL scheme handler (idempotent) so web
+    # "Install" buttons work after Niruvi is installed.
+    try:
+        register_scheme_handler()
+    except Exception as e:
+        logger.debug("Failed to register niruvi:// scheme handler: %s", e, exc_info=True)
+
+    # Use native system theme - let Qt follow KDE Breeze, GNOME Adwaita, etc.
+    # No custom theme engine or stylesheets applied
+    app.setApplicationName("Niruvi")
+    app.setApplicationVersion(__version__)
+
+    # Reclaim extraction trees/temp copies left behind by a previous crash or
+    # SIGKILL (they are otherwise only removed on a clean exit). Runs off the
+    # GUI thread and only touches stale, Niruvi-owned temp directories.
+    try:
+        from niruvi.core.storage import cleanup_stale_temp_dirs
+
+        threading.Thread(target=cleanup_stale_temp_dirs, daemon=True).start()
+    except Exception as e:
+        logger.debug("Startup storage cleanup failed to start: %s", e, exc_info=True)
+
+    # Set restrictive permissions on data directory
+    data_dir = get_data_dir()
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        os.chmod(data_dir, 0o700)
+    except OSError:
+        pass
+
+    # One resolver for the Niruvi logo, shared with the About dialog, settings,
+    # installer and the generated desktop entry.
+    from niruvi.desktop.brand import brand_icon
+
+    app.setWindowIcon(brand_icon())
+
+    file_to_process = None
+    src = args.open or args.file
+    if src and src.startswith("niruvi://"):
+        handle_web_install(src)
+    elif src:
+        try:
+            raw = _resolve_path(src)
+        except ValueError:
+            pass
+        else:
+            p = Path(raw)
+            if (p.is_file() and p.suffix.lower() in (".appimage", ".AppImage")) or p.is_file():
+                file_to_process = str(p)
+
+    if file_to_process:
+        process_appimage(file_to_process)
+
+    from niruvi.ui.manager import Niruvi
+
+    window = Niruvi()
+    window.show()
+    ret = app.exec()
+    window.close()
+    from niruvi.core.worker import wait_for_workers
+
+    wait_for_workers(10000)
+    for _ in range(3):
+        gc.collect()
+    for _attr in ("last_exc", "last_value", "last_traceback", "last_type"):
+        try:
+            setattr(sys, _attr, None)
+        except AttributeError:
+            pass
+    for _ in range(3):
+        gc.collect()
+    del window
+    del app
+    from niruvi.utils.sound_manager import cleanup as _sound_cleanup
+
+    _sound_cleanup()
+    sys.exit(ret)
+
+
+if __name__ == "__main__":
+    main()

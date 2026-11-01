@@ -1,0 +1,13 @@
+[Icon Theme]
+Name=Phosphor
+Comment=Bundled Phosphor icons for Niruvi AppImage Manager
+Inherits=hicolor
+Hidden=false
+Example=document-open
+
+[scalable/actions]
+Size=48
+Type=Scalable
+Context=Actions
+MinSize=16
+MaxSize=256
