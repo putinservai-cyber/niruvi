@@ -52,6 +52,7 @@ from niruvi.ui.settings import get_settings
 from niruvi.utils import get_icon
 from niruvi.utils import icon_pixmap as make_icon_pixmap
 from niruvi.utils.sound_manager import play as play_sound
+from niruvi.utils.theme_engine import ThemeMode, get_theme_engine
 
 logger = logging.getLogger(__name__)
 
@@ -359,9 +360,7 @@ class DestinationPage(QWizardPage):
 
     def _set_space_label(self, text: str, token: str | None) -> None:
         self.space_label.setText(text)
-        if token == "error":
-            self.space_label.setStyleSheet("color: palette(window-text); font-size: 11px; font-weight: 600;")
-        elif token == "warning":
+        if token == "error" or token == "warning":
             self.space_label.setStyleSheet("color: palette(window-text); font-size: 11px; font-weight: 600;")
         else:
             self.space_label.setStyleSheet("color: palette(placeholder-text); font-size: 11px;")

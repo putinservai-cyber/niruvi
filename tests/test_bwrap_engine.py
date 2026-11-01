@@ -8,8 +8,14 @@ import os
 
 import pytest
 
+from niruvi.core.bubblewrap_backend import (
+    BubblewrapSandbox,
+    LaunchRefusedError,
+    build_bwrap_args,
+    build_bwrap_sandbox,
+)
 from niruvi.core.capability_detector import report
-from niruvi.core.policy import preset_default
+from niruvi.core.policy import FsGrant, preset_default
 from niruvi.core.policy_engine import (
     filter_environment,
     permission_states,
@@ -17,13 +23,6 @@ from niruvi.core.policy_engine import (
     validate_policy,
 )
 from niruvi.core.profiles import build_profile
-from niruvi.core.bubblewrap_backend import (
-    BubblewrapSandbox,
-    LaunchRefused,
-    build_bwrap_args,
-    build_bwrap_sandbox,
-)
-from niruvi.core.policy import FsGrant
 
 
 def _bwrap_usable() -> bool:
@@ -38,6 +37,7 @@ BWRAP = pytest.mark.skipif(not _bwrap_usable(), reason="bubblewrap not available
 
 # ── capability_detector ───────────────────────────────────────────────
 
+
 class TestCapabilityDetector:
     def test_report_shape(self):
         caps = report()
@@ -51,6 +51,7 @@ class TestCapabilityDetector:
 
 
 # ── build_bwrap_args ─────────────────────────────────────────────────
+
 
 class TestPlanBuilding:
     def test_strict_profile_blocks_network(self):
@@ -86,7 +87,7 @@ class TestPlanBuilding:
         policy = preset_default("T", "bwrap")
         policy.custom_paths = [FsGrant(path=tmpf, mode="ro")]
         plan = build_bwrap_args(policy, "/tmp", {})
-        assert any("--ro-bind" == plan.argv[i] and tmpf == plan.argv[i + 2] for i in range(len(plan.argv) - 2))
+        assert any(plan.argv[i] == "--ro-bind" and tmpf == plan.argv[i + 2] for i in range(len(plan.argv) - 2))
 
     def test_clearenv_and_setenv(self):
         plan = build_bwrap_args(preset_default("T", "bwrap"), "/tmp", {"HOME": "/tmp/fakehome"})
@@ -111,6 +112,7 @@ class TestPlanBuilding:
 
 
 # ── BubblewrapSandbox fail-closed ────────────────────────────────────
+
 
 class TestSandboxRefusals:
     def _caps_without(self, *ns):
@@ -147,11 +149,12 @@ class TestSandboxRefusals:
         caps = self._caps_without()
         plan = build_bwrap_args(build_profile("strict", "T", "bwrap"), "/tmp", {}, caps=caps)
         sb = BubblewrapSandbox(plan, caps)
-        with pytest.raises(LaunchRefused):
+        with pytest.raises(LaunchRefusedError):
             sb.run(["/bin/true"])
 
 
 # ── real bwrap integration ───────────────────────────────────────────
+
 
 @BWRAP
 class TestRealBwrap:
@@ -173,6 +176,7 @@ class TestRealBwrap:
 
 
 # ── policy engine ────────────────────────────────────────────────────
+
 
 class TestPolicyEngine:
     def test_filter_strips_blocked_channels(self):
@@ -224,6 +228,7 @@ class _FakeBackend:
 
 
 # ── sandbox diagnostics ──────────────────────────────────────────────
+
 
 @BWRAP
 class TestDiagnostics:

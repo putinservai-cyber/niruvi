@@ -1,8 +1,8 @@
 """Profile correctness: presets, migration, honest deltas, DEVELOPER guard."""
 
 from niruvi.core.policy import (
-    POLICY_SCHEMA_VERSION,
     DEVICE_KEYS,
+    POLICY_SCHEMA_VERSION,
     SandboxPolicy,
     preset_default,
 )

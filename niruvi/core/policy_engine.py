@@ -5,7 +5,7 @@ Two jobs:
 1.  ``validate`` / ``plan``: turn a :class:`SandboxPolicy` into the enforced
     launch plan for the selected backend (Bubblewrap first class; Firejail
     optional).  Every translation failure is explicit: the engine raises
-    ``PolicyInfeasible`` and refuses to guess a weaker policy that still
+    ``PolicyInfeasibleError`` and refuses to guess a weaker policy that still
     passes.  Nothing here executes commands.
 2.  ``filter_environment`` / ``permission_states``: the honest data for the
     UI.  ``permission_states`` returns, for every configurable permission, the
@@ -29,11 +29,11 @@ from niruvi.core.policy import (
 logger = logging.getLogger(__name__)
 
 
-class PolicyInfeasible(Exception):
+class PolicyInfeasibleError(Exception):
     """The policy cannot be translated into a working launch plan."""
 
 
-class PolicyValidationError(PolicyInfeasible):
+class PolicyValidationError(PolicyInfeasibleError):
     pass
 
 
@@ -67,7 +67,7 @@ def filter_environment(policy: SandboxPolicy, env: dict) -> dict:
     variable is still stripped so a blocked channel is also *invisible*, not
     merely unreachable.
     """
-    from niruvi.core.sandbox import ALWAYS_KEEP_ENV, HARDENED_ENV, _REQUIRED_ENV
+    from niruvi.core.sandbox import _REQUIRED_ENV, ALWAYS_KEEP_ENV, HARDENED_ENV
 
     keep = set(ALWAYS_KEEP_ENV) | set(_REQUIRED_ENV)
     ipc = policy.ipc or {}
@@ -129,15 +129,12 @@ def permission_states(
             return "unsupported"
         return cap.level
 
-    def row(pid: str, title: str, group: str, control: str,
-            requested: bool, approved: bool, configured: bool):
+    def row(pid: str, title: str, group: str, control: str, requested: bool, approved: bool, configured: bool):
         level = cap_level(control)
         enforced = configured and level in ("supported", "partial")
         if not requested:
             state = "not_requested"
-        elif not approved:
-            state = "denied"
-        elif not configured:
+        elif not approved or not configured:
             state = "denied"
         elif level == "unsupported":
             state = "unsupported"
@@ -172,27 +169,47 @@ def permission_states(
             }
         )
 
-    from niruvi.core.policy import _DIR_KEYS  # noqa: F401 (internal)
+    from niruvi.core.policy import _DIR_KEYS
 
     file_rows = [
-        ("home", "Home directory", "FILES", "filesystem", policy.home_access != "none",
-         policy.home_access != "none", bool(policy.home_access and policy.home_access != "none")),
+        (
+            "home",
+            "Home directory",
+            "FILES",
+            "filesystem",
+            policy.home_access != "none",
+            policy.home_access != "none",
+            bool(policy.home_access and policy.home_access != "none"),
+        ),
     ]
     for key in _DIR_KEYS:
         mode = policy.dirs.get(key, "none")
         file_rows.append(
-            (f"dir_{key}", key.title() + " folder", "FILES", "filesystem",
-             mode != "none", mode != "none", mode != "none")
+            (
+                f"dir_{key}",
+                key.title() + " folder",
+                "FILES",
+                "filesystem",
+                mode != "none",
+                mode != "none",
+                mode != "none",
+            )
         )
     file_rows.append(
-        ("removable", "Removable storage", "FILES", "filesystem",
-         policy.removable != "none", policy.removable != "none", policy.removable != "none")
+        (
+            "removable",
+            "Removable storage",
+            "FILES",
+            "filesystem",
+            policy.removable != "none",
+            policy.removable != "none",
+            policy.removable != "none",
+        )
     )
     for pid, title, group, control, requested, approved, configured in file_rows:
         row(pid, title, group, control, requested, approved, configured)
 
-    row("network", "Network access", "NETWORK", "network",
-        True, policy.network, policy.network)
+    row("network", "Network access", "NETWORK", "network", True, policy.network, policy.network)
 
     titles = {
         "gpu": "Graphics acceleration",
@@ -225,8 +242,13 @@ def permission_states(
     display_ok = bool(policy.ipc.get("wayland", False) or policy.ipc.get("x11", False))
     for key, title in desktop_titles.items():
         row(
-            f"desktop_{key}", title, "DESKTOP INTEGRATION", "ipc",
-            True, display_ok, display_ok,
+            f"desktop_{key}",
+            title,
+            "DESKTOP INTEGRATION",
+            "ipc",
+            True,
+            display_ok,
+            display_ok,
         )
 
     sys_titles = {
@@ -237,7 +259,15 @@ def permission_states(
     }
     for key in ("private_tmp", "hardening", "seccomp", "use_namespace"):
         value = bool(getattr(policy, key, False))
-        row(f"system_{key}", sys_titles[key], "SYSTEM", "resources" if key in ("hardening", "seccomp") else "ipc", True, value, value)
+        row(
+            f"system_{key}",
+            sys_titles[key],
+            "SYSTEM",
+            "resources" if key in ("hardening", "seccomp") else "ipc",
+            True,
+            value,
+            value,
+        )
 
     return states
 
@@ -262,7 +292,8 @@ def summary_state(states: list[dict]) -> str:
     decoration layer.
     """
     enforceable = [
-        s for s in states
+        s
+        for s in states
         if s["configured"] and s["explanation"]  # every row participates
     ]
     any_failed = any(s["state"] == "failed" for s in states)

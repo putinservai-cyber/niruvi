@@ -573,7 +573,7 @@ class _MnemonicCleaner(QObject):
         super().__init__(parent)
         self._done = set()
 
-    def eventFilter(self, obj, event):  # noqa: N802 (Qt signature)
+    def eventFilter(self, obj, event):
         if event.type() in (QEvent.Type.Show, QEvent.Type.PolishRequest, QEvent.Type.Polish):
             widget = obj
             if isinstance(widget, QAbstractButton) and not widget.property(_MNEMONIC_DONE):

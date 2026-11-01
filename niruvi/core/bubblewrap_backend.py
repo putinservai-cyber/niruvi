@@ -27,7 +27,7 @@ Security notes kept here on purpose:
 * A mounted socket is not just a file: Wayland/X11/D-Bus/pulse sockets carry
   compositor/portal/service authority.  Every such bind gets a plan note.
 * Failures are fail-closed: :class:`BubblewrapSandbox` raises
-  :class:`LaunchRefused` instead of degrading — it never launches
+  :class:`LaunchRefusedError` instead of degrading — it never launches
   unsandboxed.  A setuid bubblewrap binary is refused outright (it would
   grant arbitrary mount privileges the policy cannot audit).
 """
@@ -74,7 +74,7 @@ def bwrap_program() -> str:
     return "bwrap"
 
 
-class LaunchRefused(Exception):
+class LaunchRefusedError(Exception):
     """The sandbox cannot honour the requested policy (fail-closed)."""
 
 
@@ -203,13 +203,9 @@ def _devices(plan: BwrapPlan, policy: SandboxPolicy) -> None:
     if os.path.isdir("/dev/snd") and (want("audio") or want("microphone")):
         dev_bind("/dev/snd")
         if want("audio") and not want("microphone"):
-            plan.notes.append(
-                "Microphone restriction is partial: ALSA nodes carry both output and capture."
-            )
+            plan.notes.append("Microphone restriction is partial: ALSA nodes carry both output and capture.")
         elif want("microphone") and not want("audio"):
-            plan.notes.append(
-                "Audio output stays reachable while the microphone is granted (shared ALSA nodes)."
-            )
+            plan.notes.append("Audio output stays reachable while the microphone is granted (shared ALSA nodes).")
     if want("camera"):
         for video_node in sorted(glob.glob("/dev/video*")):
             if os.path.exists(video_node):
@@ -240,9 +236,7 @@ def _runtime_socket_bindings(plan: BwrapPlan, policy: SandboxPolicy, env: dict, 
         for sock in socks:
             bind_rt(os.path.basename(sock))
         if socks:
-            plan.notes.append(
-                "Mounted socket: Wayland grants full compositor authority, not just file access."
-            )
+            plan.notes.append("Mounted socket: Wayland grants full compositor authority, not just file access.")
     if x11_ok and os.path.isdir(os.path.join(runtime_dir, ".X11-unix")):
         bind_rt(".X11-unix")
         plan.notes.append(
@@ -257,14 +251,10 @@ def _runtime_socket_bindings(plan: BwrapPlan, policy: SandboxPolicy, env: dict, 
             bus_path = addr.split("unix:path=", 1)[1].split(",", 1)[0]
             if bus_path.startswith(runtime_dir) and os.path.exists(bus_path):
                 _add(plan, ["--bind", bus_path, bus_path])
-                plan.notes.append(
-                    "Mounted socket: session D-Bus opens notification/portal/tray service authority."
-                )
+                plan.notes.append("Mounted socket: session D-Bus opens notification/portal/tray service authority.")
     if ipc.get("dbus_system", False) and os.path.isdir("/run/dbus"):
         _add(plan, ["--ro-bind", "/run/dbus", "/run/dbus"])
-        plan.notes.append(
-            "Mounted socket: system bus exposes control over udisks, NetworkManager and peers."
-        )
+        plan.notes.append("Mounted socket: system bus exposes control over udisks, NetworkManager and peers.")
     if (ipc.get("printing", False) or dbus_ok) and (wayland_ok or x11_ok):
         # Portals serve file dialogs / screenshot helpers when display is allowed.
         bind_rt("portal")
@@ -314,7 +304,7 @@ def build_bwrap_args(
     plan = BwrapPlan()
     home = env.get("HOME") or home or os.path.expanduser("~")
 
-    flags, skipped, notes = namespace_flags(policy, caps)
+    flags, _skipped, notes = namespace_flags(policy, caps)
     plan.namespaces = [f.lstrip("-") for f in flags]
     plan.notes.extend(notes)
     _add(plan, ["--new-session", "--die-with-parent"])  # always
@@ -398,11 +388,9 @@ def build_bwrap_args(
             else:
                 _add(plan, ["--ro-bind", usable_home, usable_home])
             _add(plan, ["--bind", usable_home, home])
-        plan.notes.append(f"Home policy: {policy.home_access}" + ("" if policy.portable_home else ""))
+        plan.notes.append(f"Home policy: {policy.home_access}")
         if policy.home_access != "none" and usable_home is not None:
-            plan.notes.append(
-                "HOME is mounted at its real host path; the app sees the real home path."
-            )
+            plan.notes.append("HOME is mounted at its real host path; the app sees the real home path.")
 
     if policy.portable_config and app_dir:
         portable_cfg = os.path.join(app_dir, ".config")
@@ -448,7 +436,6 @@ def build_bwrap_args(
             _add(plan, ["--ro-bind", real, real])
         plan.notes.append(f"Custom grant {real} ({grant.mode}).")
 
-
     _env_setenv(plan, policy, env, home)
     _add(plan, ["--chdir", app_dir] if app_dir and os.path.isdir(app_dir) else [])
 
@@ -474,13 +461,9 @@ class BubblewrapSandbox:
         caps = self._caps or {}
         bwrap_info = caps.get("bubblewrap", {})
         if not bwrap_info.get("available"):
-            refusals.append(
-                f"bubblewrap not usable: {bwrap_info.get('error') or 'not found in PATH'}"
-            )
+            refusals.append(f"bubblewrap not usable: {bwrap_info.get('error') or 'not found in PATH'}")
         elif self._is_setuid():
-            refusals.append(
-                "bubblewrap has the setuid bit set: this build cannot be audited, refusing to launch."
-            )
+            refusals.append("bubblewrap has the setuid bit set: this build cannot be audited, refusing to launch.")
         namespaces = caps.get("namespaces", {})
         if not (namespaces.get("user") or {}).get("available"):
             refusals.append(
@@ -494,9 +477,9 @@ class BubblewrapSandbox:
                 "cannot be established. Failing closed instead of launching networked."
             )
         if self.plan.refused:
+            refused_list = ", ".join(self.plan.refused)
             refusals.append(
-                "%d file-system grant(s) failed path validation (%s); failing closed instead of "
-                "launching with a weaker subset." % (len(self.plan.refused), ", ".join(self.plan.refused))
+                f"{len(self.plan.refused)} file-system grant(s) failed path validation ({refused_list}); failing closed instead of launching with a weaker subset."
             )
         return refusals
 
@@ -518,7 +501,7 @@ class BubblewrapSandbox:
     ) -> subprocess.Popen:
         refusals = self.check_prerequisites()
         if refusals:
-            raise LaunchRefused("; ".join(refusals))
+            raise LaunchRefusedError("; ".join(refusals))
         try:
             return subprocess.Popen(
                 [*self.plan.argv, *cmd],
@@ -528,9 +511,9 @@ class BubblewrapSandbox:
                 start_new_session=True,
             )
         except FileNotFoundError as e:
-            raise LaunchRefused(f"bubblewrap disappeared from PATH: {e}") from e
+            raise LaunchRefusedError(f"bubblewrap disappeared from PATH: {e}") from e
         except OSError as e:
-            raise LaunchRefused(f"bwrap could not start: {e}") from e
+            raise LaunchRefusedError(f"bwrap could not start: {e}") from e
 
     def run_probe(self, cmd: list[str], timeout: float = 30) -> subprocess.CompletedProcess:
         """Run a command inside this plan's sandbox (used for verification)."""

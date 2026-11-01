@@ -82,10 +82,7 @@ def _under_scratch_dir(path: str) -> bool:
         path = os.path.realpath(path)
     except OSError:
         return False
-    for scratch in SCRATCH_TARGETS:
-        if path == scratch or path.startswith(scratch + os.sep):
-            return True
-    return False
+    return any(path == scratch or path.startswith(scratch + os.sep) for scratch in SCRATCH_TARGETS)
 
 
 def resolve_xdg(path: str) -> str:

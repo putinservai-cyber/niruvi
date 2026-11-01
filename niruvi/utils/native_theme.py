@@ -4,8 +4,7 @@ Provides palette colors, standard freedesktop icon lookups, and styling
 helpers that let Niruvi follow the user's system theme and desktop conventions.
 """
 
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QColor, QIcon, QPalette, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPalette
 from PyQt6.QtWidgets import QApplication
 
 # Standard spacing and font tokens conforming to KDE/GTK HIG
@@ -135,7 +134,7 @@ _FREEDESKTOP_FALLBACKS: dict[str, tuple[str, ...]] = {
     "bug": ("tools-report-bug", "dialog-warning"),
     "check": ("emblem-ok", "dialog-ok", "dialog-ok-apply"),
     "database": ("drive-harddisk",),
-    "hard-drive": ("drive-harddisk",),
+    "hard-drive": ("drive-harddisk", "hard-drive"),
     "identification-card": ("dialog-information", "user-identity"),
     "scroll": ("text-x-script", "format-justify-left", "document-properties"),
     "arrow-right": ("go-next",),
@@ -147,16 +146,16 @@ _FREEDESKTOP_FALLBACKS: dict[str, tuple[str, ...]] = {
     "starred": ("emblem-favorite",),
     "favorites": ("emblem-favorite",),
     "archive": ("application-x-archive",),
-    "download": ("folder-download",),
-    "dialog-info": ("dialog-information",),
-    "clipboard-copy": ("edit-copy",),
+    "download": ("folder-download", "download"),
+    "dialog-info": ("dialog-information", "dialog-info"),
+    "clipboard-copy": ("edit-copy", "clipboard-copy"),
     "emblem-favorite-symbolic": ("emblem-favorite",),
     "go-next-symbolic": ("go-next",),
     "edit-copy-symbolic": ("edit-copy",),
     "list-add": ("document-new", "list-add"),
     "document-open": ("document-open",),
     "document-save": ("document-save",),
-    "document-save-as": ("document-save-as",),
+    "document-save-as": ("document-save-as", "document-save"),
     "edit-delete": ("edit-delete", "user-trash"),
     "view-refresh": ("view-refresh",),
     "application-exit": ("application-exit", "system-log-out"),
@@ -164,7 +163,7 @@ _FREEDESKTOP_FALLBACKS: dict[str, tuple[str, ...]] = {
     "applications-internet": ("applications-internet", "folder-download", "emblem-downloads"),
     "emblem-system": ("emblem-system", "applications-utilities", "document-export"),
     "computer": ("computer", "video-display", "system-search"),
-    "drive-harddisk": ("drive-harddisk", "folder"),
+    "drive-harddisk": ("drive-harddisk",),
     "security-high": ("security-high", "preferences-system"),
     "emblem-downloads": ("emblem-downloads", "system-software-update", "download", "document-save"),
     "network-server": ("network-server", "emblem-downloads"),
@@ -193,26 +192,6 @@ _FREEDESKTOP_FALLBACKS: dict[str, tuple[str, ...]] = {
     "emblem-warning": ("emblem-warning", "dialog-warning"),
     "edit-find": ("edit-find", "system-search"),
     "document-new": ("document-new", "list-add"),
-    "edit-copy-symbolic": ("edit-copy",),
-    "go-next-symbolic": ("go-next",),
-    "emblem-favorite-symbolic": ("emblem-favorite",),
-    "clipboard-copy": ("clipboard-copy", "edit-copy"),
-    "dialog-info": ("dialog-information",),
-    "view-restore": ("view-restore", "go-home"),
-    "emblem-photos": ("emblem-photos", "image-x-generic"),
-    "image-x-generic": ("image-x-generic",),
-    "tools-report-bug": ("tools-report-bug", "bug", "dialog-warning"),
-    "document-properties": ("document-properties",),
-    "folder-download": ("folder-download", "applications-internet", "emblem-downloads"),
-    "applications-utilities": ("applications-utilities", "emblem-system"),
-    "hard-drive": ("drive-harddisk", "hard-drive"),
-    "download": ("folder-download", "download"),
-    "applications-system": ("applications-system",),
-    "text-x-script": ("text-x-script", "format-justify-left", "document-properties"),
-    "emblem-default": ("emblem-default", "dialog-ok-apply", "emblem-ok"),
-    "document-save-as": ("document-save-as", "document-save"),
-    "list-remove": ("list-remove", "edit-delete"),
-    "video-display": ("video-display", "computer"),
     "go-home": ("go-home", "view-restore"),
 }
 

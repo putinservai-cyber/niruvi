@@ -68,7 +68,6 @@ from niruvi.desktop.installation_registry import InstallationRegistry
 from niruvi.ui.permissions_page import PermissionsPage
 from niruvi.ui.security_page import SecurityPage
 from niruvi.ui.toggle_switch import ToggleSwitch
-
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.sound_manager import play_and
 from niruvi.utils.styles import card_style, tab_page_style
@@ -576,9 +575,7 @@ class AppInfoDialog(QDialog):
         self._storage_inner.addLayout(self._storage_rows)
 
         storage_btn_row = QHBoxLayout()
-        self.btn_cleanup_temp = QPushButton(
-            get_icon("view-restore", "edit-clear"), "Clean Up Temporary Files"
-        )
+        self.btn_cleanup_temp = QPushButton(get_icon("view-restore", "edit-clear"), "Clean Up Temporary Files")
         self.btn_cleanup_temp.setToolTip(
             "Remove Niruvi temporary files and staging folders left behind by crashed or interrupted runs."
         )
@@ -599,7 +596,6 @@ class AppInfoDialog(QDialog):
         self._storage_worker = StorageStatsWorker(self._app_name, app_dir)
         self._storage_worker.done.connect(self._on_storage_report)
         start_worker(self._storage_worker)
-
 
         update_layout = pages[4].layout()
 
@@ -716,8 +712,7 @@ class AppInfoDialog(QDialog):
         rollback_v.addWidget(rollback_desc)
         if not has_prev:
             rollback_desc.setText(
-                "No previous version backup is available yet. "
-                "A backup is created automatically before each update."
+                "No previous version backup is available yet. A backup is created automatically before each update."
             )
         update_layout.addWidget(rollback_group)
 
@@ -1298,9 +1293,7 @@ class AppInfoDialog(QDialog):
             row.setStyleSheet(style("font-size: 12px;"))
             self._storage_rows.addWidget(row)
         if report.temp_dirs:
-            row = QLabel(
-                "Niruvi temporary files: " + format_size(report.temp_total) + " system-wide"
-            )
+            row = QLabel("Niruvi temporary files: " + format_size(report.temp_total) + " system-wide")
             row.setStyleSheet(style("font-size: 12px;"))
             self._storage_rows.addWidget(row)
         self._storage_summary.setText(
@@ -1325,9 +1318,7 @@ class AppInfoDialog(QDialog):
         try:
             removed, reclaimed = cleanup_stale_temp_dirs()
             play_sound("success" if removed else "info")
-            self._storage_summary.setText(
-                f"Removed {removed} temp folder(s); reclaimed {format_size(reclaimed)}."
-            )
+            self._storage_summary.setText(f"Removed {removed} temp folder(s); reclaimed {format_size(reclaimed)}.")
             self._on_storage_report(self._storage_report)
         except Exception as e:
             play_sound("error")
@@ -1443,8 +1434,7 @@ class AppInfoDialog(QDialog):
             self.files_status.setText("This folder is empty.")
             return
         self.files_status.setText(
-            f"{top} item(s) at the top level · calculating total size… "
-            "Expand a folder to load its contents."
+            f"{top} item(s) at the top level · calculating total size… Expand a folder to load its contents."
         )
         self._fs_worker = DirectoryStatsWorker(app_dir)
         self._fs_worker.done.connect(lambda count, total, n=top: self._on_files_stats(n, count, total))

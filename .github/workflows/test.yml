@@ -54,8 +54,11 @@ jobs:
 
 
       - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           python -m pytest tests/ -v --tb=short \
+            --timeout=60 \
             --junitxml=junit-${{ matrix.python-version }}.xml
 
 

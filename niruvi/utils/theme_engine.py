@@ -9,7 +9,7 @@ import logging
 from enum import Enum, auto
 from typing import Any
 
-from PyQt6.QtCore import QObject, pyqtSignal, Qt
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class ThemeMode(Enum):
     """Theme mode enum kept for backward compatibility."""
+
     LIGHT = auto()
     DARK = auto()
     AUTO = auto()
@@ -66,8 +67,10 @@ class _NativeThemeEngine(QObject):
         # Qt doesn't have a built-in way to check this, so we check the environment
         # and X11/Wayland settings
         import os
-        return os.environ.get("QT_AUTO_SCREEN_SCALE_FACTOR") == "1" or \
-               os.environ.get("GTK_CSD") == "0"  # Rough heuristic
+
+        return (
+            os.environ.get("QT_AUTO_SCREEN_SCALE_FACTOR") == "1" or os.environ.get("GTK_CSD") == "0"
+        )  # Rough heuristic
 
 
 # Global theme engine instance

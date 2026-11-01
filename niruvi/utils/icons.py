@@ -1,12 +1,11 @@
 """Centralized icon management with theme-aware Fluent UI System Icons."""
 
-import os
 from pathlib import Path
-from typing import Optional
 
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
+
+from niruvi.utils.icon_aliases import _FREEDESKTOP_ALIASES
 
 
 # Get the asset icons directory
@@ -17,7 +16,7 @@ def _get_asset_icons_dir() -> Path:
     return project_root / "asset" / "icons" / "fluent"
 
 
-_ASSET_ICONS_DIR: Optional[Path] = None
+_ASSET_ICONS_DIR: Path | None = None
 _CURRENT_THEME: str = "auto"  # "auto", "light", "dark"
 _ICON_CACHE: dict[str, QIcon] = {}
 
@@ -53,7 +52,7 @@ def _get_theme_icon_dir() -> Path:
     return _ASSET_ICONS_DIR / theme
 
 
-def _load_icon_direct(icon_name: str) -> Optional[QIcon]:
+def _load_icon_direct(icon_name: str) -> QIcon | None:
     """Load an icon directly from the current theme directory.
 
     Fluent icons are organized flat in light/ and dark/ directories.
@@ -127,17 +126,17 @@ def _load_icon_with_fallbacks(icon_name: str) -> QIcon:
 
 def get_folder_icon(name: str = "folder", size: int = 16) -> QIcon:
     """Get a folder icon for the current theme.
-    
+
     Args:
         name: Icon name (e.g., 'folder', 'folder-open', 'folder-new')
         size: Desired icon size (used for rendering)
-    
+
     Returns:
         QIcon for the folder, never null
     """
     cache_key = f"{name}:{size}:{_resolve_theme()}"
 
-    if cache_key in _ICON_CACHE and _ICON_CACHE[cache_key]:
+    if _ICON_CACHE.get(cache_key):
         return _ICON_CACHE[cache_key][0] if isinstance(_ICON_CACHE[cache_key], dict) else _ICON_CACHE[cache_key]
 
     _init_asset_icons_dir()
@@ -182,14 +181,14 @@ def get_folder_new_icon(size: int = 16) -> QIcon:
 
 def set_theme(theme: str) -> None:
     """Set the application theme and refresh icons.
-    
+
     Args:
         theme: "auto", "light", or "dark"
     """
     global _CURRENT_THEME, _ICON_CACHE
     if theme not in ("auto", "light", "dark"):
         raise ValueError(f"Invalid theme: {theme}. Must be 'auto', 'light', or 'dark'")
-    
+
     _CURRENT_THEME = theme
     _ICON_CACHE.clear()
 

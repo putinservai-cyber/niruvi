@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
 from niruvi.core.backends import (
     SUPPORTED,
     UNSUPPORTED,
-    available_backends,
     get_backend,
 )
 from niruvi.core.policy import (
@@ -36,11 +35,11 @@ from niruvi.core.policy import (
 )
 from niruvi.core.policy_store import PolicyStore, resolve_policy
 from niruvi.desktop.installation_registry import InstallationRegistry
+from niruvi.ui.toggle_switch import ToggleSwitch
 from niruvi.utils import get_icon, icon_pixmap
 from niruvi.utils.sound_manager import play as play_sound
 from niruvi.utils.styles import placeholder_style
 from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING
-from niruvi.ui.toggle_switch import ToggleSwitch
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +295,9 @@ class PermissionsPage(QWidget):
         self._home_combo = combo = self._mode_combo()
         combo.currentIndexChanged.connect(self._on_field_changed)
         self._home_entry = self._add_entry(
-            cat, "go-home", "Home directory",
+            cat,
+            "go-home",
+            "Home directory",
             "How much of your home folder the app can see and change.",
             combo,
         )
@@ -306,13 +307,18 @@ class PermissionsPage(QWidget):
             dir_combo.currentIndexChanged.connect(self._on_field_changed)
             setattr(self, f"_dir_combo_{key}", dir_combo)
             self._dir_entries[key] = self._add_entry(
-                cat, icon, f"{title} folder", "Grants access to this folder.",
+                cat,
+                icon,
+                f"{title} folder",
+                "Grants access to this folder.",
                 dir_combo,
             )
         self._removable_combo = self._mode_combo()
         self._removable_combo.currentIndexChanged.connect(self._on_field_changed)
         self._removable_entry = self._add_entry(
-            cat, "media-removable", "Removable storage",
+            cat,
+            "media-removable",
+            "Removable storage",
             "USB sticks, SD cards and other mounted removable media.",
             self._removable_combo,
         )
@@ -325,7 +331,9 @@ class PermissionsPage(QWidget):
         self._network_toggle = ToggleSwitch(self)
         self._network_toggle.toggled.connect(self._on_field_changed)
         self._network_entry = self._add_entry(
-            cat, "network-wired", "Network access",
+            cat,
+            "network-wired",
+            "Network access",
             "Internet and local-network reachability.",
             self._network_toggle,
         )
@@ -350,14 +358,18 @@ class PermissionsPage(QWidget):
         self._hardening_toggle = ToggleSwitch(self)
         self._hardening_toggle.toggled.connect(self._on_field_changed)
         self._hardening_entry = self._add_entry(
-            cat, "security-high", "Process hardening",
+            cat,
+            "security-high",
+            "Process hardening",
             "Resource limits, disabled ptrace, malloc hardening.",
             self._hardening_toggle,
         )
         self._private_tmp_toggle = ToggleSwitch(self)
         self._private_tmp_toggle.toggled.connect(self._on_field_changed)
         self._private_tmp_entry = self._add_entry(
-            cat, "folder-temp", "Private /tmp",
+            cat,
+            "folder-temp",
+            "Private /tmp",
             "Give the app its own empty /tmp.",
             self._private_tmp_toggle,
         )
@@ -429,10 +441,10 @@ class PermissionsPage(QWidget):
 
         self._gate_entry(self._network_entry, master, network_cap)
 
-        for key, entry in self._device_entries.items():
+        for _key, entry in self._device_entries.items():
             self._gate_entry(entry, master, dev_cap)
 
-        for key, entry in self._ipc_entries.items():
+        for _key, entry in self._ipc_entries.items():
             self._gate_entry(entry, master, ipc_cap)
 
         self._gate_entry(self._hardening_entry, master, res_cap)
@@ -453,7 +465,9 @@ class PermissionsPage(QWidget):
             text = f"— {tweak}: {detail}"
         elif detail:
             text = f"{text}: {detail}"
-        entry.set_gating(cap.level != UNSUPPORTED, text if not tweak else tweak, _LEVEL_COLOR.get(cap.level, COLOR_WARNING))
+        entry.set_gating(
+            cap.level != UNSUPPORTED, tweak if tweak else text, _LEVEL_COLOR.get(cap.level, COLOR_WARNING)
+        )
 
     def _on_master_toggled(self, checked: bool):
         self._on_field_changed()
@@ -534,9 +548,7 @@ class PermissionsPage(QWidget):
         self._verify_btn.setEnabled(False)
         self._verify_btn.setText("Verifying…")
         try:
-            self._verification_cache = verify_sandbox(
-                policy, self._info.get("path", ""), {}
-            )
+            self._verification_cache = verify_sandbox(policy, self._info.get("path", ""), {})
         except Exception as e:
             logger.debug("verification crashed: %s", e)
             self._verification_cache = None
@@ -582,7 +594,9 @@ class PermissionsPage(QWidget):
             msg += "\n\nDangerous:\n" + "\n".join(risk)
         play_sound("click")
         reply = QMessageBox.question(
-            self, "Apply Changes", msg,
+            self,
+            "Apply Changes",
+            msg,
             QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Apply,
         )

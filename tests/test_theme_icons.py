@@ -1,9 +1,8 @@
 """Tests for native system icon integration."""
 
+import glob
 import os
 import re
-import glob
-import pytest
 
 from PyQt6.QtGui import QIcon
 
@@ -84,7 +83,7 @@ def _ui_icon_names():
     names = set()
     for path in glob.glob("niruvi/ui/*.py") + glob.glob("niruvi/utils/*.py"):
         src = open(path).read()
-        for m in re.finditer(r'get_icon\(([^)]*)\)', src):
+        for m in re.finditer(r"get_icon\(([^)]*)\)", src):
             for sm in re.finditer(r'"([a-z0-9-]+)"', m.group(1)):
                 names.add(sm.group(1))
     return names
@@ -92,11 +91,12 @@ def _ui_icon_names():
 
 def test_every_ui_icon_resolves(qapp):
     """Test that every icon name used in the UI resolves to a QIcon object.
-    
+
     Note: In headless environments, some icons may not be available from system theme.
     This test verifies the icon resolution mechanism works, not that all icons exist.
     """
     from niruvi.utils import get_icon
+
     resolved = 0
     for name in _ui_icon_names():
         icon = get_icon(name)

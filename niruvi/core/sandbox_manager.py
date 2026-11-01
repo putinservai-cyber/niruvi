@@ -24,15 +24,15 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass, field
 
+from niruvi.core import sandbox_audit
 from niruvi.core.backends import get_backend
 from niruvi.core.policy import SandboxPolicy
 from niruvi.core.policy_engine import filter_environment, permission_states, summary_state
 from niruvi.core.profiles import DEFAULT_PROFILE_NAME, build_profile
-from niruvi.core import sandbox_audit
 
 logger = logging.getLogger(__name__)
 
-from niruvi.core.bubblewrap_backend import LaunchRefused  # noqa: F401 (re-export)
+from niruvi.core.bubblewrap_backend import LaunchRefusedError
 
 
 @dataclass
@@ -129,7 +129,7 @@ class SandboxManager:
 
         if not os.path.isdir(app_dir):
             msg = f"install directory missing: {app_dir}"
-            return self._record_refusal(app_id, executable, policy, refusals + [msg])
+            return self._record_refusal(app_id, executable, policy, [*refusals, msg])
 
         backend, refusals = self.resolve_backend(policy)
         if backend is None:
@@ -137,19 +137,18 @@ class SandboxManager:
                 app_id,
                 executable,
                 policy,
-                refusals + ["No capable enforcement backend is installed on this system."],
+                [*refusals, "No capable enforcement backend is installed on this system."],
             )
         if backend.name != policy.backend:
             warnings.append(
-                f"Configured backend '{policy.backend}' is unusable; "
-                f"enforcing with '{backend.name}' instead."
+                f"Configured backend '{policy.backend}' is unusable; enforcing with '{backend.name}' instead."
             )
 
         try:
             env = filter_environment(policy, dict(env_overrides or {}))
         except Exception as e:
             msg = f"environment filtering failed ({e}); refusing rather than leaking host environment"
-            return self._record_refusal(app_id, executable, policy, refusals + [msg], backend=backend.name)
+            return self._record_refusal(app_id, executable, policy, [*refusals, msg], backend=backend.name)
 
         launch_env = {**os.environ, **env}
 
@@ -165,47 +164,65 @@ class SandboxManager:
                 )
             except OSError as e:
                 return self._record_refusal(
-                    app_id, executable, policy, refusals + [f"unsandboxed launch failed: {e}"], backend=backend.name
+                    app_id, executable, policy, [*refusals, f"unsandboxed launch failed: {e}"], backend=backend.name
                 )
             self._procs[p.pid] = p
             sandbox_audit.record_launch(
-                app_id, executable or (cmd[0] if cmd else ""), policy.profile, "none",
-                "override", pid=p.pid, override_reason=override_reason,
+                app_id,
+                executable or (cmd[0] if cmd else ""),
+                policy.profile,
+                "none",
+                "override",
+                pid=p.pid,
+                override_reason=override_reason,
             )
-            return LaunchResult(ok=True, pid=p.pid, sandboxed=False, backend="none",
-                                profile=policy.profile, warnings=warnings, proc=p)
+            return LaunchResult(
+                ok=True, pid=p.pid, sandboxed=False, backend="none", profile=policy.profile, warnings=warnings, proc=p
+            )
 
         try:
             p = backend.launch_application(app_dir, cmd, launch_env, policy)
-        except LaunchRefused as e:
-            return self._record_refusal(app_id, executable, policy, refusals + [str(e)], backend=backend.name)
+        except LaunchRefusedError as e:
+            return self._record_refusal(app_id, executable, policy, [*refusals, str(e)], backend=backend.name)
         except Exception as e:
             logger.exception("Launch failed for %s", app_id)
-            return self._record_refusal(app_id, executable, policy, refusals + [f"{type(e).__name__}: {e}"],
-                                        backend=backend.name)
+            return self._record_refusal(
+                app_id, executable, policy, [*refusals, f"{type(e).__name__}: {e}"], backend=backend.name
+            )
 
         if p is None:
             return self._record_refusal(
-                app_id, executable, policy,
-                refusals + [f"backend '{backend.name}' returned no process instead of raising"],
+                app_id,
+                executable,
+                policy,
+                [*refusals, f"backend '{backend.name}' returned no process instead of raising"],
                 backend=backend.name,
             )
 
         self._procs[p.pid] = p
         sandbox_audit.record_launch(
-            app_id, executable or (cmd[0] if cmd else ""), policy.profile, backend.name,
-            "launched", pid=p.pid, override_reason=override_reason,
+            app_id,
+            executable or (cmd[0] if cmd else ""),
+            policy.profile,
+            backend.name,
+            "launched",
+            pid=p.pid,
+            override_reason=override_reason,
         )
-        return LaunchResult(ok=True, pid=p.pid, sandboxed=True, backend=backend.name,
-                            profile=policy.profile, warnings=warnings, proc=p)
+        return LaunchResult(
+            ok=True, pid=p.pid, sandboxed=True, backend=backend.name, profile=policy.profile, warnings=warnings, proc=p
+        )
 
     def _record_refusal(self, app_id, executable, policy, refusals, backend: str = "") -> LaunchResult:
         sandbox_audit.record_launch(
-            app_id, executable or "", policy.profile, backend, "refused",
+            app_id,
+            executable or "",
+            policy.profile,
+            backend,
+            "refused",
             refused_reason="; ".join(refusals),
         )
-        return LaunchResult(ok=False, sandboxed=False, backend=backend,
-                            profile=policy.profile, refusals=refusals)
+        return LaunchResult(ok=False, sandboxed=False, backend=backend, profile=policy.profile, refusals=refusals)
 
     # ── process control ──────────────────────────────────────────────
     def is_process_alive(self, pid: int) -> bool:

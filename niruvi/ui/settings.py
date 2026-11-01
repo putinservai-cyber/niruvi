@@ -433,8 +433,6 @@ class SettingsPage(QWidget):
 
         layout.addWidget(vt_group)
 
-        
-
         tn_group = QGroupBox("File Manager Thumbnailer")
         tn_layout = QVBoxLayout(tn_group)
         tn_layout.setSpacing(4)
@@ -464,8 +462,6 @@ class SettingsPage(QWidget):
         layout.addWidget(tn_group)
 
         self._update_thumbnailer_status()
-
-        
 
         storage_group = QGroupBox("Storage")
         storage_layout = QVBoxLayout(storage_group)
@@ -883,7 +879,6 @@ class SettingsPage(QWidget):
                 self.update_interval_combo.currentText(),
                 _settings.get("update_check_interval", "weekly"),
             ),
-            
             (
                 "sandbox_default_enabled",
                 self.shield_enabled_row.isChecked(),
@@ -916,7 +911,6 @@ class SettingsPage(QWidget):
                 self.privacy_updates_row.isChecked(),
                 _settings.get("privacy_allow_update_checks", True),
             ),
-            
             ("virustotal_api_key", self.vt_key_edit.text().strip(), _settings.get("virustotal_api_key", "").strip()),
             ("store_index_url", self.store_url_edit.text().strip(), _settings.get("store_index_url", "").strip()),
         ]

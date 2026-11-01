@@ -18,7 +18,7 @@ dependencies = [
 # cannot resolve a PyQt6-Multimedia wheel, so it is not a hard dependency.
 multimedia = ["PyQt6-Multimedia>=6.5"]
 all = []
-dev = ["pytest>=7.0", "pytest-mock>=3.10", "pytest-qt>=4.0", "ruff>=0.4", "mypy>=1.10"]
+dev = ["pytest>=7.0", "pytest-mock>=3.10", "pytest-qt>=4.0", "pytest-timeout>=2.1", "ruff>=0.4", "mypy>=1.10"]
 
 [project.scripts]
 niruvi = "niruvi.main:main"

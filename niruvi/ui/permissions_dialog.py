@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -24,11 +23,11 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
-    QStackedWidget,
 )
 
 from niruvi.core.backends import (
@@ -245,8 +244,8 @@ class PermissionsWindow(QDialog):
             page_layout.setSpacing(6)
             page_widget = QWidget()
             page_widget.setLayout(page_layout)
-            idx = self.stack.addWidget(page_widget)
-            display_name = name.replace("&", "&&")
+            _ = self.stack.addWidget(page_widget)
+            # display_name = name.replace("display_name = name.replace("&", "&&")", "display_name = name.replace("&", "&&")display_name = name.replace("&", "&&")")  # unused
             setattr(self, f"_page_{name.lower().replace(' ', '_').replace('&', 'and').replace('/', '_')}", page_layout)
             # Store display name for reference if needed
         v.addWidget(self.stack, 1)
@@ -882,9 +881,7 @@ class PermissionsWindow(QDialog):
             label.setStyleSheet(f"color: {_LEVEL_COLORS[level]}; font-size: 10px;")
         if hasattr(self, "cap_label"):
             caps = backend.capabilities()
-            self.cap_label.setText(
-                "\n".join(f"{k.capitalize()}: {v.level} — {v.detail}" for k, v in caps.items())
-            )
+            self.cap_label.setText("\n".join(f"{k.capitalize()}: {v.level} — {v.detail}" for k, v in caps.items()))
 
     def _refresh_status(self, pending: bool = False):
         if not self._current_id:
@@ -964,6 +961,7 @@ class PermissionsWindow(QDialog):
     def _record(self, app_id: str):
         try:
             from niruvi.desktop.installation_registry import InstallationRegistry
+
             return InstallationRegistry().get(app_id)
         except Exception:
             return None
@@ -1102,16 +1100,19 @@ class PermissionsWindow(QDialog):
         if not path:
             return
         reply = QMessageBox.question(
-            self, "Import policy",
+            self,
+            "Import policy",
             "Replace current permissions with imported policy? Previewed before saving.",
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
         try:
             import json
+
             with open(path) as f:
                 data = json.load(f)
             from niruvi.core.policy import SandboxPolicy
+
             policy = SandboxPolicy.from_dict(data.get("policy", {}))
         except Exception as e:
             QMessageBox.warning(self, "Import failed", str(e))

@@ -427,7 +427,6 @@ class UninstallWorker(QThread):
             self.error.emit(f"{e}\n{traceback.format_exc()}")
 
 
-
 class RepairWorker(QThread):
     step_changed = pyqtSignal(str, int)
     completed = pyqtSignal(object)

@@ -245,7 +245,9 @@ class TestFileTree:
     def test_folder_children_load_lazily_on_expand(self, tree):
         from PyQt6.QtCore import Qt
 
-        sub_item = next(tree.topLevelItem(i) for i in range(tree.topLevelItemCount()) if tree.topLevelItem(i).text(0) == "sub/")
+        sub_item = next(
+            tree.topLevelItem(i) for i in range(tree.topLevelItemCount()) if tree.topLevelItem(i).text(0) == "sub/"
+        )
         assert sub_item.childCount() == 1
         assert sub_item.child(0).data(0, Qt.ItemDataRole.UserRole) is None
 
@@ -273,5 +275,3 @@ class TestFileTree:
         tree.refresh()
         names = [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())]
         assert "added.txt" in names
-
-

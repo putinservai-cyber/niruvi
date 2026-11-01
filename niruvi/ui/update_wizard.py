@@ -400,7 +400,6 @@ class UpdateInstallWorker(QThread):
             return False
 
 
-
 class UpdateWizard(QWizard):
     def _wbutton(self, button: QWizard.WizardButton) -> QAbstractButton:
         btn = self.button(button)

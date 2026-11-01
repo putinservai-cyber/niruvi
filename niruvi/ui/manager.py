@@ -30,13 +30,8 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
     QPushButton,
     QSizePolicy,
-    QSplitter,
-    QStackedWidget,
-    QStatusBar,
     QSystemTrayIcon,
     QToolBar,
-    QTreeWidget,
-    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -96,7 +91,7 @@ from niruvi.utils.theme_engine import (
     COLOR_ERROR,
     COLOR_INK,
     COLOR_WARNING,
-    get_theme_engine,
+    style,
 )
 
 logger = logging.getLogger(__name__)
@@ -626,12 +621,14 @@ class Niruvi(QMainWindow):
         search_filter_layout.addWidget(self.search_edit)
 
         self.sort_combo = QComboBox()
-        self.sort_combo.addItems([
-            "Sort by Name",
-            "Sort by Size",
-            "Sort by Install Date",
-            "Sort by Category",
-        ])
+        self.sort_combo.addItems(
+            [
+                "Sort by Name",
+                "Sort by Size",
+                "Sort by Install Date",
+                "Sort by Category",
+            ]
+        )
         self.sort_combo.currentIndexChanged.connect(self._sort_apps)
         self.sort_combo.setToolTip("Change how installed apps are ordered")
         self.sort_combo.setAccessibleName("Sort installed applications")
@@ -685,7 +682,9 @@ class Niruvi(QMainWindow):
         empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_title)
 
-        empty_desc = QLabel("Drag and drop an AppImage file here to install it.\n\nOr click the button below to browse for a file.")
+        empty_desc = QLabel(
+            "Drag and drop an AppImage file here to install it.\n\nOr click the button below to browse for a file."
+        )
         empty_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_desc.setWordWrap(True)
         empty_desc.setStyleSheet("color: palette(placeholder-text);")
@@ -732,9 +731,7 @@ class Niruvi(QMainWindow):
                 widget.refresh_icon()
         empty_label = getattr(self, "_empty_icon_label", None)
         if empty_label is not None:
-            self._empty_icon = get_icon(
-                "package-x-generic", "application-x-archive", "application-x-executable"
-            )
+            self._empty_icon = get_icon("package-x-generic", "application-x-archive", "application-x-executable")
             empty_label.setPixmap(icon_pixmap(self._empty_icon, ICON_SIZE_EMPTY))
         if getattr(self, "no_results_widget", None) is not None:
             self.no_results_widget.set_icon(get_icon("system-search"), ICON_SIZE_EMPTY)
@@ -1029,9 +1026,7 @@ class Niruvi(QMainWindow):
                 # without a full async refactor. User input is excluded to
                 # avoid re-entrancy while the scan is in flight.
                 if index and index % 20 == 0:
-                    QApplication.processEvents(
-                        QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
-                    )
+                    QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
                 seen.add(item)
                 apprun = os.path.join(app_dir, "AppRun")
                 if not os.path.isfile(apprun) or not os.access(apprun, os.X_OK):
@@ -1081,9 +1076,7 @@ class Niruvi(QMainWindow):
         stale = []
         for index, record in enumerate(registry.get_all()):
             if index and index % 20 == 0:
-                QApplication.processEvents(
-                    QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
-                )
+                QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
             if record.name in seen:
                 continue
             app_dir = record.path
@@ -1152,9 +1145,7 @@ class Niruvi(QMainWindow):
         visible = 0
         # Remember the selection so filtering does not silently clear it.
         previously_selected = [
-            item.data(Qt.ItemDataRole.UserRole)
-            for item in self.installed_list.selectedItems()
-            if item is not None
+            item.data(Qt.ItemDataRole.UserRole) for item in self.installed_list.selectedItems() if item is not None
         ]
 
         for i in range(self.installed_list.count()):
@@ -1683,10 +1674,7 @@ class Niruvi(QMainWindow):
         dlg.setIcon(QMessageBox.Icon.Critical)
         dlg.setWindowTitle("Launch refused")
         dlg.setText(f"<b>{app_name}</b> was not started.")
-        dlg.setInformativeText(
-            "Sandbox enforcement could not be established. Reasons:\n\n"
-            + "\n".join(lines)
-        )
+        dlg.setInformativeText("Sandbox enforcement could not be established. Reasons:\n\n" + "\n".join(lines))
         dlg.setStandardButtons(QMessageBox.StandardButton.Ok)
         dlg.exec()
 
@@ -1852,14 +1840,16 @@ class Niruvi(QMainWindow):
             cmd.extend(shlex.split(record.run_args))
         # Fail-closed launch: SandboxManager decides sandboxing, never a
         # quiet unsandboxed here. Refusals surface in a dialog.
-        from niruvi.core.sandbox_manager import get_sandbox_manager, PolicyResolutionError
+        from niruvi.core.sandbox_manager import PolicyResolutionError, get_sandbox_manager
 
         if unsandboxed and "--unsandboxed" not in sys.argv:
             # Browser ships its own sandbox. Keep isolation intent visible:
             # the exclusion is explicit, recorded in the audit log and shown
             # in the status bar - it is never a silent skip. The stored
             # per-app sandbox policy itself is not modified.
-            override_reason = f"browser sandbox: {app_name} runs its own process sandbox; Niruvi's sandbox would nest against it"
+            override_reason = (
+                f"browser sandbox: {app_name} runs its own process sandbox; Niruvi's sandbox would nest against it"
+            )
         elif "--unsandboxed" in sys.argv:
             override_reason = "explicit --unsandboxed CLI override"
         else:
@@ -1933,7 +1923,7 @@ class Niruvi(QMainWindow):
     def _run_app_fallback(self, app_name: str, app_dir: str, env: dict | None = None, record=None):
         """FUSE-less launch path (extract-and-run). Still goes through the
         SandboxManager so the sandbox choice is never silently lost."""
-        from niruvi.core.sandbox_manager import get_sandbox_manager, PolicyResolutionError
+        from niruvi.core.sandbox_manager import PolicyResolutionError, get_sandbox_manager
 
         appimage_path = self._find_appimage_in_dir(app_dir)
         extract_dir = None
@@ -2493,14 +2483,14 @@ class Niruvi(QMainWindow):
 
         has_real_issues = bool(health["issues"]) or bool(runnable["issues"])
 
-        # Design tokens for error/warning cards
-        error_bg = design_color("error")
-        error_border = design_color("error")
-        warn_bg = design_color("warning")
-        warn_border = design_color("warning")
-        ok_color = design_color("success")
-        disabled_hex = design_color("subtle")
-        mid_hex = design_color("muted")
+        # Design tokens for error/warning cards (using palette roles)
+        error_bg = "palette(base)"
+        error_border = "palette(mid)"
+        warn_bg = "palette(base)"
+        warn_border = "palette(mid)"
+        ok_color = "palette(highlight)"
+        disabled_hex = "palette(placeholderText)"
+        mid_hex = "palette(placeholderText)"
 
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Diagnostics: {app_name}")
@@ -2748,7 +2738,9 @@ class Niruvi(QMainWindow):
             ok = all(results)
             passed += 1 if ok else 0
             failed += 0 if ok else 1
-            details.append(f"{'[PASS]' if ok else '[FAIL]'} {name}: {sum(1 for r in results if r.passed)}/{len(results)} checks")
+            details.append(
+                f"{'[PASS]' if ok else '[FAIL]'} {name}: {sum(1 for r in results if r.passed)}/{len(results)} checks"
+            )
         if failed == 0:
             play_sound("notification")
             QMessageBox.information(
@@ -3266,8 +3258,7 @@ class Niruvi(QMainWindow):
         outer.addWidget(version)
 
         blurb = QLabel(
-            "A universal Linux AppImage manager for installing,<br>"
-            "updating, uninstalling, and building AppImages."
+            "A universal Linux AppImage manager for installing,<br>updating, uninstalling, and building AppImages."
         )
         blurb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         blurb.setWordWrap(True)

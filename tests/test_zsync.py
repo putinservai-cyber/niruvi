@@ -109,6 +109,7 @@ class TestMetadataParsing:
                 chunk = chunk + b"\x00" * (4096 - len(chunk))
             assert (a, b) == _block_rsum(chunk)
             assert strong == md4(chunk)[:8]
+
     def test_missing_length_rejected(self):
         with pytest.raises(zsync.ZSyncError):
             parse_zsync_metadata(b"Filename: x\n", "http://x/")

@@ -7,7 +7,6 @@ dialog ended up with no artwork at all while the window had an icon.
 """
 
 import os
-import shutil
 
 # XDG-compliant icon name. The generated .desktop entry must reference this
 # rather than an absolute path so it keeps working when Niruvi is moved.
@@ -92,13 +91,14 @@ def install_brand_icon(size: int = 256) -> str | None:
 
     xdg_data_home = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
     icons_root = os.path.join(xdg_data_home, "icons", "hicolor")
-    
+
     # Install all sizes from our asset/icons/hicolor
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     asset_hicolor = os.path.join(project_root, "asset", "icons", "hicolor")
-    
+
     if os.path.isdir(asset_hicolor):
         import shutil
+
         try:
             for size_dir in os.listdir(asset_hicolor):
                 src_dir = os.path.join(asset_hicolor, size_dir, "apps")
@@ -116,7 +116,9 @@ def install_brand_icon(size: int = 256) -> str | None:
             pass
 
     # Also install symbolic icon for dark themes
-    dark_symbolic_src = os.path.join(project_root, "asset", "icons", "dark", "symbolic", "apps", "io.github.putinservai_cyber.niruvi-symbolic.svg")
+    dark_symbolic_src = os.path.join(
+        project_root, "asset", "icons", "dark", "symbolic", "apps", "io.github.putinservai_cyber.niruvi-symbolic.svg"
+    )
     if os.path.isfile(dark_symbolic_src):
         try:
             xdg_data_home = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")

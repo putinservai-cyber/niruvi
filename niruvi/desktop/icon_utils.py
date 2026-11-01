@@ -163,7 +163,6 @@ def get_pixmap_from_file(path: str, size: int = 64) -> QPixmap | None:
     return result
 
 
-
 def save_icon_to_png(data: bytes, dest_path: str) -> bool:
     png = to_png_bytes(data)
     if png:

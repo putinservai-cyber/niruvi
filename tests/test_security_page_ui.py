@@ -13,8 +13,8 @@ def app_info(tmp_path):
 def page(qapp, app_info):
     from PyQt6.QtWidgets import QMainWindow
 
-    from niruvi.utils.theme_engine import init_theme
     from niruvi.ui.security_page import SecurityPage
+    from niruvi.utils.theme_engine import init_theme
 
     init_theme(qapp)
     p = SecurityPage("Check.App", app_info)
@@ -28,10 +28,7 @@ def page(qapp, app_info):
 class TestSummary:
     def test_summary_is_honest_not_decorative(self, page):
         text = page.summary_label.text()
-        assert any(
-            word in text
-            for word in ("Protected", "Partially protected", "Not protected", "failed", "verified")
-        )
+        assert any(word in text for word in ("Protected", "Partially protected", "Not protected", "failed", "verified"))
 
     def test_policy_resolved(self, page):
         assert page._effective_policy().profile in ("standard", "strict", "custom", "developer")

@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 
 from niruvi.utils import get_icon, icon_pixmap
 from niruvi.utils.sound_manager import play_and
-from niruvi.utils.styles import format_size, placeholder_style
+from niruvi.utils.styles import format_size
 
 
 def _run_capture(cmd: list[str], timeout=10) -> str:

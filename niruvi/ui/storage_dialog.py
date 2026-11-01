@@ -176,9 +176,7 @@ class StorageDialog(QDialog):
         QMessageBox.information(
             self,
             "Cleanup complete",
-            f"Removed {len(removed)} folder(s), {format_size(freed)} freed."
-            if removed
-            else "Nothing to clean up.",
+            f"Removed {len(removed)} folder(s), {format_size(freed)} freed." if removed else "Nothing to clean up.",
         )
         self._scan()
 

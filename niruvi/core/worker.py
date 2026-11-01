@@ -173,6 +173,7 @@ def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_trac
         _log("AppImage extraction failed due to permissions — copying to local temp and retrying...")
         import shutil
         import tempfile
+
         local_path = os.path.join(tempfile.gettempdir(), f"niruvi-extract-{os.path.basename(path)}")
         shutil.copy2(path, local_path)
         os.chmod(local_path, 0o755)

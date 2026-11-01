@@ -114,9 +114,7 @@ class TestTempDirs:
         stale = time.time() - 3600
         os.utime(old, (stale, stale))
 
-        removed, _freed = cleanup_stale_temp_dirs(
-            max_age_seconds=0, temp_root=str(temp), active_paths=[str(old)]
-        )
+        removed, _freed = cleanup_stale_temp_dirs(max_age_seconds=0, temp_root=str(temp), active_paths=[str(old)])
         assert removed == []
         assert old.exists()
 

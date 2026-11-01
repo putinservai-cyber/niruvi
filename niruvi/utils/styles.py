@@ -6,7 +6,6 @@ Uses native system palette colors instead of custom theme tokens.
 import datetime
 import os
 
-
 # ── Design Tokens (kept for layout consistency) ────────────────────────────────
 
 MARGIN_S = 8
@@ -36,6 +35,7 @@ MONO_FONT_STYLE = "font-family: 'JetBrains Mono', 'Fira Code', monospace; font-s
 
 
 # ── Native Palette-Based Style Helpers ────────────────────────────────────────
+
 
 def placeholder_style(text: str = "", size: int = FONT_SM) -> str:
     """Return QSS for muted placeholder-style text at the given font size."""

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @functools.lru_cache(maxsize=1)
 def _cached_report() -> tuple:
-    return _build_report(),  # tuple-of-one so lru_cache can store the dict
+    return (_build_report(),)  # tuple-of-one so lru_cache can store the dict
 
 
 def invalidate() -> None:
@@ -78,7 +78,7 @@ def _kernel_config_enabled(option: str) -> bool | None:
                     if name.startswith("config-") or name == "config":
                         path = os.path.join(dirpath, name)
                         if os.access(path, os.R_OK):
-                            with open(path, "r") as f:
+                            with open(path) as f:
                                 for line in f:
                                     if line.startswith(option + "=") and line.strip().endswith("=y"):
                                         return True
@@ -205,7 +205,7 @@ def _probe_seccomp() -> dict:
     # readable, otherwise assume present (Linux >= 3.5 default).
     cfg = _kernel_config_enabled("CONFIG_SECCOMP_FILTER")
     if cfg is None:
-        return {"available": None, "detail": "Syscall filtering available (kernel config not readable to confirm)." }
+        return {"available": None, "detail": "Syscall filtering available (kernel config not readable to confirm)."}
     if cfg:
         return {"available": True, "detail": ""}
     return {"available": False, "detail": "CONFIG_SECCOMP_FILTER is not enabled in this kernel."}

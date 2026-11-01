@@ -89,7 +89,7 @@ def run_app_headless(app_name: str, extra_args: list[str] | None = None) -> int:
     # SandboxManager owns the fail-closed decision; a quiet unsandboxed
     # fallback is not an option from the CLI either: if the sandbox cannot
     # be promised, the caller must know.
-    from niruvi.core.sandbox_manager import get_sandbox_manager, PolicyResolutionError
+    from niruvi.core.sandbox_manager import PolicyResolutionError, get_sandbox_manager
 
     sandbox = get_sandbox_manager()
     try:
@@ -110,8 +110,14 @@ def run_app_headless(app_name: str, extra_args: list[str] | None = None) -> int:
 
     if "--unsandboxed" in sys.argv:
         rc = sandbox.launch(
-            app_name, app_dir, cmd, policy, record=record,
-            env_overrides=env, executable=apprun, cwd=app_dir,
+            app_name,
+            app_dir,
+            cmd,
+            policy,
+            record=record,
+            env_overrides=env,
+            executable=apprun,
+            cwd=app_dir,
             override_reason="explicit --unsandboxed CLI override",
         )
         if not rc.ok:
@@ -122,8 +128,14 @@ def run_app_headless(app_name: str, extra_args: list[str] | None = None) -> int:
         return 0
 
     rc = sandbox.launch(
-        app_name, app_dir, cmd, policy, record=record,
-        env_overrides=env, executable=apprun, cwd=app_dir,
+        app_name,
+        app_dir,
+        cmd,
+        policy,
+        record=record,
+        env_overrides=env,
+        executable=apprun,
+        cwd=app_dir,
     )
     if not rc.ok:
         print(f"Launch refused for {app_name}:", file=sys.stderr)

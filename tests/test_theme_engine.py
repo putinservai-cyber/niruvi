@@ -1,11 +1,10 @@
 """Tests for the native system theme engine."""
 
 import os
-from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from niruvi.utils.theme_engine import _NativeThemeEngine, ThemeMode, get_theme_engine
+from niruvi.utils.theme_engine import ThemeMode, _NativeThemeEngine, get_theme_engine
 
 
 class TestNativeThemeEngine:
@@ -30,6 +29,7 @@ class TestNativeThemeEngine:
     def test_palette_returns_system_palette(self):
         """Test that palette() returns system palette."""
         from PyQt6.QtWidgets import QApplication
+
         app = QApplication.instance() or QApplication([])
         engine = _NativeThemeEngine()
         palette = engine.palette()
@@ -39,6 +39,7 @@ class TestNativeThemeEngine:
     def test_apply_is_noop(self):
         """Test that apply() is a no-op."""
         from PyQt6.QtWidgets import QApplication
+
         app = QApplication.instance() or QApplication([])
         engine = _NativeThemeEngine()
         # Should not raise
@@ -58,7 +59,8 @@ class TestNativeThemeEngine:
 
     def test_color_constants(self):
         """Test that semantic color constants use palette roles."""
-        from niruvi.utils.theme_engine import COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR, COLOR_INK
+        from niruvi.utils.theme_engine import COLOR_ERROR, COLOR_INK, COLOR_SUCCESS, COLOR_WARNING
+
         assert COLOR_SUCCESS == "palette(highlight)"
         assert COLOR_WARNING == "palette(windowText)"
         assert COLOR_ERROR == "palette(windowText)"

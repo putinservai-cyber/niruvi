@@ -26,11 +26,10 @@ from niruvi.core.verification import verify_complete as verify_complete
 from niruvi.core.verification import verify_sha256 as verify_sha256
 from niruvi.main import main as main
 from niruvi.utils.theme_engine import ThemeMode as ThemeMode
-from niruvi.utils.theme_engine import get_theme_engine as get_theme_engine
 from niruvi.utils.theme_engine import _NativeThemeEngine as ThemeEngine
+from niruvi.utils.theme_engine import get_theme_engine as get_theme_engine
 
 __all__ = [
-    "Niruvi",
     "BuilderPlugin",
     "CompressorPlugin",
     "InstallWizard",
@@ -38,6 +37,7 @@ __all__ = [
     "InstallationRegistry",
     "Manifest",
     "ManifestError",
+    "Niruvi",
     "Plugin",
     "RepairReport",
     "SigningError",

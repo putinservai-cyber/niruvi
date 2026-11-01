@@ -154,9 +154,7 @@ class SandboxPolicy:
     # Network / device / IPC
     network: bool = True
     devices: dict = field(default_factory=lambda: dict.fromkeys(DEVICE_KEYS, True))
-    ipc: dict = field(
-        default_factory=lambda: {k: True for k in IPC_KEYS}
-    )
+    ipc: dict = field(default_factory=lambda: {k: True for k in IPC_KEYS})
 
     # Environment
     env: dict = field(default_factory=dict)
@@ -214,7 +212,6 @@ class SandboxPolicy:
         data = dict(data or {})
         version = int(data.get("schema_version", 0) or 0)
         if version > POLICY_SCHEMA_VERSION:
-
             logger.warning(
                 "Policy schema v%d is newer than supported v%d — reading best-effort",
                 version,
@@ -248,7 +245,7 @@ class SandboxPolicy:
             app_id=data.get("app_id", ""),
             enabled=bool(data.get("enabled", True)),
             backend=data.get("backend", "shield"),
-            profile=str(data.get("profile") or ("custom" if version < 2 else "custom")).lower(),
+            profile=str(data.get("profile") or "custom").lower(),
             home_access=_norm_mode(data.get("home_access", "rw")),
             dirs=dirs,
             removable=_norm_mode(data.get("removable", "none"), "none"),
@@ -362,9 +359,7 @@ class SandboxPolicy:
         return any(mode == "ro" for _p, mode in self.path_to_grants())
 
     def grants_access_rw(self) -> bool:
-        return self.home_access == "rw" or any(
-            mode == "rw" for _p, mode in self.path_to_grants()
-        )
+        return self.home_access == "rw" or any(mode == "rw" for _p, mode in self.path_to_grants())
 
     def uses_broad_home(self) -> bool:
         """True when the policy exposes the entire home directory."""
@@ -389,6 +384,7 @@ def _parse_size(value: str) -> int | None:
 
 
 # ── Presets ──────────────────────────────────────────────────────────
+
 
 def _base_policy(app_id: str = "", backend: str = "shield") -> SandboxPolicy:
     return SandboxPolicy(app_id=app_id, backend=backend)
@@ -519,8 +515,9 @@ def diff_policies(current: SandboxPolicy, proposed: SandboxPolicy) -> dict:
             revokes = True
 
     if current.network != proposed.network:
-        changes.append(f"Network: {'allowed' if current.network else 'blocked'} → "
-                       f"{'allowed' if proposed.network else 'blocked'}")
+        changes.append(
+            f"Network: {'allowed' if current.network else 'blocked'} → {'allowed' if proposed.network else 'blocked'}"
+        )
         grants = grants or (proposed.network and not current.network)
         revokes = revokes or (current.network and not proposed.network)
 
@@ -535,8 +532,10 @@ def diff_policies(current: SandboxPolicy, proposed: SandboxPolicy) -> dict:
         if _mode_rank.get(old, 0) > _mode_rank.get(new, 0):
             revokes = True
     if current.removable != proposed.removable:
-        changes.append(f"Removable storage: {_MODE_LABEL.get(current.removable, current.removable)} → "
-                       f"{_MODE_LABEL.get(proposed.removable, proposed.removable)}")
+        changes.append(
+            f"Removable storage: {_MODE_LABEL.get(current.removable, current.removable)} → "
+            f"{_MODE_LABEL.get(proposed.removable, proposed.removable)}"
+        )
         if _mode_rank.get(proposed.removable, 0) > _mode_rank.get(current.removable, 0):
             grants = True
         if _mode_rank.get(current.removable, 0) > _mode_rank.get(proposed.removable, 0):

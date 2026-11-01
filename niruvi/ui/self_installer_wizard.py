@@ -26,7 +26,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -915,6 +915,8 @@ class FinishPage(QWizardPage):
             self._desktop_label.setText(f"<b>Desktop Entry:</b> {desktop_path}")
         else:
             self._desktop_label.setText("<b>Desktop Entry:</b> Created")
+        from niruvi.utils import get_icon, icon_pixmap
+
         self._registry_icon.setPixmap(icon_pixmap(get_icon("emblem-ok"), 16))
         self._registry_label.setText("Registered in Niruvi Application Manager")
         self._open_folder_btn.setVisible(True)

@@ -17,7 +17,7 @@ import subprocess
 
 from niruvi.core.bubblewrap_backend import (
     BubblewrapSandbox,
-    LaunchRefused,
+    LaunchRefusedError,
     build_bwrap_sandbox,
 )
 from niruvi.core.policy import SandboxPolicy
@@ -36,13 +36,11 @@ def _absent_probe(path: str) -> list:
     return [*_MISSING, "!", "-e", path, "]"]
 
 
-
-
 def _run_sbprobe(sandbox: BubblewrapSandbox, argv: list[str], timeout: float = 30):
     """Run a probe command.  Returns (verified: bool|None, detail: str)."""
     try:
         cp = sandbox.run_probe(argv, timeout=timeout)
-    except (LaunchRefused, FileNotFoundError, subprocess.TimeoutExpired) as e:
+    except (LaunchRefusedError, FileNotFoundError, subprocess.TimeoutExpired) as e:
         logger.debug("probe failed to run: %s", e)
         return None, f"probe could not run: {e}"
     if cp.returncode == 0:
@@ -60,7 +58,7 @@ def verify_sandbox(policy: SandboxPolicy, app_dir: str, env: dict | None = None)
     checks: dict[str, object] = {"backend": "bwrap", "verified": None}
     try:
         sb = build_bwrap_sandbox(policy, app_dir, env or {})
-    except LaunchRefused as e:
+    except LaunchRefusedError as e:
         return _not_verified(str(e))
     checks["backend"] = "bwrap"
 
@@ -70,11 +68,15 @@ def verify_sandbox(policy: SandboxPolicy, app_dir: str, env: dict | None = None)
     checks["smoke"] = smoke_ok
     if smoke_ok is False:
         details.append("sandbox cannot even exec /bin/true: " + smoke_err)
-        return {"backend": "bwrap", "verified": False, "checks": checks,
-                "summary": "not-verified", "detail": details}
+        return {"backend": "bwrap", "verified": False, "checks": checks, "summary": "not-verified", "detail": details}
     if smoke_ok is None:
-        return {"backend": "bwrap", "verified": None, "checks": checks,
-                "summary": "not-verified", "detail": ["probe execution unavailable"]}
+        return {
+            "backend": "bwrap",
+            "verified": None,
+            "checks": checks,
+            "summary": "not-verified",
+            "detail": ["probe execution unavailable"],
+        }
 
     devices_flags = policy.devices or {}
     for label, want_blocked, probe in (
@@ -116,9 +118,7 @@ def verify_sandbox(policy: SandboxPolicy, app_dir: str, env: dict | None = None)
         checks["network"] = "allowed"
 
     verified = all(
-        v == "verified" or v == "allowed"
-        for k, v in checks.items()
-        if k not in ("backend", "verified", "smoke")
+        v == "verified" or v == "allowed" for k, v in checks.items() if k not in ("backend", "verified", "smoke")
     )
     if any(v == "failed" for v in checks.values()):
         summary = "not-verified"
@@ -128,8 +128,7 @@ def verify_sandbox(policy: SandboxPolicy, app_dir: str, env: dict | None = None)
         summary = "partial"
     else:
         summary = "partial"
-    return {"backend": "bwrap", "verified": verified, "checks": checks,
-            "summary": summary, "detail": details}
+    return {"backend": "bwrap", "verified": verified, "checks": checks, "summary": summary, "detail": details}
 
 
 def _not_verified(reason: str) -> dict:

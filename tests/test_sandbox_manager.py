@@ -8,7 +8,7 @@ import pytest
 from niruvi.core import sandbox_audit
 from niruvi.core.profiles import build_profile
 from niruvi.core.sandbox_manager import (
-    LaunchRefused,
+    LaunchRefusedError,
     PolicyResolutionError,
     SandboxManager,
     get_sandbox_manager,
@@ -70,30 +70,37 @@ class TestFailClosedLaunch:
                 return instance.launch(app_dir, cmd, env, policy)
 
         monkeypatch.setattr(
-            sm_mod, "get_backend",
+            sm_mod,
+            "get_backend",
             lambda name, strict=False: FakeB(),
         )
 
     def test_backend_returning_none_is_refusal(self, monkeypatch):
-        class I:
+        class _DummyBackend:
             def launch(self, *a, **k):
                 return None
 
-        self._fake_backend(monkeypatch, I())
+        self._fake_backend(monkeypatch, _DummyBackend())
         res = SandboxManager().launch(
-            "App", "/tmp", ["/bin/true"], build_profile("standard", "App", "fake"),
+            "App",
+            "/tmp",
+            ["/bin/true"],
+            build_profile("standard", "App", "fake"),
         )
         assert not res.ok
         assert any("returned no process" in r for r in res.refusals)
 
     def test_backend_refusal_raises_launchrefused_up(self, monkeypatch):
-        class I:
+        class _DummyBackend:
             def launch(self, *a, **k):
-                raise LaunchRefused("cannot enforce network block")
+                raise LaunchRefusedError("cannot enforce network block")
 
-        self._fake_backend(monkeypatch, I())
+        self._fake_backend(monkeypatch, _DummyBackend())
         res = SandboxManager().launch(
-            "App", "/tmp", ["/bin/true"], build_profile("standard", "App", "fake"),
+            "App",
+            "/tmp",
+            ["/bin/true"],
+            build_profile("standard", "App", "fake"),
         )
         assert not res.ok
         assert any("cannot enforce network block" in r for r in res.refusals)
@@ -101,14 +108,12 @@ class TestFailClosedLaunch:
         assert res.sandboxed is False and res.pid is None
 
     def test_launch_refusal_recorded_in_audit(self, monkeypatch):
-        class I:
+        class _DummyBackend:
             def launch(self, *a, **k):
-                raise LaunchRefused("boom")
+                raise LaunchRefusedError("boom")
 
-        self._fake_backend(monkeypatch, I())
-        SandboxManager().launch(
-            "Audited.App", "/tmp", ["/bin/true"], build_profile("standard", "Audited.App", "fake")
-        )
+        self._fake_backend(monkeypatch, _DummyBackend())
+        SandboxManager().launch("Audited.App", "/tmp", ["/bin/true"], build_profile("standard", "Audited.App", "fake"))
         entries = sandbox_audit.read_launches()
         assert entries, "audit entry missing"
         assert entries[0]["result"] == "refused"
@@ -122,7 +127,6 @@ class TestFailClosedLaunch:
 
 
 class TestRealLaunch:
-
     def test_real_bwrap_launch_and_stop(self):
         from niruvi.core.capability_detector import report
 
@@ -149,8 +153,14 @@ class TestRealLaunch:
 class TestAuditLog:
     def test_override_is_audited(self, tmp_path):
         sandbox_audit.record_launch(
-            "App", "/bin/app", "standard", "bwrap", "override",
-            pid=4242, override_reason="user asked in UI", base_dir=str(tmp_path),
+            "App",
+            "/bin/app",
+            "standard",
+            "bwrap",
+            "override",
+            pid=4242,
+            override_reason="user asked in UI",
+            base_dir=str(tmp_path),
         )
         entries = sandbox_audit.read_launches(base_dir=str(tmp_path))
         assert entries[0]["result"] == "override"

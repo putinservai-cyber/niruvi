@@ -147,7 +147,7 @@ def _compute_capabilities(name: str) -> dict:
             "devices": Control(
                 UNSUPPORTED,
                 "Niruvi Shield cannot filter individual device nodes; use Bubblewrap or Firejail.",
-                ),
+            ),
             "ipc": Control(
                 PARTIAL,
                 "Display/D-Bus access is filtered through the environment; not a hard boundary.",
@@ -162,24 +162,35 @@ def _compute_capabilities(name: str) -> dict:
         return {
             "filesystem": Control(level, note or "Enforced with Firejail whitelist/blacklist profiles."),
             "network": Control(level, note or "Enforced with --net=none."),
-            "devices": Control(PARTIAL if avail else UNSUPPORTED,
-                               note or "GPU (--nodri), audio (--nosound), camera (--novideo) and touch "
-                                       "input (--notouch) are blocked by flags; generic USB nodes stay reachable."),
-            "ipc": Control(PARTIAL if avail else UNSUPPORTED,
-                           note or "X11/D-Bus/printing can be filtered; not all sockets are covered."),
+            "devices": Control(
+                PARTIAL if avail else UNSUPPORTED,
+                note
+                or "GPU (--nodri), audio (--nosound), camera (--novideo) and touch "
+                "input (--notouch) are blocked by flags; generic USB nodes stay reachable.",
+            ),
+            "ipc": Control(
+                PARTIAL if avail else UNSUPPORTED,
+                note or "X11/D-Bus/printing can be filtered; not all sockets are covered.",
+            ),
             "environment": Control(level, note or "Passed directly to the process environment."),
             "resources": Control(PARTIAL if avail else UNSUPPORTED, note or "Enforced with --rlimit-*."),
         }
     return {
         "filesystem": Control(level, note or "Enforced with bind mounts."),
         "network": Control(level, note or "Enforced with --unshare-net."),
-        "devices": Control(SUPPORTED if avail else UNSUPPORTED,
-                           note or "Each category is enforced by omitting its device nodes from the "
-                                   "sandbox /dev — disallowed nodes are genuinely absent. "
-                                   "Camera and microphone share nodes with video/audio hardware."),
-        "ipc": Control(PARTIAL if avail else UNSUPPORTED,
-                       note or "Wayland/X11/D-Bus sockets are bound only when their policy allows it; "
-                               "application-supplied paths cannot be fully excluded."),
+        "devices": Control(
+            SUPPORTED if avail else UNSUPPORTED,
+            note
+            or "Each category is enforced by omitting its device nodes from the "
+            "sandbox /dev — disallowed nodes are genuinely absent. "
+            "Camera and microphone share nodes with video/audio hardware.",
+        ),
+        "ipc": Control(
+            PARTIAL if avail else UNSUPPORTED,
+            note
+            or "Wayland/X11/D-Bus sockets are bound only when their policy allows it; "
+            "application-supplied paths cannot be fully excluded.",
+        ),
         "environment": Control(level, note or "Passed directly to the process environment."),
         "resources": Control(UNSUPPORTED, "Bubblewrap does not apply rlimits."),
     }
@@ -264,6 +275,7 @@ class PermissionBackend:
 
 
 # ── Niruvi Shield (built-in) ─────────────────────────────────────────
+
 
 class ShieldBackend(PermissionBackend):
     name = "shield"
@@ -350,8 +362,10 @@ class ShieldBackend(PermissionBackend):
             out.append("Denied paths inside a granted directory cannot be isolated by Landlock")
         denied_devices = [d for d in policy.devices if not policy.devices[d]]
         if denied_devices and self.name == "shield":
-            out.append("Device restrictions are placeholder entries only: Niruvi Shield cannot "
-                       "filter device nodes; use the Bubblewrap backend for real device isolation")
+            out.append(
+                "Device restrictions are placeholder entries only: Niruvi Shield cannot "
+                "filter device nodes; use the Bubblewrap backend for real device isolation"
+            )
         if not policy.ipc.get("wayland") or not policy.ipc.get("x11"):
             out.append("Display socket filtering is not enforced by Niruvi Shield")
         return out
@@ -362,6 +376,7 @@ class ShieldBackend(PermissionBackend):
 
 
 # ── Firejail ─────────────────────────────────────────────────────────
+
 
 class FirejailBackend(PermissionBackend):
     name = "firejail"
@@ -400,6 +415,7 @@ class FirejailBackend(PermissionBackend):
 
 # ── Bubblewrap ───────────────────────────────────────────────────────
 
+
 class BubblewrapBackend(PermissionBackend):
     name = "bwrap"
     display_name = "Bubblewrap"
@@ -413,7 +429,7 @@ class BubblewrapBackend(PermissionBackend):
     def launch_application(self, app_dir, cmd, env, policy):
         """Launch through the dedicated Bubblewrap engine (fail-closed).
 
-        Raises :class:`~niruvi.core.bubblewrap_backend.LaunchRefused` when a
+        Raises :class:`~niruvi.core.bubblewrap_backend.LaunchRefusedError` when a
         restriction cannot be enforced — the caller decides how to report it;
         silently degrading to a weaker sandbox is not an option.
         """
@@ -421,6 +437,7 @@ class BubblewrapBackend(PermissionBackend):
 
         sandbox = build_bwrap_sandbox(policy, app_dir, env)
         return sandbox.run(cmd, cwd=app_dir, env=env)
+
     def apply_policy(self, app_id, policy, record=None, store=None) -> ApplyResult:
         if not self.available():
             return ApplyResult(False, "Bubblewrap is not installed.")

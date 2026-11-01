@@ -9,8 +9,8 @@ import os
 import sys
 from unittest import mock
 
-import niruvi.launcher as launcher
 import niruvi.core.sandbox_manager as sm_mod
+import niruvi.launcher as launcher
 from niruvi.core.policy import preset_default
 from niruvi.core.sandbox_manager import LaunchResult, SandboxManager
 from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
@@ -36,7 +36,7 @@ class _RefusingBackend:
         return {}
 
     def launch_application(self, *a, **k):
-        raise sm_mod.LaunchRefused("refusal for audit")
+        raise sm_mod.LaunchRefusedError("refusal for audit")
 
 
 class _RegistryStub:
@@ -116,9 +116,7 @@ class TestRegistryLaunchFailClosed:
     def test_backend_refusal_produces_refusal_not_popen(self, tmp_path):
         mgr = SandboxManager()
         with mock.patch.object(sm_mod, "get_backend", lambda *a, **k: _RefusingBackend()):
-            res = mgr.launch(
-                "Test.App", str(tmp_path), ["/bin/true"], preset_default("Test.App", "bwrap")
-            )
+            res = mgr.launch("Test.App", str(tmp_path), ["/bin/true"], preset_default("Test.App", "bwrap"))
         assert res.ok is False
         assert any("refusal" in r for r in res.refusals)
         assert res.pid is None
@@ -128,8 +126,6 @@ class TestRegistryLaunchFailClosed:
 
         mgr = SandboxManager()
         with mock.patch.object(sm_mod, "get_backend", lambda *a, **k: _RefusingBackend()):
-            mgr.launch(
-                "Audit.App", str(tmp_path), ["/bin/true"], preset_default("Audit.App", "bwrap")
-            )
+            mgr.launch("Audit.App", str(tmp_path), ["/bin/true"], preset_default("Audit.App", "bwrap"))
         entries = sandbox_audit.read_launches()
         assert entries and entries[0]["result"] == "refused"

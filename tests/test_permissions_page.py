@@ -12,8 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PyQt6.QtWidgets import QMessageBox
 
-from niruvi.core.backends import ApplyResult
-from niruvi.core.backends import get_backend
+from niruvi.core.backends import ApplyResult, get_backend
 from niruvi.core.policy_store import PolicyStore
 from niruvi.ui.permissions_page import PermissionsPage
 
@@ -77,6 +76,7 @@ class TestApplyFlow:
         page._network_toggle.setChecked(False)
         page._apply()
         from niruvi.core.policy_store import PolicyStore
+
         stored = PolicyStore().load("PermTestApp")
         assert stored.network is False
         assert stored.backend == page._backend_combo.currentData()
@@ -126,7 +126,7 @@ class TestApplyFlow:
 
 class TestCollect:
     def test_dir_modes_map_to_policy(self, page):
-        for key, combo in [("downloads", getattr(page, "_dir_combo_downloads"))]:
+        for _key, combo in [("downloads", page._dir_combo_downloads)]:
             combo.setCurrentIndex(1)
         assert page._collect().dirs["downloads"] == "ro"
 

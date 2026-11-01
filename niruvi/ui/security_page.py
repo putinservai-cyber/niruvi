@@ -23,8 +23,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QPushButton,
     QPlainTextEdit,
+    QPushButton,
     QVBoxLayout,
 )
 
@@ -193,9 +193,7 @@ class SecurityPage:
             self.relax_label.setText(str(e))
             return
         if plan["relaxed"]:
-            self.relax_label.setText(
-                "Switching will RELAX: " + "; ".join(plan["relaxed"][:6])
-            )
+            self.relax_label.setText("Switching will RELAX: " + "; ".join(plan["relaxed"][:6]))
         else:
             self.relax_label.setText("")
         self._pending_profile = plan["policy"]
@@ -228,9 +226,7 @@ class SecurityPage:
             QMessageBox.critical(self.page, "Apply failed", str(e))
             return
         if not result.ok:
-            QMessageBox.critical(
-                self.page, "Apply failed", result.error or "the policy file refused to persist"
-            )
+            QMessageBox.critical(self.page, "Apply failed", result.error or "the policy file refused to persist")
             return
         self._policy = None
         self._pending_profile = None
@@ -270,7 +266,11 @@ class SecurityPage:
             text.append(
                 f"{e.get('ts')}  {e.get('result')}  profile={e.get('profile')} "
                 f"backend={e.get('backend')} pid={e.get('pid')}"
-                + (f"  reason={e.get('refused_reason') or e.get('override_reason')}" if e.get("refused_reason") or e.get("override_reason") else "")
+                + (
+                    f"  reason={e.get('refused_reason') or e.get('override_reason')}"
+                    if e.get("refused_reason") or e.get("override_reason")
+                    else ""
+                )
             )
         self.verification_box.show()
         self.verification_box.setPlainText("\n".join(text))
