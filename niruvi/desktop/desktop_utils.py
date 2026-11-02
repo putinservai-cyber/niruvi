@@ -36,6 +36,39 @@ def sanitize_app_name(name: object) -> str:
     return cleaned or "App"
 
 
+def find_unique_install_name(base_name: str, install_dir: str, registry=None) -> str:
+    """Find a unique installation name for side-by-side installs.
+
+    If base_name already exists in install_dir or registry, appends a numeric
+    suffix (e.g., "App 2", "App 3") until a free name is found.
+
+    Args:
+        base_name: The desired base name (already sanitized)
+        install_dir: The parent installation directory
+        registry: Optional InstallationRegistry instance to check for existing records
+
+    Returns:
+        A unique name that doesn't conflict with existing installations.
+    """
+    base_name = sanitize_app_name(base_name)
+    name = base_name
+    suffix = 2
+    while True:
+        dest_path = os.path.join(install_dir, name)
+        if not os.path.exists(dest_path):
+            # Also check registry if provided
+            if registry is not None:
+                existing = registry.lookup_by_name(name)
+                if existing is None:
+                    return name
+            else:
+                return name
+        name = f"{base_name} {suffix}"
+        suffix += 1
+        if suffix > 1000:  # Safety limit
+            raise RuntimeError("Too many side-by-side installations for this app")
+
+
 def get_version(app_dir: str) -> str:
     meta_path = os.path.join(app_dir, ".appimage-manager.json")
     if os.path.exists(meta_path):

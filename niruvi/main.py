@@ -26,6 +26,8 @@ from niruvi.desktop.desktop_utils import (
     find_desktop_shortcut,
     refresh_desktop_database,
     register_scheme_handler,
+    sanitize_app_name,
+    unregister_mime_handler,
 )
 from niruvi.desktop.installation_registry import InstallationRecord, InstallationRegistry
 from niruvi.utils.qt_compat import fix_qt_platform_path as _fix_qt_platform_path
@@ -34,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 
 def process_appimage(path_str: str, parent=None):
-    from niruvi.desktop.desktop_utils import sanitize_app_name
     from niruvi.ui.manager import get_appimage_metadata
     from niruvi.ui.wizard import InstallWizard
     from niruvi.utils import get_icon
@@ -117,7 +118,7 @@ def process_appimage(path_str: str, parent=None):
 def cli_install(path_str: str, dest_override: str | None = None):
     """Silent CLI install without GUI."""
     from niruvi.core.worker import extract_appimage_sync
-    from niruvi.desktop.desktop_utils import create_desktop_entry, get_version, sanitize_app_name
+    from niruvi.desktop.desktop_utils import create_desktop_entry, get_version
     from niruvi.installer.junest import JunestPathError, suggest_space_free_path
     from niruvi.ui.manager import get_appimage_metadata
 
@@ -399,25 +400,83 @@ def main():
         if not record:
             print(f"Error: not installed: {args.uninstall}", file=sys.stderr)
             sys.exit(1)
+
+        errors = []
+
+        # Remove AppImage directory
         if record.path and os.path.exists(record.path):
-            shutil.rmtree(record.path)
+            try:
+                shutil.rmtree(record.path)
+                print(f"Removed AppImage directory: {record.path}")
+            except OSError as e:
+                errors.append(f"Failed to remove AppImage directory: {e}")
+
+        # Remove side directories (.home, .config, .prev)
         for suffix in (".home", ".config", ".prev"):
             side_dir = record.path + suffix
             if os.path.isdir(side_dir):
-                shutil.rmtree(side_dir, ignore_errors=True)
+                try:
+                    shutil.rmtree(side_dir)
+                    print(f"Removed side directory: {side_dir}")
+                except OSError as e:
+                    errors.append(f"Failed to remove side directory {side_dir}: {e}")
+
+        # Remove desktop file
         df = find_desktop_for_app(args.uninstall)
         if df and os.path.exists(df):
-            os.remove(df)
+            try:
+                os.remove(df)
+                print(f"Removed desktop file: {df}")
+            except OSError as e:
+                errors.append(f"Failed to remove desktop file: {e}")
+
+        # Remove desktop shortcut
         sc = find_desktop_shortcut(args.uninstall)
         if sc and os.path.exists(sc):
-            os.remove(sc)
+            try:
+                os.remove(sc)
+                print(f"Removed desktop shortcut: {sc}")
+            except OSError as e:
+                errors.append(f"Failed to remove desktop shortcut: {e}")
+
+        # Remove icon from theme
+        try:
+            from niruvi.config import user_icons_dir
+# icon_name = sanitize_app_name(args.uninstall)  # reserved for future use
+            icons_root = user_icons_dir()
+            for size_dir in os.listdir(os.path.join(icons_root, "hicolor")):
+                icon_path = os.path.join(icons_root, "hicolor", size_dir, "apps", f"{args.uninstall}.png")
+                if os.path.exists(icon_path):
+                    os.remove(icon_path)
+                    print(f"Removed icon: {icon_path}")
+        except Exception as e:
+            errors.append(f"Failed to remove icon: {e}")
+
+        # Remove MIME handler associations
+        try:
+            unregister_mime_handler(args.uninstall)
+            print("Unregistered MIME handlers")
+        except Exception as e:
+            errors.append(f"Failed to unregister MIME handlers: {e}")
+
+        # Remove from registry
         registry.remove(args.uninstall)
-        registry.flush()
+        if not registry.flush():
+            errors.append("Failed to flush registry")
+
+        # Refresh desktop database
         try:
             refresh_desktop_database()
-        except Exception:
-            pass
-        print(f"Uninstalled: {args.uninstall}")
+        except Exception as e:
+            errors.append(f"Failed to refresh desktop database: {e}")
+
+        if errors:
+            for err in errors:
+                print(f"Warning: {err}", file=sys.stderr)
+            print(f"Uninstalled: {args.uninstall} (with warnings)", file=sys.stderr)
+            sys.exit(0)
+        else:
+            print(f"Uninstalled: {args.uninstall}")
         sys.exit(0)
 
     if args.list:

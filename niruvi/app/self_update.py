@@ -378,26 +378,31 @@ class _InstallCoordinator(QObject):
                 self.deleteLater()
                 return
         self._install()
-
-    def _install(self):
+def _install(self):
         backup_path: str | None = None
         dest: str | None = None
+        temp_meta_path: str | None = None
         try:
             install_dir = _get_install_dir()
             os.makedirs(install_dir, exist_ok=True)
             dest = os.path.join(install_dir, NIRUVI_APPIMAGE_NAME)
 
+            # Create backup of current AppImage
             backup_path = dest + ".backup"
             if os.path.exists(dest):
                 if os.path.exists(backup_path):
                     os.remove(backup_path)
                 os.rename(dest, backup_path)
+                logger.info("Created backup of current AppImage at %s", backup_path)
 
+            # Replace with new AppImage
             if self._temp_path:
                 os.replace(self._temp_path, dest)
             os.chmod(dest, 0o755)
             self._temp_path = None
+            logger.info("Installed new AppImage at %s", dest)
 
+            # Update metadata atomically
             meta_path = os.path.join(install_dir, ".appimage-manager.json")
             meta: dict[str, Any] = {}
             if os.path.exists(meta_path):
@@ -405,9 +410,14 @@ class _InstallCoordinator(QObject):
                     meta = json.load(f)
             meta["version"] = self._version
             meta["last_update"] = str(int(time.time()))
-            with open(meta_path, "w") as f:
+            # Write metadata atomically
+            temp_meta_path = meta_path + ".tmp"
+            with open(temp_meta_path, "w") as f:
                 json.dump(meta, f)
+            os.replace(temp_meta_path, meta_path)
+            logger.info("Updated metadata at %s", meta_path)
 
+            # Remove backup on success
             if backup_path and os.path.exists(backup_path):
                 os.remove(backup_path)
             backup_path = None
@@ -425,10 +435,6 @@ class _InstallCoordinator(QObject):
 
             if reply == QMessageBox.StandardButton.Yes:
                 QProcess.startDetached(str(dest), [])
-                # Force a full teardown so the old instance does not linger in the
-                # tray and contend for the SQLite registry. Setting _really_quit
-                # bypasses the tray-aware closeEvent that parent.close() would
-                # otherwise honour (it would hide to tray and keep running).
                 app = QApplication.instance()
                 if isinstance(app, QApplication):
                     for w in app.topLevelWidgets():
@@ -437,15 +443,21 @@ class _InstallCoordinator(QObject):
                     app.quit()
         except Exception as e:
             orig_error = e
-            if backup_path and os.path.exists(backup_path) and dest:
+            logger.exception("Update installation failed: %s", e)
+            # Rollback: restore backup if it exists
+            if backup_path and os.path.exists(backup_path) and dest and os.path.exists(dest):
                 try:
-                    if os.path.exists(dest):
-                        os.remove(dest)
+                    os.remove(dest)
                     os.rename(backup_path, dest)
+                    logger.info("Restored backup after failed update")
                 except Exception as rb_e:
-                    logger.debug("Failed to restore backup during update rollback: %s", rb_e, exc_info=True)
-            if self._temp_path:
-                Path(self._temp_path).unlink(missing_ok=True)
+                    logger.error("Failed to restore backup during update rollback: %s", rb_e, exc_info=True)
+            # Clean up temp files
+            if self._temp_path and os.path.exists(self._temp_path):
+                try:
+                    os.unlink(self._temp_path)
+                except OSError:
+                    pass
             play_sound("error")
             QMessageBox.critical(self._parent, "Update Failed", f"Failed to download or install update:\n{orig_error}")
         finally:

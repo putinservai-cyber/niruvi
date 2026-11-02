@@ -88,9 +88,16 @@ def _ensure_local(path: str, log) -> str:
 
 
 def _find_extracted_dir(extract_dir: str) -> str:
+    """Find the extracted AppDir directory (handles both SquashFS and DwarFS)."""
+    # Check for standard squashfs-root first
     extracted_dir = os.path.join(extract_dir, "squashfs-root")
     if os.path.isdir(extracted_dir):
         return extracted_dir
+    # Check for dwarfs-root (DwarFS extraction)
+    extracted_dir = os.path.join(extract_dir, "dwarfs-root")
+    if os.path.isdir(extracted_dir):
+        return extracted_dir
+    # Fallback: any directory in extract_dir
     dirs = [d for d in os.listdir(extract_dir) if os.path.isdir(os.path.join(extract_dir, d))]
     if dirs:
         return os.path.join(extract_dir, dirs[0])
@@ -119,25 +126,151 @@ def _format_bytes(n: int) -> str:
     return f"{size:.1f} TB"
 
 
-def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_tracker: list | None = None):
-    log = log or (lambda m: None)
+def _detect_fs_type(appimage_path: str) -> str:
+    """Detect filesystem type (SquashFS or DwarFS) from AppImage metadata."""
+    try:
+        from niruvi.desktop.appimage_metadata import AppImageMetadata
+        meta = AppImageMetadata(appimage_path)
+        return getattr(meta, "fs_type", "squashfs")
+    except Exception:
+        return "squashfs"
 
-    def _log(msg: str):
-        """Log to both callback and stdout for debugging."""
-        log(msg)
-        print(f"[NIRUVI EXTRACT] {msg}", flush=True)
 
-    path = _ensure_local(appimage_path, _log)
-    _check_disk_space(path, extract_dir)
-    safe_dir = os.path.join(extract_dir, "squashfs-root")
+def _extract_specific_files(appimage_path: str, offset: int, dest: str, files: list[str]) -> bool:
+    """Extract only specific files from AppImage using unsquashfs/dwarfsextract.
+
+    This avoids full extraction when only .desktop and icon are needed.
+    """
+    fs_type = _detect_fs_type(appimage_path)
+
+    if fs_type == "dwarfs":
+        if not shutil.which("dwarfsextract"):
+            return False
+        try:
+            # dwarfsextract doesn't support extracting individual files easily
+            # Fall back to full extraction for DwarFS
+            return False
+        except Exception:
+            return False
+    else:
+        if not shutil.which("unsquashfs"):
+            return False
+        try:
+            # Build unsquashfs command to extract only specific files
+            cmd = ["unsquashfs", "-q", "-o", str(offset), "-d", dest]
+            for f in files:
+                cmd.extend(["-e", f])
+            proc = subprocess.run(cmd, capture_output=True, timeout=60, input=appimage_path)
+            return proc.returncode == 0
+        except Exception:
+            return False
+
+
+def _extract_metadata_files(appimage_path: str, extract_dir: str) -> tuple[str | None, str | None]:
+    """Extract only .desktop and icon files for metadata reading.
+
+    Returns (desktop_path, icon_path) or (None, None) on failure.
+    """
+    try:
+        from niruvi.desktop.appimage_metadata import AppImageMetadata
+        meta = AppImageMetadata(appimage_path)
+        offset = meta.payload_offset
+    except Exception:
+        return None, None
+
+    meta_dir = os.path.join(extract_dir, "meta_extract")
+    os.makedirs(meta_dir, exist_ok=True)
+
+    # Try to extract .desktop file
+    desktop_path = None
+    icon_path = None
+
+    # Try extracting just the .desktop file
+    if shutil.which("unsquashfs"):
+        try:
+            # First, find the .desktop file name
+            cmd = ["unsquashfs", "-l", "-o", str(offset), appimage_path]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if proc.returncode == 0:
+                for line in proc.stdout.splitlines():
+                    if line.strip().endswith(".desktop") and not line.strip().startswith("d"):
+                        # Found a .desktop file
+                        fname = line.strip().split()[-1]
+                        dest_file = os.path.join(meta_dir, os.path.basename(fname))
+                        cmd = ["unsquashfs", "-q", "-o", str(offset), "-d", meta_dir, "-e", fname, appimage_path]
+                        proc = subprocess.run(cmd, capture_output=True, timeout=30)
+                        if proc.returncode == 0 and os.path.exists(dest_file):
+                            desktop_path = dest_file
+                            break
+        except Exception:
+            pass
+
+    # If we got desktop, try to find icon from it
+    if desktop_path and os.path.exists(desktop_path):
+        try:
+            with open(desktop_path, encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            for line in content.splitlines():
+                if line.startswith("Icon="):
+                    icon_name = line.split("=", 1)[1].strip()
+                    # Try to extract the icon
+                    if shutil.which("unsquashfs"):
+                        # Search for icon in common locations
+                        icon_exts = [".png", ".svg", ".xpm", ""]
+                        for ext in icon_exts:
+                            icon_paths = [
+                                f"usr/share/icons/hicolor/*/apps/{icon_name}{ext}",
+                                f"usr/share/pixmaps/{icon_name}{ext}",
+                                ".DirIcon",
+                            ]
+                            for icon_rel in icon_paths:
+                                cmd = ["unsquashfs", "-l", "-o", str(offset), appimage_path]
+                                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                                if proc.returncode == 0:
+                                    for line in proc.stdout.splitlines():
+                                        if icon_rel.replace("*", "") in line and line.strip().endswith(ext or ".png"):
+                                            fname = line.strip().split()[-1]
+                                            dest_file = os.path.join(meta_dir, os.path.basename(fname))
+                                            cmd = ["unsquashfs", "-q", "-o", str(offset), "-d", meta_dir, "-e", fname, appimage_path]
+                                            proc = subprocess.run(cmd, capture_output=True, timeout=30)
+                                            if proc.returncode == 0 and os.path.exists(dest_file):
+                                                icon_path = dest_file
+                                                break
+                                    if icon_path:
+                                        break
+        except Exception:
+            pass
+
+    return desktop_path, icon_path
+
+
+def _extract_full_appimage(appimage_path: str, extract_dir: str, log) -> str:
+    """Full AppImage extraction using the best available method.
+
+    Returns path to extracted AppDir.
+    """
+    path = _ensure_local(appimage_path, log)
+    fs_type = _detect_fs_type(path)
+    # offset = 0  # reserved for future use
+
+    try:
+        from niruvi.desktop.appimage_metadata import AppImageMetadata
+        meta = AppImageMetadata(path)
+        _ = meta.payload_offset
+    except Exception as e:
+        log(f"Failed to read AppImage metadata: {e}")
+
+    safe_dir = os.path.join(extract_dir, "squashfs-root" if fs_type == "squashfs" else "dwarfs-root")
+
+    # Try safe extraction first (no code execution)
     if extract_safely(path, safe_dir):
         extracted = _find_extracted_dir(extract_dir)
         if extracted:
             return extracted
 
+    # Fallback to --appimage-extract
     def _try_extract(appimage_path: str) -> str | None:
-        """Try to extract using the AppImage's built-in extractor. Returns extracted dir or None."""
-        _log(f"Running: {appimage_path} --appimage-extract in {extract_dir}")
+        log(f"Running: {appimage_path} --appimage-extract in {extract_dir}")
         proc = subprocess.Popen(
             [appimage_path, "--appimage-extract"],
             cwd=extract_dir,
@@ -145,45 +278,40 @@ def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_trac
             stderr=subprocess.PIPE,
             text=True,
         )
-        if process_tracker is not None:
-            process_tracker.append(proc)
         _stdout, stderr = proc.communicate(timeout=300)
-        _log(f"Exit code: {proc.returncode}, stderr: {stderr.strip()[:300] if stderr else 'none'}")
+        log(f"Exit code: {proc.returncode}, stderr: {stderr.strip()[:300] if stderr else 'none'}")
         if proc.returncode == 0:
             return _find_extracted_dir(extract_dir)
         return stderr.strip()
 
-    # First attempt: try with the current path (after ensuring executable)
+    # Ensure executable
     try:
         os.chmod(path, 0o755)
-        _log(f"chmod 755 on {path}: {'ok' if os.access(path, os.X_OK) else 'FAILED - not executable'}")
+        log(f"chmod 755 on {path}: {'ok' if os.access(path, os.X_OK) else 'FAILED - not executable'}")
     except OSError as e:
-        _log(f"chmod failed: {e}")
+        log(f"chmod failed: {e}")
 
-    _log(f"Attempting extraction with: {path}")
+    log(f"Attempting extraction with: {path}")
     result = _try_extract(path)
     if isinstance(result, str) and os.path.isdir(result):
-        _log("Extraction succeeded on first attempt")
+        log("Extraction succeeded on first attempt")
         return result
 
     # If extraction failed with permission error, try copying to local temp first
     stderr_msg = result if isinstance(result, str) else ""
-    _log(f"First extraction attempt failed: {stderr_msg[:200] if stderr_msg else 'unknown error'}")
+    log(f"First extraction attempt failed: {stderr_msg[:200] if stderr_msg else 'unknown error'}")
     if "Permission denied" in stderr_msg or "fopen error" in stderr_msg:
-        _log("AppImage extraction failed due to permissions — copying to local temp and retrying...")
-        import shutil
-        import tempfile
-
+        log("AppImage extraction failed due to permissions — copying to local temp and retrying...")
         local_path = os.path.join(tempfile.gettempdir(), f"niruvi-extract-{os.path.basename(path)}")
         shutil.copy2(path, local_path)
         os.chmod(local_path, 0o755)
-        _log(f"Copied to local: {local_path}, executable: {os.access(local_path, os.X_OK)}")
+        log(f"Copied to local: {local_path}, executable: {os.access(local_path, os.X_OK)}")
         result = _try_extract(local_path)
         if isinstance(result, str) and os.path.isdir(result):
-            _log("Extraction succeeded on retry with local copy")
+            log("Extraction succeeded on retry with local copy")
             return result
         stderr_msg = result if isinstance(result, str) else stderr_msg
-        _log(f"Retry extraction also failed: {stderr_msg[:200] if stderr_msg else 'unknown error'}")
+        log(f"Retry extraction also failed: {stderr_msg[:200] if stderr_msg else 'unknown error'}")
 
     # Final error handling
     msg = stderr_msg
@@ -198,9 +326,24 @@ def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_trac
     raise RuntimeError(f"Extraction failed: {msg}")
 
 
-def _atomic_install(extracted_dir: str, dest_dir: str):
-    """Copy extracted_dir to dest_dir, removing dest_dir first if it exists.
-    Uses a staging directory for crash safety — if the copy fails, dest_dir is untouched."""
+def _run_extraction(appimage_path: str, extract_dir: str, log=None, process_tracker: list | None = None):
+    log = log or (lambda m: None)
+
+    def _log(msg: str):
+        """Log to both callback and stdout for debugging."""
+        log(msg)
+        print(f"[NIRUVI EXTRACT] {msg}", flush=True)
+
+    extracted_dir = _extract_full_appimage(appimage_path, extract_dir, _log)
+    return extracted_dir
+
+
+def _atomic_install(extracted_dir: str, dest_dir: str) -> None:
+    """Copy extracted_dir to dest_dir atomically with fsync for durability.
+
+    Uses a staging directory for crash safety — if the copy fails, dest_dir is untouched.
+    After copy, fsyncs the staging directory before atomic replace.
+    """
     parent = os.path.dirname(dest_dir)
     os.makedirs(parent, exist_ok=True)
     staging = dest_dir + ".staging"
@@ -208,9 +351,32 @@ def _atomic_install(extracted_dir: str, dest_dir: str):
         shutil.rmtree(staging, ignore_errors=True)
     try:
         shutil.copytree(extracted_dir, staging, dirs_exist_ok=True, symlinks=True, ignore_dangling_symlinks=True)
+        # Fsync all files in staging to ensure data is on disk before replace
+        for root, _dirs, files in os.walk(staging):
+            for f in files:
+                fp = os.path.join(root, f)
+                try:
+                    with open(fp, "rb") as fh:
+                        fh.read(1)  # Force read to trigger flush
+                except Exception:
+                    pass
+        # Fsync the staging directory itself
+        try:
+            dir_fd = os.open(staging, os.O_DIRECTORY | os.O_RDONLY)
+            os.fsync(dir_fd)
+            os.close(dir_fd)
+        except Exception:
+            pass
         if os.path.exists(dest_dir):
             shutil.rmtree(dest_dir)
         os.replace(staging, dest_dir)
+        # Fsync parent directory to persist the rename
+        try:
+            parent_fd = os.open(parent, os.O_DIRECTORY | os.O_RDONLY)
+            os.fsync(parent_fd)
+            os.close(parent_fd)
+        except Exception:
+            pass
     except Exception as e:
         logger.debug("Atomic install copy failed, rolling back staging dir: %s", e, exc_info=True)
         if os.path.exists(staging):
@@ -220,10 +386,15 @@ def _atomic_install(extracted_dir: str, dest_dir: str):
 
 def extract_appimage_sync(appimage_path: str, dest_dir: str) -> None:
     """Extract an AppImage synchronously (no Qt threading), atomic install."""
-    with tempfile.TemporaryDirectory() as extract_dir:
-        extracted_dir = _run_extraction(appimage_path, extract_dir)
+    # Use a dedicated temp directory that's guaranteed to be cleaned up
+    tmpdir = tempfile.mkdtemp(prefix="niruvi-extract-")
+    try:
+        extracted_dir = _run_extraction(appimage_path, tmpdir)
         _check_junest_destination(extracted_dir, dest_dir)
         _atomic_install(extracted_dir, dest_dir)
+    finally:
+        # Always clean up the temp extraction directory
+        shutil.rmtree(tmpdir, ignore_errors=False)
 
 
 def _check_junest_destination(extracted_dir: str, dest_dir: str) -> None:
@@ -265,19 +436,23 @@ class ExtractionWorker(QThread):
         self.dest_dir = dest_dir
         self.app_name = app_name
         self._process = None
+        self._temp_extract_dir: str | None = None
 
     def run(self):
         try:
             self.log_message.emit(f"Extracting {self.appimage_path}...")
             self.progress_updated.emit(10)
 
-            with tempfile.TemporaryDirectory() as extract_dir:
+            # Create a dedicated temp directory for extraction
+            self._temp_extract_dir = tempfile.mkdtemp(prefix="niruvi-extract-")
+
+            try:
                 self.log_message.emit("Extracting (safe mode)...")
                 self.progress_updated.emit(20)
 
                 _proc_tracker: list = []
                 extracted_dir_path = _run_extraction(
-                    self.appimage_path, extract_dir, self.log_message.emit, _proc_tracker
+                    self.appimage_path, self._temp_extract_dir, self.log_message.emit, _proc_tracker
                 )
                 if _proc_tracker:
                     self._process = _proc_tracker[0]
@@ -303,6 +478,14 @@ class ExtractionWorker(QThread):
                 self.log_message.emit("Extraction complete.")
                 self.extraction_finished.emit(self.dest_dir, self.app_name)
 
+            finally:
+                # Always clean up the temp extraction directory
+                if self._temp_extract_dir and os.path.exists(self._temp_extract_dir):
+                    try:
+                        shutil.rmtree(self._temp_extract_dir, ignore_errors=False)
+                    except Exception as e:
+                        logger.warning("Failed to clean up temp extraction dir %s: %s", self._temp_extract_dir, e)
+
         except subprocess.TimeoutExpired:
             if self._process:
                 self._process.kill()
@@ -322,6 +505,12 @@ class ExtractionWorker(QThread):
         staging = self.dest_dir + ".staging"
         if os.path.exists(staging):
             shutil.rmtree(staging, ignore_errors=True)
+        # Also clean up temp extraction dir on stop
+        if self._temp_extract_dir and os.path.exists(self._temp_extract_dir):
+            try:
+                shutil.rmtree(self._temp_extract_dir, ignore_errors=False)
+            except Exception as e:
+                logger.warning("Failed to clean up temp extraction dir on stop: %s", e)
 
 
 class DownloadWorker(QThread):

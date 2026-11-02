@@ -8,6 +8,8 @@ build/
 # AppImage build artifacts
 *.AppDir/
 Niruvi-x86_64.AppImage
+squashfs-root/
+*.AppImage.tmp
 
 # IDE and editor files
 .vscode/

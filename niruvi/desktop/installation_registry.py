@@ -13,6 +13,7 @@ know the storage backend.
 import json
 import logging
 import os
+import shutil
 import sqlite3
 import threading
 from datetime import datetime
@@ -279,6 +280,15 @@ class InstallationRegistry:
             target = None
         db = self._db_path()
         os.makedirs(os.path.dirname(db), exist_ok=True)
+
+        # Create a backup before writing
+        backup_path = db + ".backup"
+        if os.path.exists(db):
+            try:
+                shutil.copy2(db, backup_path)
+            except Exception as e:
+                logger.warning("Failed to create registry backup: %s", e)
+
         col_list = ", ".join(_COLUMNS)
         placeholders = ", ".join("?" for _ in _COLUMNS)
         update_cols = ", ".join(f"{c} = excluded.{c}" for c in _COLUMNS if c != "name")
@@ -315,6 +325,12 @@ class InstallationRegistry:
             os.chmod(db, 0o600)
         except OSError:
             pass
+        # Remove backup on success
+        if written and os.path.exists(backup_path):
+            try:
+                os.unlink(backup_path)
+            except OSError:
+                pass
         return written
 
     def _deferred_save(self):
