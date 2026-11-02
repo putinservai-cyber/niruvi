@@ -176,9 +176,9 @@ class TestSideBySideNaming:
         install_dir.mkdir()
         (install_dir / "MyApp").mkdir()
 
-        # Should find MyApp 2
+        # Should find MyApp-2 (using dashes, not spaces)
         name = find_unique_install_name("MyApp", str(install_dir))
-        assert name == "MyApp 2"
+        assert name == "MyApp-2"
 
     def test_find_unique_name_with_registry(self, tmp_path, monkeypatch):
         from niruvi.desktop.desktop_utils import find_unique_install_name
@@ -193,9 +193,9 @@ class TestSideBySideNaming:
         install_dir = tmp_path / "apps"
         install_dir.mkdir()
 
-        # Should find MyApp 2 based on registry
+        # Should find MyApp-2 based on registry
         name = find_unique_install_name("MyApp", str(install_dir), registry=reg)
-        assert name == "MyApp 2"
+        assert name == "MyApp-2"
 
     def test_find_unique_name_multiple_suffixes(self, tmp_path, monkeypatch):
         from niruvi.desktop.desktop_utils import find_unique_install_name
@@ -205,15 +205,15 @@ class TestSideBySideNaming:
         reg = InstallationRegistry()
         reg.reset()
         reg.add(InstallationRecord(name="MyApp", path="/apps/MyApp"))
-        reg.add(InstallationRecord(name="MyApp 2", path="/apps/MyApp 2"))
+        reg.add(InstallationRecord(name="MyApp-2", path="/apps/MyApp-2"))
         reg.flush()
 
         install_dir = tmp_path / "apps"
         install_dir.mkdir()
 
-        # Should find MyApp 3
+        # Should find MyApp-3
         name = find_unique_install_name("MyApp", str(install_dir), registry=reg)
-        assert name == "MyApp 3"
+        assert name == "MyApp-3"
 
 
 class TestDesktopExecQuoting:
@@ -232,8 +232,8 @@ class TestDesktopExecQuoting:
 
         app_dir = "/path/without_spaces/app"
         result = _format_exec_path(app_dir)
-        # Should not quote since no spaces
-        assert result == "/path/without_spaces/app/AppRun %F"
+        # Should always quote per Desktop Entry spec
+        assert result == '"/path/without_spaces/app/AppRun" %F'
 
     def test_format_tryexec_path_with_spaces(self):
         from niruvi.desktop.desktop_utils import _format_tryexec_path
@@ -247,7 +247,8 @@ class TestDesktopExecQuoting:
 
         app_dir = "/path/without_spaces/app"
         result = _format_tryexec_path(app_dir)
-        assert result == "/path/without_spaces/app/AppRun"
+        # Should always quote per Desktop Entry spec
+        assert result == '"/path/without_spaces/app/AppRun"'
 
 
 class TestDesktopExecQuotingInCreate:

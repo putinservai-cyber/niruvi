@@ -31,38 +31,39 @@ class TestUnregisterMimeHandler:
 
     def test_removes_default_and_associations_only_for_us(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
+        # Use sanitized name (My-App) since that's what the function uses
         _write_mimeapps(
             tmp_path,
             "[Default Applications]\n"
-            "text/plain=My App.desktop;other.desktop;\n"
-            "image/png=My App.desktop;\n"
+            "text/plain=My-App.desktop;other.desktop;\n"
+            "image/png=My-App.desktop;\n"
             "\n"
             "[Added Associations]\n"
-            "text/plain=My App.desktop;other.desktop;\n"
+            "text/plain=My-App.desktop;other.desktop;\n"
             "[Removed Associations]\n"
-            "image/png=My App.desktop;\n",
+            "image/png=My-App.desktop;\n",
         )
         assert unregister_mime_handler("My App") is True
         data = _mimeapps_path(tmp_path).read_text()
-        assert "My App.desktop" not in data
+        assert "My-App.desktop" not in data
         assert "other.desktop" in data
         assert "text/plain=other.desktop;" in data
 
     def test_drops_key_when_we_were_the_only_entry(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
-        _write_mimeapps(tmp_path, "[Default Applications]\nimage/png=My App.desktop;\n")
+        _write_mimeapps(tmp_path, "[Default Applications]\nimage/png=My-App.desktop;\n")
         assert unregister_mime_handler("My App") is True
         data = _mimeapps_path(tmp_path).read_text()
         assert "image/png" not in data
 
     def test_ignores_other_sections(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
-        content = "[Default Applications]\nimage/png=My App.desktop;\n[Custom]\nfoo=My App.desktop;\n"
+        content = "[Default Applications]\nimage/png=My-App.desktop;\n[Custom]\nfoo=My-App.desktop;\n"
         path = _write_mimeapps(tmp_path, content)
         assert unregister_mime_handler("My App") is True
         data = path.read_text()
         assert "[Custom]" in data
-        assert "foo=My App.desktop;" in data
+        assert "foo=My-App.desktop;" in data
 
     def test_explicit_desktop_name_override(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))

@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +8,7 @@ import tempfile
 from PyQt6.QtWidgets import QMessageBox
 
 from niruvi.config import DESKTOP_DIR, get_settings, user_applications_dir
+from niruvi.naming import safe_name, side_by_side_name
 from niruvi.utils.icon_search import find_icon_in_dir as _find_icon_in_dir_impl
 
 logger = logging.getLogger(__name__)
@@ -23,24 +23,14 @@ def sanitize_app_name(name: object) -> str:
     newline-based key injection), path separators and traversal sequences
     (kills ../ escapes), cap length.
     """
-    if not isinstance(name, str):
-        return "App"
-    # Control characters (incl. newlines/tabs/NUL) cannot appear in paths
-    cleaned = "".join(ch for ch in name if ch.isprintable())
-    cleaned = cleaned.replace("/", "-").replace("\\", "-")
-    while ".." in cleaned:
-        cleaned = cleaned.replace("..", ".")
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .-")
-    if len(cleaned) > 80:
-        cleaned = cleaned[:80].rstrip(" .-")
-    return cleaned or "App"
+    return safe_name(name)
 
 
 def find_unique_install_name(base_name: str, install_dir: str, registry=None) -> str:
     """Find a unique installation name for side-by-side installs.
 
     If base_name already exists in install_dir or registry, appends a numeric
-    suffix (e.g., "App 2", "App 3") until a free name is found.
+    suffix (e.g., "App-2", "App-3") until a free name is found.
 
     Args:
         base_name: The desired base name (already sanitized)
@@ -63,7 +53,7 @@ def find_unique_install_name(base_name: str, install_dir: str, registry=None) ->
                     return name
             else:
                 return name
-        name = f"{base_name} {suffix}"
+        name = side_by_side_name(base_name, suffix)
         suffix += 1
         if suffix > 1000:  # Safety limit
             raise RuntimeError("Too many side-by-side installations for this app")
@@ -158,15 +148,19 @@ def _sanitize_icon_name(name: str) -> str:
 
 
 def _format_exec_path(app_dir: str) -> str:
+    """Format Exec= line for .desktop file, quoting the path per spec.
+
+    Per the Desktop Entry Specification, Exec= values should be quoted
+    if they contain spaces or special characters. We always quote for safety.
+    """
     apprun = os.path.join(app_dir, "AppRun")
-    if " " in apprun:
-        return f'"{apprun}" %F'
-    return f"{apprun} %F"
+    return f'"{apprun}" %F'
 
 
 def _format_tryexec_path(app_dir: str) -> str:
+    """Format TryExec= line for .desktop file, quoting the path per spec."""
     apprun = os.path.join(app_dir, "AppRun")
-    return f'"{apprun}"' if " " in apprun else apprun
+    return f'"{apprun}"'
 
 
 def _record_sandboxed(app_name: str) -> bool:
@@ -325,7 +319,8 @@ def create_desktop_shortcut(app_name: str, exec_path: str, icon_path: str | None
             icon_value = icon_path
 
     sandboxed_exec = _format_sandboxed_exec(app_name) if _record_sandboxed(app_name) else ""
-    exec_value = sandboxed_exec or (f'"{exec_path}"' if " " in exec_path else exec_path)
+    # Always quote the exec path per Desktop Entry spec
+    exec_value = sandboxed_exec or f'"{exec_path}"'
     content = (
         "[Desktop Entry]\n"
         "Type=Application\n"
@@ -672,7 +667,8 @@ def create_portable_desktop_entry(appimage_path: str, app_name: str) -> str | No
     """
     app_name = sanitize_app_name(app_name)
     desktop_file = os.path.join(DESKTOP_DIR, f"{app_name}.desktop")
-    exec_value = f'"{appimage_path}"' if " " in appimage_path else appimage_path
+    # Always quote the exec path per Desktop Entry spec
+    exec_value = f'"{appimage_path}"'
     content = (
         "[Desktop Entry]\n"
         "Type=Application\n"
