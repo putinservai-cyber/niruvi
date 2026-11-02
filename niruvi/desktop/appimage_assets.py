@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from niruvi.core.scanner import extract_safely
+from niruvi.core.worker import _get_extraction_temp_dir
 
 
 def _ensure_executable(path):
@@ -21,7 +22,8 @@ def _find_squashfs_root(extract_dir):
 
 
 def _extract_once(appimage_path):
-    tmp = tempfile.TemporaryDirectory(prefix="aim-extract-")
+    extract_base = _get_extraction_temp_dir()
+    tmp = tempfile.TemporaryDirectory(prefix="aim-extract-", dir=extract_base)
     # Try safe extraction first (no code execution)
     safe_dir = os.path.join(tmp.name, "squashfs-root")
     if extract_safely(appimage_path, safe_dir):

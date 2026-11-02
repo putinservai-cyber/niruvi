@@ -1203,6 +1203,9 @@ class Shield:
                 for scratch in ("/tmp", "/var/tmp", "/dev/shm"):
                     if os.path.isdir(scratch) and scratch not in rw_paths:
                         rw_paths.append(scratch)
+                # /dev/null is needed by virtually all applications for stdout/stderr redirection
+                if os.path.exists("/dev/null") and "/dev/null" not in rw_paths:
+                    rw_paths.append("/dev/null")
                 if self.config.private_tmp and app_dir:
                     # TMPDIR lives inside the read-only app_dir tree; grant it
                     # explicitly so the app can actually use it.

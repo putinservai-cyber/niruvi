@@ -17,6 +17,27 @@ logger = logging.getLogger(__name__)
 _live_workers: list[QThread] = []
 
 
+def _get_extraction_temp_dir() -> str:
+    """Get the temp directory for extraction, avoiding quota-limited /tmp.
+
+    Uses ~/.cache/niruvi/extracts by default, falls back to system temp.
+    """
+    # Try XDG cache directory first (usually no quota)
+    xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+    cache_dir = os.path.join(xdg_cache, "niruvi", "extracts")
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        # Test write access
+        test_file = os.path.join(cache_dir, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("test")
+        os.unlink(test_file)
+        return cache_dir
+    except (OSError, PermissionError):
+        # Fall back to system temp
+        return tempfile.gettempdir()
+
+
 def start_worker(worker: QThread) -> None:
     """Start a QThread worker and keep it referenced until it finishes.
 
@@ -136,6 +157,52 @@ def _detect_fs_type(appimage_path: str) -> str:
         return "squashfs"
 
 
+def _get_appimage_architecture(appimage_path: str) -> str | None:
+    """Get the architecture of the AppImage binary.
+
+    Returns the architecture string (e.g., 'x86_64', 'aarch64') or None if detection fails.
+    """
+    try:
+        from niruvi.desktop.appimage_metadata import AppImageMetadata
+        meta = AppImageMetadata(appimage_path)
+        return getattr(meta, "architecture", None)
+    except Exception:
+        return None
+
+
+def _check_architecture_compatibility(appimage_path: str, log=None) -> bool:
+    """Check if the AppImage architecture is compatible with the host.
+
+    Returns True if compatible, False otherwise. Logs a warning if incompatible.
+    """
+    log = log or (lambda m: None)
+    import platform
+    host_arch = platform.machine().lower()
+    app_arch = _get_appimage_architecture(appimage_path)
+    if app_arch is None:
+        log("Warning: Could not determine AppImage architecture")
+        return True  # Assume compatible if we can't determine
+
+    # Normalize architecture names
+    arch_map = {
+        "x86_64": "x86_64",
+        "amd64": "x86_64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+        "armv7l": "arm",
+        "armv6l": "arm",
+        "i386": "i386",
+        "i686": "i386",
+    }
+    host_arch = arch_map.get(host_arch, host_arch)
+    app_arch = arch_map.get(app_arch, app_arch)
+
+    if host_arch != app_arch:
+        log(f"Architecture mismatch: host={host_arch}, app={app_arch}")
+        return False
+    return True
+
+
 def _extract_specific_files(appimage_path: str, offset: int, dest: str, files: list[str]) -> bool:
     """Extract only specific files from AppImage using unsquashfs/dwarfsextract.
 
@@ -249,6 +316,13 @@ def _extract_full_appimage(appimage_path: str, extract_dir: str, log) -> str:
 
     Returns path to extracted AppDir.
     """
+    # Check architecture compatibility before attempting extraction
+    if not _check_architecture_compatibility(appimage_path, log):
+        raise RuntimeError(
+            "AppImage architecture is not compatible with this system. "
+            "Please use an AppImage built for your architecture."
+        )
+
     path = _ensure_local(appimage_path, log)
     fs_type = _detect_fs_type(path)
     # offset = 0  # reserved for future use
@@ -387,7 +461,8 @@ def _atomic_install(extracted_dir: str, dest_dir: str) -> None:
 def extract_appimage_sync(appimage_path: str, dest_dir: str) -> None:
     """Extract an AppImage synchronously (no Qt threading), atomic install."""
     # Use a dedicated temp directory that's guaranteed to be cleaned up
-    tmpdir = tempfile.mkdtemp(prefix="niruvi-extract-")
+    extract_base = _get_extraction_temp_dir()
+    tmpdir = tempfile.mkdtemp(prefix="niruvi-extract-", dir=extract_base)
     try:
         extracted_dir = _run_extraction(appimage_path, tmpdir)
         _check_junest_destination(extracted_dir, dest_dir)
@@ -443,8 +518,9 @@ class ExtractionWorker(QThread):
             self.log_message.emit(f"Extracting {self.appimage_path}...")
             self.progress_updated.emit(10)
 
-            # Create a dedicated temp directory for extraction
-            self._temp_extract_dir = tempfile.mkdtemp(prefix="niruvi-extract-")
+            # Create a dedicated temp directory for extraction (avoid quota-limited /tmp)
+            extract_base = _get_extraction_temp_dir()
+            self._temp_extract_dir = tempfile.mkdtemp(prefix="niruvi-extract-", dir=extract_base)
 
             try:
                 self.log_message.emit("Extracting (safe mode)...")
