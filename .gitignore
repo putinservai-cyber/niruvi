@@ -46,3 +46,7 @@ Niruvi-x86_64.AppImage.zsync
 
 # Local tool artifacts
 .freebuff/
+
+# Editor/IDE
+.opencode/
+.openclaude/
